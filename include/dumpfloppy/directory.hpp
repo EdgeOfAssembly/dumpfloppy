@@ -36,6 +36,11 @@ list_directories(std::span<const uint8_t> image, const bpb_info& bpb,
 [[nodiscard]] std::string format_name_83(const uint8_t name[11], bool deleted);
 
 /**
+ * @brief Volume label as 11-character text (no fake 8.3 dot).
+ */
+[[nodiscard]] std::string format_volume_label(const uint8_t name[11], bool deleted);
+
+/**
  * @brief Compact attribute string (`RHSVDA`).
  */
 [[nodiscard]] std::string format_attributes(uint8_t attr);

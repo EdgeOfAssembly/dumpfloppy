@@ -179,6 +179,13 @@ TEST_CASE("directory table is 8.3 names, left-justified, no cl= prefix", "[image
     }
     REQUIRE_FALSE(gone_line.empty());
     REQUIRE(gone_line.find("  deleted") == std::string::npos);
+    REQUIRE(s.find("volume label") == std::string::npos);
+}
+
+TEST_CASE("volume label is 11-char text without a fake 8.3 dot", "[image]")
+{
+    const uint8_t raw[11] = {' ', ' ', 'B', 'A', 'T', 'M', 'A', 'N', ' ', '#', '1'};
+    REQUIRE(dumpfloppy::format_volume_label(raw, false) == "BATMAN #1");
 }
 
 TEST_CASE("format_volume_serial is high-word first", "[util]")

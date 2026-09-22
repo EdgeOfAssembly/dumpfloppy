@@ -108,7 +108,14 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
     e.deleted = deleted;
     e.after_terminator = after_term;
     e.attributes = attr;
-    e.name_83 = format_name_83(slot.data(), deleted);
+    if ((attr & k_attr_volume) != 0u && (attr & k_attr_directory) == 0u)
+    {
+        e.name_83 = format_volume_label(slot.data(), deleted);
+    }
+    else
+    {
+        e.name_83 = format_name_83(slot.data(), deleted);
+    }
     e.lfn = pending_lfn;
     pending_lfn.clear();
     e.path = join_path(dir_path, e.lfn.empty() ? e.name_83 : e.lfn);
@@ -136,7 +143,6 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
 
     if ((attr & k_attr_volume) != 0u && (attr & k_attr_directory) == 0u)
     {
-        e.notes = "volume label";
         out.push_back(std::move(e));
         return;
     }
@@ -267,6 +273,25 @@ std::string format_name_83(const uint8_t name[11], bool deleted)
         return b.empty() ? "?" : b;
     }
     return b + "." + e;
+}
+
+std::string format_volume_label(const uint8_t name[11], bool deleted)
+{
+    std::string s(reinterpret_cast<const char*>(name), 11);
+    if (deleted && !s.empty())
+    {
+        s[0] = '?';
+    }
+    while (!s.empty() && s.back() == ' ')
+    {
+        s.pop_back();
+    }
+    size_t i = 0;
+    while (i < s.size() && s[i] == ' ')
+    {
+        ++i;
+    }
+    return s.substr(i);
 }
 
 std::string format_attributes(uint8_t attr)

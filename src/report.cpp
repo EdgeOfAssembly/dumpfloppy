@@ -178,7 +178,7 @@ std::string entry_line(const dir_entry& e)
        << field(std::to_string(e.size), k_w_size)
        << field(std::to_string(e.first_cluster), k_w_cluster)
        << field(modified, k_w_modified) << field(e.type, k_w_type)
-       << field(e.xxh64, k_w_sum);
+       << field(e.size == 0u ? std::string_view{} : e.xxh64, k_w_sum);
     if (!e.notes.empty())
     {
         os << e.notes;

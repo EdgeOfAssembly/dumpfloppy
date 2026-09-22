@@ -133,6 +133,13 @@ analysis analyse(floppy_image image)
                 if ((e.attributes & k_attr_volume) != 0u)
                 {
                     e.type = "VOL";
+                    e.xxh64.clear();
+                    continue;
+                }
+                if (e.size == 0u)
+                {
+                    e.xxh64.clear();
+                    e.type = identify_type({}, format_kind::file, e.name_83);
                     continue;
                 }
                 const std::vector<uint8_t> payload =
