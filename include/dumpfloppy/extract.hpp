@@ -34,12 +34,20 @@ struct extract_options
 /**
  * @brief Write matching files into @p opt.dest_dir.
  *
+ * Unsafe names (absolute paths, root names, empty components, `.`, `..`)
+ * are skipped with a diagnostic — they must not escape @p opt.dest_dir.
+ * If two payloads map to the same host path, the later file is written as
+ * the 8.3 name (deleted entries keep `?`) or `stem.deleted.ext`; a warning
+ * is emitted and the earlier file is left intact.
+ *
  * @param[in]  a   Analysis with cluster chains.
  * @param[in]  opt Extract flags and destination.
  * @param[out] err Diagnostics (typically stderr).
  *
- * @return Number of files written, or -1 if a write failed or a pattern
- *         matched nothing.
+ * @return Number of files written, or -1 on failure.
+ * @retval >=0 Files written (unsafe names are skipped, not counted).
+ * @retval -1  Write failed, a pattern matched nothing, or the image is
+ *             86Box `.86f` flux (sector map needs HxC `.mfm`).
  */
 [[nodiscard]] int extract_files(const analysis& a, const extract_options& opt,
                                 std::ostream& err);

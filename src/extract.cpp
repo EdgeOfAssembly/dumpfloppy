@@ -6,9 +6,14 @@
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/util.hpp"
 
+#include <filesystem>
 #include <fstream>
+#include <ostream>
 #include <span>
+#include <string>
+#include <string_view>
 #include <system_error>
+#include <unordered_set>
 
 namespace dumpfloppy
 {
@@ -28,17 +33,143 @@ std::filesystem::path host_relative(const dir_entry& e)
     return std::filesystem::path(rel);
 }
 
+/**
+ * @brief True when @p rel cannot escape the extract destination directory.
+ *
+ * `std::filesystem::path` operator/ replaces the left-hand side when the
+ * right-hand side is absolute, so LFNs like `/etc/passwd` must be rejected
+ * before join. Empty, `.`, and `..` components are also rejected.
+ */
 bool path_is_safe(const std::filesystem::path& rel)
 {
-    for (const auto& part : rel)
+    if (rel.empty() || rel.is_absolute() || rel.has_root_name() ||
+        rel.has_root_directory())
     {
-        const std::string s = part.string();
-        if (s == ".." || s == ".")
+        return false;
+    }
+
+    const std::string raw = rel.generic_string();
+    if (raw.empty() || raw[0] == '/' || raw[0] == '\\')
+    {
+        return false;
+    }
+    /* Windows drive / UNC even when this host is POSIX. */
+    if (raw.size() >= 2u &&
+        ((raw[0] >= 'A' && raw[0] <= 'Z') || (raw[0] >= 'a' && raw[0] <= 'z')) &&
+        raw[1] == ':')
+    {
+        return false;
+    }
+    if (raw.starts_with("//") || raw.starts_with("\\\\"))
+    {
+        return false;
+    }
+
+    auto forbidden = [](std::string_view s) -> bool {
+        return s.empty() || s == "." || s == "..";
+    };
+
+    std::string part;
+    for (char c : raw)
+    {
+        if (c == '/' || c == '\\')
+        {
+            if (forbidden(part))
+            {
+                return false;
+            }
+            part.clear();
+        }
+        else
+        {
+            part.push_back(c);
+        }
+    }
+    if (forbidden(part))
+    {
+        return false;
+    }
+
+    for (const auto& p : rel)
+    {
+        const std::string s = p.generic_string();
+        if (forbidden(s) || s == "/" || s == "\\")
         {
             return false;
         }
     }
     return true;
+}
+
+std::string dest_key(const std::filesystem::path& p)
+{
+    return p.lexically_normal().generic_string();
+}
+
+bool dest_taken(const std::filesystem::path& p,
+                const std::unordered_set<std::string>& used)
+{
+    if (used.contains(dest_key(p)))
+    {
+        return true;
+    }
+    std::error_code ec{};
+    return std::filesystem::exists(p, ec);
+}
+
+/**
+ * @brief Host path for @p e; on collision, 8.3 (`?` if deleted) or
+ *        `stem.deleted.ext` so a prior payload is not trunc-overwritten.
+ */
+std::filesystem::path choose_extract_dest(const std::filesystem::path& preferred,
+                                          const dir_entry& e,
+                                          const std::unordered_set<std::string>& used,
+                                          std::ostream& err)
+{
+    if (!dest_taken(preferred, used))
+    {
+        return preferred;
+    }
+
+    const std::filesystem::path parent = preferred.parent_path();
+    auto in_parent = [&](const std::string& name) -> std::filesystem::path {
+        return parent.empty() ? std::filesystem::path(name) : parent / name;
+    };
+
+    if (!e.name_83.empty())
+    {
+        const std::filesystem::path as_83 = in_parent(e.name_83);
+        if (path_is_safe(std::filesystem::path(e.name_83)) &&
+            dest_key(as_83) != dest_key(preferred) && !dest_taken(as_83, used))
+        {
+            err << "dumpfloppy: extract collision: '" << preferred.string()
+                << "' already exists; writing '" << as_83.string() << "'\n";
+            return as_83;
+        }
+    }
+
+    const std::string stem = preferred.filename().stem().string();
+    const std::string ext = preferred.filename().extension().string();
+    const std::string base =
+        stem.empty() ? preferred.filename().string() : stem;
+    std::filesystem::path as_del = in_parent(base + ".deleted" + ext);
+    if (!dest_taken(as_del, used))
+    {
+        err << "dumpfloppy: extract collision: '" << preferred.string()
+            << "' already exists; writing '" << as_del.string() << "'\n";
+        return as_del;
+    }
+    for (int n = 2; n < 10000; ++n)
+    {
+        as_del = in_parent(base + ".deleted." + std::to_string(n) + ext);
+        if (!dest_taken(as_del, used))
+        {
+            err << "dumpfloppy: extract collision: '" << preferred.string()
+                << "' already exists; writing '" << as_del.string() << "'\n";
+            return as_del;
+        }
+    }
+    return {};
 }
 
 } /* namespace */
@@ -70,6 +201,12 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     {
         return 0;
     }
+    if (a.flux.format_name == "86BOX 86F")
+    {
+        err << "dumpfloppy: cannot extract .86f flux images; sector map needs "
+               "HxC .mfm or an 86F decoder\n";
+        return -1;
+    }
     std::error_code ec{};
     std::filesystem::create_directories(opt.dest_dir, ec);
     if (ec)
@@ -81,6 +218,7 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
 
     int written = 0;
     int matched = 0;
+    std::unordered_set<std::string> used_dests;
     for (const dir_entry& e : a.entries)
     {
         if (!extract_matches(e, opt))
@@ -94,7 +232,20 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
-        const std::filesystem::path dest = opt.dest_dir / rel;
+        const std::filesystem::path preferred = opt.dest_dir / rel;
+        if (preferred.is_absolute() && rel.is_absolute())
+        {
+            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
+            continue;
+        }
+        const std::filesystem::path dest =
+            choose_extract_dest(preferred, e, used_dests, err);
+        if (dest.empty())
+        {
+            err << "dumpfloppy: extract collision: no unique name for '"
+                << preferred.string() << "'\n";
+            return -1;
+        }
         if (dest.has_parent_path())
         {
             std::filesystem::create_directories(dest.parent_path(), ec);
@@ -127,6 +278,7 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             err << "dumpfloppy: short write '" << dest.string() << "'\n";
             return -1;
         }
+        used_dests.insert(dest_key(dest));
         ++written;
     }
     if (!opt.patterns.empty() && matched == 0)
