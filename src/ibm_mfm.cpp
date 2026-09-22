@@ -150,6 +150,7 @@ void scan_track(std::span<const uint8_t> blob, std::vector<ibm_sector>& out,
             std::memcpy(rec.data() + 4, payload.data(), nbytes + 2u);
             pending.has_dam = true;
             pending.dam_crc_ok = (crc16_ibm(rec.data(), rec.size()) == 0u);
+            pending.data.assign(payload.begin(), payload.begin() + nbytes);
             if (boot_out != nullptr && pending.cyl == 0u && pending.head == 0u &&
                 pending.sector == 1u && nbytes >= 512u)
             {
@@ -170,9 +171,38 @@ void fill_protection(flux_disk& d)
     unsigned long_n = 0;
     unsigned bad_dam = 0;
     unsigned bad_idam = 0;
+    std::vector<uint32_t> seen_ids;
+    auto id_key = [](const ibm_sector& s) -> uint32_t
+    {
+        return (static_cast<uint32_t>(s.cyl) << 16) |
+               (static_cast<uint32_t>(s.head) << 8) | s.sector;
+    };
     for (const ibm_sector& s : d.sectors)
     {
-        if (s.size_code != 2u)
+        const uint32_t key = id_key(s);
+        bool dup = false;
+        for (uint32_t k : seen_ids)
+        {
+            if (k == key)
+            {
+                dup = true;
+                break;
+            }
+        }
+        if (dup)
+        {
+            continue;
+        }
+        seen_ids.push_back(key);
+        if (s.sector < 1u || s.sector > 9u)
+        {
+            char buf[96] = {};
+            std::snprintf(buf, sizeof(buf),
+                          "HLS-style nonstandard sector ID C%u:H%u:S%u (%u bytes)",
+                          s.cyl, s.head, s.sector, s.bytes);
+            d.protection.emplace_back(buf);
+        }
+        else if (s.size_code != 2u)
         {
             ++long_n;
             char buf[80] = {};
@@ -246,6 +276,48 @@ flux_disk decode_hxc_mfm(std::span<const uint8_t> file)
     }
     fill_protection(d);
     add_boot_protection(d, d.boot);
+    {
+        uint32_t max_c = 0;
+        uint32_t max_h = 0;
+        uint32_t max_s = 0;
+        for (const ibm_sector& s : d.sectors)
+        {
+            if (s.bytes == 512u && s.sector >= 1u && s.sector <= 18u &&
+                s.data.size() >= 512u)
+            {
+                if (s.cyl > max_c)
+                {
+                    max_c = s.cyl;
+                }
+                if (s.head > max_h)
+                {
+                    max_h = s.head;
+                }
+                if (s.sector > max_s)
+                {
+                    max_s = s.sector;
+                }
+            }
+        }
+        if (max_s >= 8u)
+        {
+            const uint32_t cyls = max_c + 1u;
+            const uint32_t heads = max_h + 1u;
+            const uint32_t spt = max_s;
+            d.assembled_chs.assign(static_cast<size_t>(cyls * heads * spt) * 512u, 0);
+            for (const ibm_sector& s : d.sectors)
+            {
+                if (s.bytes != 512u || s.sector < 1u || s.sector > spt ||
+                    s.data.size() < 512u)
+                {
+                    continue;
+                }
+                const size_t lba = (static_cast<size_t>(s.cyl) * heads + s.head) * spt +
+                                   (s.sector - 1u);
+                std::memcpy(d.assembled_chs.data() + lba * 512u, s.data.data(), 512u);
+            }
+        }
+    }
     if (d.boot.size() >= 512u)
     {
         const bool aa55 = d.boot[510] == 0x55u && d.boot[511] == 0xAAu;

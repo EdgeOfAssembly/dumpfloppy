@@ -24,6 +24,7 @@ struct ibm_sector
     bool idam_crc_ok = false;
     bool dam_crc_ok = false;
     bool has_dam = false;
+    std::vector<uint8_t> data{}; /**< DAM payload when present. */
 };
 
 /** @brief Decoded HxC MFM (or empty if the bytes are not that container). */
@@ -39,6 +40,7 @@ struct flux_disk
     std::vector<uint8_t> boot{}; /**< Cyl 0 head 0 sector 1 payload, if any. */
     std::vector<std::string> protection{};
     std::string note{};
+    std::vector<uint8_t> assembled_chs{}; /**< Standard 512-byte CHS image, if any. */
 };
 
 /**

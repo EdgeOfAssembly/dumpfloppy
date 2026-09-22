@@ -70,7 +70,8 @@ analysis analyse(floppy_image image)
     a.bpb = parse_bpb(boot_span);
     a.ebpb = parse_ebpb(boot_span, a.bpb);
     a.boot = classify_boot(boot_span, a.bpb);
-    if (a.flux.present && !a.flux.boot.empty() && !a.boot.is_booter)
+    if (a.flux.present && !a.bpb.looks_valid && !a.flux.boot.empty() &&
+        !a.boot.is_booter)
     {
         a.boot.is_booter = true;
         a.boot.kind = boot_class::custom_booter;
@@ -78,16 +79,22 @@ analysis analyse(floppy_image image)
     }
     a.kind = fat_kind_from_bpb(a.bpb);
 
+    std::span<const uint8_t> volume = bytes;
+    if (!a.flux.assembled_chs.empty())
+    {
+        volume = a.flux.assembled_chs;
+    }
+
     if (a.bpb.looks_valid)
     {
         a.volume_bytes = static_cast<uint64_t>(a.bpb.total_sectors) *
                          a.bpb.bytes_per_sector;
-        if (a.volume_bytes > bytes.size())
+        if (a.volume_bytes > volume.size())
         {
             a.truncated = true;
             a.secrets.emplace_back("image is shorter than BPB total sectors");
         }
-        else if (bytes.size() > a.volume_bytes)
+        else if (!a.flux.present && bytes.size() > a.volume_bytes)
         {
             a.trailing_bytes = bytes.size() - a.volume_bytes;
             a.secrets.emplace_back("trailing bytes after BPB volume (overdump or WinImage extra)");
@@ -107,14 +114,14 @@ analysis analyse(floppy_image image)
     if (a.bpb.looks_valid &&
         (a.kind == fat_kind::fat12 || a.kind == fat_kind::fat16))
     {
-        a.fat = summarise_fat(bytes, a.bpb, a.kind);
+        a.fat = summarise_fat(volume, a.bpb, a.kind);
         const size_t fat0_off =
             static_cast<size_t>(a.bpb.reserved_sectors) * a.bpb.bytes_per_sector;
-        if (fat0_off < bytes.size() && a.fat.fat_bytes > 0u)
+        if (fat0_off < volume.size() && a.fat.fat_bytes > 0u)
         {
-            const size_t n = std::min<size_t>(a.fat.fat_bytes, bytes.size() - fat0_off);
-            const std::span<const uint8_t> fat0{bytes.data() + fat0_off, n};
-            a.entries = list_directories(bytes, a.bpb, a.kind, fat0);
+            const size_t n = std::min<size_t>(a.fat.fat_bytes, volume.size() - fat0_off);
+            const std::span<const uint8_t> fat0{volume.data() + fat0_off, n};
+            a.entries = list_directories(volume, a.bpb, a.kind, fat0);
             for (dir_entry& e : a.entries)
             {
                 if (e.name_83 == "." || e.name_83 == ".." ||
@@ -129,7 +136,7 @@ analysis analyse(floppy_image image)
                     continue;
                 }
                 const std::vector<uint8_t> payload =
-                    read_file_contents(bytes, a.bpb, e);
+                    read_file_contents(volume, a.bpb, e);
                 e.xxh64 = xxh64_hex(payload);
                 e.type = identify_type(payload, format_kind::file, e.name_83);
             }

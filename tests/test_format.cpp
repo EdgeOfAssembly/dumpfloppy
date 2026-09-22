@@ -93,6 +93,50 @@ TEST_CASE("Commando HxC dump is catalogued with CRC protection", "[format][comma
     REQUIRE(bad_crc);
 }
 
+TEST_CASE("Batman Disk 1 MFM is HLS + FAT12 PENGUIN.EXE", "[format][batman]")
+{
+    const std::filesystem::path img{
+        "/tmp/Batman - The Caped Crusader (1989) (Data East USA, Inc.) (360K) [cp] [!]/"
+        "Batman - The Caped Crusader (1989) (Data East USA, Inc.) (360K) (Disk 1) [cp] [!].mfm"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Batman Disk 1 .mfm is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "2091da8694d943f3");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.title.find("Batman") != std::string::npos);
+    REQUIRE(a.catalog.protection.find("HLS") != std::string::npos);
+    REQUIRE(a.bpb.looks_valid);
+    bool penguin = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.name_83 == "PENGUIN.EXE")
+        {
+            penguin = true;
+            REQUIRE(e.type == "EXE");
+        }
+    }
+    REQUIRE(penguin);
+    bool s241 = false;
+    bool s45 = false;
+    for (const dumpfloppy::ibm_sector& s : a.flux.sectors)
+    {
+        if (s.cyl == 39 && s.head == 0 && s.sector == 241)
+        {
+            s241 = true;
+        }
+        if (s.cyl == 39 && s.head == 1 && s.sector == 45 && s.bytes == 256)
+        {
+            s45 = true;
+        }
+    }
+    REQUIRE(s241);
+    REQUIRE(s45);
+}
+
 TEST_CASE("HxC MFM and 86F magics are disk images", "[format]")
 {
     const uint8_t mfm[8] = {'H', 'X', 'C', 'M', 'F', 'M', 0, 40};

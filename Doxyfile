@@ -1,5 +1,5 @@
 PROJECT_NAME           = dumpfloppy
-PROJECT_NUMBER         = 0.8
+PROJECT_NUMBER         = 0.9
 PROJECT_BRIEF          = "Expose secrets in FAT12 floppy images"
 OUTPUT_DIRECTORY       = .
 CREATE_SUBDIRS         = NO

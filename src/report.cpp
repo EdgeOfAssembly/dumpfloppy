@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace dumpfloppy
 {
@@ -271,12 +272,30 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         {
             section(out, color, "SECTORS");
             out << "  C   H  S   bytes  IDAM  DAM\n";
+            std::vector<uint32_t> seen_sec;
             for (const ibm_sector& s : a.flux.sectors)
             {
-                if (s.size_code == 2u && s.dam_crc_ok && s.idam_crc_ok)
+                if (s.size_code == 2u && s.dam_crc_ok && s.idam_crc_ok &&
+                    s.sector >= 1u && s.sector <= 9u)
                 {
                     continue;
                 }
+                const uint32_t key = (static_cast<uint32_t>(s.cyl) << 16) |
+                                     (static_cast<uint32_t>(s.head) << 8) | s.sector;
+                bool dup = false;
+                for (uint32_t k : seen_sec)
+                {
+                    if (k == key)
+                    {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (dup)
+                {
+                    continue;
+                }
+                seen_sec.push_back(key);
                 out << "  " << std::setw(3) << static_cast<unsigned>(s.cyl) << "  "
                     << static_cast<unsigned>(s.head) << "  "
                     << std::setw(2) << static_cast<unsigned>(s.sector) << "  "
