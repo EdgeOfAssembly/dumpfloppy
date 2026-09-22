@@ -1,6 +1,6 @@
 /**
  * @file report.cpp
- * @brief Colourful floppy secret dump. Deleted names use TUI light-red + blink.
+ * @brief Colourful floppy secret dump. Deleted names use TUI light-red + bold white.
  */
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/bpb.hpp"
@@ -115,8 +115,8 @@ void emit_deleted_line(std::ostream& out, bool color, const std::string& line)
 {
     if (color)
     {
-        /* Light-red background, white bold blinking text (user request). */
-        out << TUI_BG_BRIGHT_RED << TUI_WHITE << TUI_BOLD << TUI_BLINK << line
+        /* Light-red background, white bold text (no blink). */
+        out << TUI_BG_BRIGHT_RED << TUI_WHITE << TUI_BOLD << line
             << TUI_RESET << '\n';
     }
     else

@@ -15,7 +15,7 @@ C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`).
 - Directory tree including **deleted** 8.3 names (`0xE5` → `?`)
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
-- Deleted rows: light-red background, white **bold blinking** text (`tui/ansi.h`)
+- Deleted rows: light-red background, white **bold** text (`tui/ansi.h`)
 - Boot-sector hex dump and printable strings
 - Format catalog: `include/dumpfloppy/formats/` (Archiveteam floppy images + Shikadi file formats)
 
@@ -42,7 +42,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.11`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.12`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima`.
 
 ```bash
@@ -65,7 +65,7 @@ dumpfloppy disk.mfm -u PENGUIN.EXE
 
 That image is MS-DOS 3.3 FAT12, media `F9`, 80×2×9. There is **no** EBPB
 serial (byte 0x26 is boot code, not `0x29`). Disk 2 still has a deleted
-`?91.PKD` entry, which dumpfloppy lists in blinking light-red.
+`?91.PKD` entry, which dumpfloppy lists in light-red with bold white.
 
 ## Layout
 

@@ -23,7 +23,7 @@ Debug is the default (ASan+UBSan). `make release` adds `-DNDEBUG`.
 ## Includes
 
 Compile with `-I/usr/local/include/libsf` and `#include <tui/ansi.h>`.
-Deleted entries: `TUI_BG_BRIGHT_RED` + `TUI_WHITE` + `TUI_BOLD` + `TUI_BLINK`.
+Deleted entries: `TUI_BG_BRIGHT_RED` + `TUI_WHITE` + `TUI_BOLD` (no blink).
 
 ## Formal
 

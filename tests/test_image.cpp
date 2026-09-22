@@ -99,7 +99,7 @@ TEST_CASE("custom booter is classified as a booter disk", "[image]")
     REQUIRE_FALSE(a.bpb.looks_valid);
 }
 
-TEST_CASE("deleted entries blink on light-red when colour is on", "[image][ansi]")
+TEST_CASE("deleted entries use light-red and bold white when colour is on", "[image][ansi]")
 {
     const auto bytes = dumpfloppy_test::make_fat12_sample();
     const auto path = write_temp(bytes, "color.ima");
@@ -114,8 +114,9 @@ TEST_CASE("deleted entries blink on light-red when colour is on", "[image][ansi]
     dumpfloppy::write_report(a, colored, opt);
     const std::string s = colored.str();
     REQUIRE(s.find(TUI_BG_BRIGHT_RED) != std::string::npos);
-    REQUIRE(s.find(TUI_BLINK) != std::string::npos);
+    REQUIRE(s.find(TUI_WHITE) != std::string::npos);
     REQUIRE(s.find(TUI_BOLD) != std::string::npos);
+    REQUIRE(s.find(TUI_BLINK) == std::string::npos);
     REQUIRE(s.find("1234-ABCD") != std::string::npos);
 
     opt.color = false;

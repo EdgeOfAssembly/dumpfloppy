@@ -1,6 +1,6 @@
 /**
  * @file report.hpp
- * @brief Human-readable dump (ANSI colour; deleted entries blink on light red).
+ * @brief Human-readable dump (ANSI colour; deleted entries on light red).
  */
 #ifndef DUMPFLOPPY_REPORT_HPP
 #define DUMPFLOPPY_REPORT_HPP
@@ -15,7 +15,7 @@ namespace dumpfloppy
 /** @brief Rendering switches for a text report. */
 struct report_options
 {
-    bool color = true;         /**< ANSI; deleted = light-red bg + white bold blink. */
+    bool color = true;         /**< ANSI; deleted = light-red bg + white bold. */
     bool hex_boot = true;      /**< 512-byte boot-sector hex dump. */
     bool show_deleted = true;  /**< Include 0xE5 directory slots. */
 };
