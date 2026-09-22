@@ -2,9 +2,12 @@
  * @file test_format.cpp
  * @brief Abstract format default type and FAT12 disk detect.
  */
+#include "dumpfloppy/analyze.hpp"
+#include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/format.h"
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/formats/fat12.h"
+#include "dumpfloppy/formats/pkd.h"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/util.hpp"
 #include "image_builder.hpp"
@@ -50,6 +53,45 @@ TEST_CASE("unknown blob stays DATA", "[format]")
 {
     const std::vector<uint8_t> junk{0x00, 0x01, 0x02, 0x03};
     REQUIRE(dumpfloppy::identify_type(junk, dumpfloppy::format_kind::file) == "DATA");
+}
+
+TEST_CASE("plain text is not AGOS PKD", "[format][pkd]")
+{
+    const std::vector<uint8_t> hello{'H', 'e', 'l', 'l', 'o', ',', ' ', 'f',
+                                     'l', 'o', 'p', 'p', 'y', '\n'};
+    dumpfloppy::formats::pkd fmt{};
+    REQUIRE(fmt.type() == "AGOS PKD");
+    REQUIRE_FALSE(fmt.detect(hello));
+}
+
+TEST_CASE("Elvira 011.PKD decrunches via ScummVM AGOS algorithm", "[format][pkd]")
+{
+    const std::filesystem::path img{
+        "/tmp/Elvira (1990) (Accolade, Inc.) (720K) [!]/"
+        "Elvira (1990) (Accolade, Inc.) (720K) (Disk 1) [!].ima"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Elvira Disk 1 image is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    bool saw = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.name_83 == "011.PKD" && !e.deleted)
+        {
+            saw = true;
+            REQUIRE(e.type == "AGOS PKD");
+            const auto bytes =
+                dumpfloppy::read_file_contents(a.image.bytes, a.bpb, e);
+            REQUIRE(dumpfloppy::formats::pkd_unpacked_size(bytes) == 1410u);
+            std::vector<uint8_t> out;
+            REQUIRE(dumpfloppy::formats::pkd_decrunch(bytes, out));
+            REQUIRE(out.size() == 1410u);
+        }
+    }
+    REQUIRE(saw);
 }
 
 TEST_CASE("AIFF magic from the Shikadi catalog", "[format]")

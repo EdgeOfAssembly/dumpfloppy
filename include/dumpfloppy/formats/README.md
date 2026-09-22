@@ -5,6 +5,7 @@ Each header is one `file_format` subclass. Unknown payloads stay **DATA**.
 | Tree | Source | Count |
 |------|--------|------:|
 | `fat12.h` | IBM PC FAT12 (core) | 1 |
+| `pkd.h` | AGOS/Horrorsoft packed VGA (Elvira `.PKD`) | 1 |
 | `archiveteam/` | http://fileformats.archiveteam.org/wiki/Floppy_disk and Disk_Image_Formats | 70 |
 | `shikadi/` | https://moddingwiki.shikadi.net/wiki/Category:File_Formats | 439 |
 

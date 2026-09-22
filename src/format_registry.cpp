@@ -4,6 +4,7 @@
  */
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/formats/fat12.h"
+#include "dumpfloppy/formats/pkd.h"
 
 #include <iterator>
 #include <vector>
@@ -21,6 +22,7 @@ namespace
 {
 
 const formats::fat12 k_fat12{};
+const formats::pkd k_pkd{};
 
 } /* namespace */
 
@@ -28,6 +30,7 @@ std::vector<const file_format*> all_formats()
 {
     std::vector<const file_format*> out;
     out.push_back(&k_fat12);
+    out.push_back(&k_pkd);
 #ifdef DUMPFLOPPY_HAVE_GENERATED_FORMATS
     append_generated_formats(out);
 #endif
