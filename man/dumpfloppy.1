@@ -1,0 +1,116 @@
+.TH DUMPFLOPPY 1 "2026-09-22" "dumpfloppy" "User Commands"
+.SH NAME
+dumpfloppy \- expose secrets in FAT12 floppy images (.img / .ima)
+.SH SYNOPSIS
+.B dumpfloppy
+[\fIOPTIONS\fR]
+.IR images ...
+.SH DESCRIPTION
+.B dumpfloppy
+reads a raw IBM PC floppy image
+.RI ( .img
+or WinImage
+.IR .ima )
+and prints everything it can prove from the bytes: BIOS boot signature,
+jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
+serial and volume label, the full directory (including deleted 8.3
+slots), cluster chains, orphans, and a hex dump of sector 0.
+.PP
+.I .img
+and
+.I .ima
+are the same on-disk layout (512-byte sectors concatenated).
+.B WinImage
+uses the
+.I .ima
+extension; extra bytes past the BPB volume size are reported as a
+trailer.
+.PP
+Deleted directory entries are listed with a
+.B ?
+in place of the first name byte (on-disk
+.BR 0xE5 )
+and, unless
+.B \-\-no-color
+is given, rendered with a light-red background and white bold blinking
+text.
+.PP
+Volume serial numbers come from the DOS 4+ extended BPB (signature
+.B 0x28
+or
+.B 0x29
+at offset 0x26) and are printed as
+.BR XXXX-XXXX .
+DOS 3.3 volumes (many 720K game disks) have no serial there; the
+root-directory volume label is still reported.
+.PP
+Options and image paths may appear in any order.
+A directory operand expands to
+.I *.img
+and
+.I *.ima
+in that directory (non-recursive).
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print usage and exit.
+.TP
+.BR \-v ", " \-\-version
+Print
+.B dumpfloppy 0.1
+and exit.
+.TP
+.BI \-o ", " \-\-output " PATH"
+Write the report to
+.I PATH
+instead of stdout.
+If
+.I PATH
+is a directory (or ends with
+.BR / ),
+one
+.I <stem>.txt
+is created per input.
+Several inputs with a file
+.I PATH
+write
+.I <stem>_<input-stem>.txt
+and warn on stderr.
+.TP
+.B \-\-no-color
+Disable ANSI colour (default: colour on, including when stdout is not a
+TTY).
+.TP
+.B \-\-no-hex
+Skip the 512-byte boot-sector hex dump (default: dump).
+.TP
+.B \-\-no-deleted
+Omit deleted directory entries (default: show them).
+.SH EXIT STATUS
+.TP
+.B 0
+Success, or help/version requested.
+.TP
+.B 1
+Bad arguments, unreadable image, or at least one input failed.
+.SH EXAMPLES
+Dump a 720K WinImage floppy:
+.RS
+.B dumpfloppy disk1.ima
+.RE
+.PP
+Plain text, no hex, write beside the image:
+.RS
+.B dumpfloppy --no-color --no-hex disk1.ima -o disk1.txt
+.RE
+.PP
+Batch a directory of images:
+.RS
+.B dumpfloppy ./floppies -o ./reports/
+.RE
+.SH SEE ALSO
+.BR file (1),
+.BR hexdump (1),
+.BR mdir (1)
+.SH AUTHORS
+Written for the dumpfloppy project.

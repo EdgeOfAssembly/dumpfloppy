@@ -1,0 +1,13 @@
+/dumpfloppy
+/tests/run_tests
+*.o
+/html/
+/latex/
+/tags
+gmon.out
+profile.txt
+/build/
+*.img
+*.ima
+.cache/
+compile_commands.json
