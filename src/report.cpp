@@ -312,7 +312,6 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     kv(out, "Jump", describe_jump(a.bpb.jump));
     kv(out, "OEM", a.bpb.oem.empty() ? "(none)" : a.bpb.oem);
     kv(out, "55 AA", a.boot.has_aa55 ? "yes (offset 510)" : "no");
-    kv(out, "Booter disk", a.boot.is_booter ? "YES (custom/game boot payload)" : "no");
     kv(out, "Boot class", a.boot.kind_text);
     if (!a.boot.strings.empty())
     {
