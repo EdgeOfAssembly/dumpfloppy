@@ -109,7 +109,7 @@ analysis analyse(floppy_image image)
                 const std::vector<uint8_t> payload =
                     read_file_contents(bytes, a.bpb, e);
                 e.xxh64 = xxh64_hex(payload);
-                e.type = identify_type(payload, format_kind::file);
+                e.type = identify_type(payload, format_kind::file, e.name_83);
             }
 
             std::unordered_set<uint16_t> used;

@@ -52,6 +52,11 @@ public:
         };
         return match(data, 0u, k_m0_0, sizeof(k_m0_0));
     }
+
+    [[nodiscard]] bool match_name(std::string_view name) const override
+    {
+        return name_has_extension(name, "EXE");
+    }
 };
 
 } /* namespace formats */

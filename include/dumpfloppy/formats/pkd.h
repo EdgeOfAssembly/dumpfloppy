@@ -1,6 +1,6 @@
 /**
  * @file pkd.h
- * @brief AGOS/Horrorsoft packed VGA blob (`.PKD`).
+ * @brief Horrorsoft Packed Archive (`.PKD`).
  *
  * Elvira 1 & 2 and Waxworks store one compressed graphics stream per
  * file (`NND.PKD`: zone + type 1 or 2). ScummVM AGOS loads these with
@@ -272,14 +272,14 @@ inline constexpr uint32_t k_pkd_max_unpacked = 4u * 1024u * 1024u;
 }
 
 /**
- * @brief AGOS packed `.PKD` (Elvira / Waxworks graphics).
+ * @brief Horrorsoft Packed Archive (listing type `HS PACK ARC`).
  */
 class pkd final : public file_format
 {
 public:
     [[nodiscard]] std::string type() const override
     {
-        return "AGOS PKD";
+        return "HS PACK ARC";
     }
 
     [[nodiscard]] std::string_view source_url() const override
@@ -301,6 +301,11 @@ public:
         }
         std::vector<uint8_t> out;
         return pkd_decrunch(data, out) && out.size() == destlen;
+    }
+
+    [[nodiscard]] bool match_name(std::string_view name) const override
+    {
+        return name_has_extension(name, "PKD");
     }
 };
 

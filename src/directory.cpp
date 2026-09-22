@@ -380,8 +380,24 @@ std::vector<uint8_t> read_file_contents(std::span<const uint8_t> image,
     const uint32_t cluster_bytes =
         static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
     const uint32_t want = e.size;
+    std::vector<uint16_t> clusters = e.cluster_chain;
+    if (e.deleted && e.first_cluster >= 2u && cluster_bytes > 0u)
+    {
+        const uint32_t need = (want + cluster_bytes - 1u) / cluster_bytes;
+        if (clusters.size() < need)
+        {
+            const uint32_t nclus = data_cluster_count(bpb);
+            const uint32_t last = (nclus == 0u) ? 1u : (1u + nclus);
+            clusters.clear();
+            uint32_t cl = e.first_cluster;
+            for (uint32_t i = 0; i < need && cl >= 2u && cl <= last; ++i, ++cl)
+            {
+                clusters.push_back(static_cast<uint16_t>(cl));
+            }
+        }
+    }
     out.reserve(want);
-    for (uint16_t cl : e.cluster_chain)
+    for (uint16_t cl : clusters)
     {
         if (out.size() >= want)
         {

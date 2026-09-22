@@ -140,7 +140,7 @@ std::string field(std::string_view s, size_t width)
 /*
  * Inner widths = max(header, content); each field then adds 2 spaces.
  * Name 12, Attributes 10, Size 7 (floppy files), Cluster 7, Modified 19,
- * Type 16 (format label, default DATA), XXH64 Checksum 16 hex.
+ * Type 24 (format label, default DATA), XXH64 Checksum 16 hex.
  */
 constexpr size_t k_w_mark = 1;
 constexpr size_t k_w_name = 12;
@@ -148,7 +148,7 @@ constexpr size_t k_w_attr = 10;
 constexpr size_t k_w_size = 7;
 constexpr size_t k_w_cluster = 7;
 constexpr size_t k_w_modified = 19;
-constexpr size_t k_w_type = 16;
+constexpr size_t k_w_type = 24;
 constexpr size_t k_w_sum = 16;
 
 std::string directory_header()

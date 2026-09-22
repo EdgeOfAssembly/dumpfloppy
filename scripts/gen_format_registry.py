@@ -20,7 +20,7 @@ def main() -> None:
     headers = sorted(
         p
         for p in FMT_ROOT.rglob("*.h")
-        if p.name not in {"generated_formats.h", "fat12.h", "pkd.h"}
+        if p.name not in {"generated_formats.h", "fat12.h", "pkd.h", "com.h"}
     )
     classes: list[tuple[str, Path]] = []
     seen: set[str] = set()

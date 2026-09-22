@@ -9,6 +9,7 @@
 
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace dumpfloppy
@@ -31,10 +32,14 @@ namespace dumpfloppy
 identify_format(std::span<const uint8_t> data, format_kind kind);
 
 /**
- * @brief Type label for @p data (`"DATA"` when nothing matches).
+ * @brief Type label: DATA, then extension (`match_name`), then magic.
+ *
+ * Later stages replace earlier ones. Magic is last, so a renamed
+ * `.COM` that starts `MZ` becomes EXE.
  */
 [[nodiscard]] std::string identify_type(std::span<const uint8_t> data,
-                                        format_kind kind);
+                                        format_kind kind,
+                                        std::string_view name = {});
 
 } /* namespace dumpfloppy */
 
