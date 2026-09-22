@@ -91,7 +91,7 @@ bool decode_n(const std::vector<uint8_t>& bits, size_t& i, size_t nbytes,
 }
 
 void scan_track(std::span<const uint8_t> blob, std::vector<ibm_sector>& out,
-                std::vector<uint8_t>* boot_out)
+                std::vector<uint8_t>* boot_out, size_t track_file_off)
 {
     std::vector<uint8_t> bits;
     bits_from_bytes(blob, bits);
@@ -128,6 +128,8 @@ void scan_track(std::span<const uint8_t> blob, std::vector<ibm_sector>& out,
             pending.bytes = static_cast<uint16_t>(
                 pending.size_code < 8u ? (128u << pending.size_code) : 512u);
             pending.idam_crc_ok = (crc16_ibm(rec, 10) == 0u);
+            pending.track_file_off = track_file_off;
+            pending.track_byte_len = blob.size();
             have_id = true;
             i = p;
             continue;
@@ -135,6 +137,8 @@ void scan_track(std::span<const uint8_t> blob, std::vector<ibm_sector>& out,
         if ((mark == 0xFBu || mark == 0xF8u) && have_id)
         {
             const size_t nbytes = pending.bytes;
+            pending.dam_mark = mark;
+            pending.dam_bit_off = p;
             std::vector<uint8_t> payload(nbytes + 2u);
             if (!decode_n(bits, p, nbytes + 2u, payload.data()))
             {
@@ -232,6 +236,75 @@ void fill_protection(flux_disk& d)
     (void)bad_dam;
 }
 
+void write_mfm_bit(std::vector<uint8_t>& mfm, size_t abs_bit, uint8_t bit)
+{
+    const size_t byte_i = abs_bit / 8u;
+    if (byte_i >= mfm.size())
+    {
+        return;
+    }
+    const unsigned shift = static_cast<unsigned>(7u - (abs_bit % 8u));
+    if (bit != 0u)
+    {
+        mfm[byte_i] = static_cast<uint8_t>(mfm[byte_i] | static_cast<uint8_t>(1u << shift));
+    }
+    else
+    {
+        mfm[byte_i] =
+            static_cast<uint8_t>(mfm[byte_i] & static_cast<uint8_t>(~(1u << shift)));
+    }
+}
+
+bool encode_dam_payload(std::vector<uint8_t>& mfm, const ibm_sector& s,
+                        std::span<const uint8_t> payload512)
+{
+    if (payload512.size() < 512u || s.track_byte_len == 0u)
+    {
+        return false;
+    }
+    constexpr size_t k_payload = 512u;
+    constexpr size_t k_crc = 2u;
+    const size_t nbits = (k_payload + k_crc) * 16u;
+    const size_t track_bits = s.track_byte_len * 8u;
+    if (s.dam_bit_off + nbits > track_bits)
+    {
+        return false;
+    }
+    if (s.track_file_off + s.track_byte_len > mfm.size())
+    {
+        return false;
+    }
+
+    uint8_t rec[4u + k_payload];
+    rec[0] = 0xA1;
+    rec[1] = 0xA1;
+    rec[2] = 0xA1;
+    rec[3] = s.dam_mark;
+    std::memcpy(rec + 4, payload512.data(), k_payload);
+    const uint16_t crc = crc16_ibm(rec, 4u + k_payload);
+
+    uint8_t out[k_payload + k_crc];
+    std::memcpy(out, payload512.data(), k_payload);
+    out[k_payload] = static_cast<uint8_t>(crc >> 8);
+    out[k_payload + 1u] = static_cast<uint8_t>(crc & 0xFFu);
+
+    uint8_t prev = (s.dam_mark == 0xF8u) ? 0u : 1u;
+    size_t bit = s.track_file_off * 8u + s.dam_bit_off;
+    for (size_t i = 0; i < k_payload + k_crc; ++i)
+    {
+        for (int b = 7; b >= 0; --b)
+        {
+            const uint8_t data = static_cast<uint8_t>((out[i] >> b) & 1u);
+            const uint8_t clock = (prev == 0u && data == 0u) ? 1u : 0u;
+            write_mfm_bit(mfm, bit, clock);
+            write_mfm_bit(mfm, bit + 1u, data);
+            bit += 2u;
+            prev = data;
+        }
+    }
+    return true;
+}
+
 } /* namespace */
 
 flux_disk decode_hxc_mfm(std::span<const uint8_t> file)
@@ -272,7 +345,7 @@ flux_disk decode_hxc_mfm(std::span<const uint8_t> file)
         {
             continue;
         }
-        scan_track(file.subspan(toff, tsize), d.sectors, &d.boot);
+        scan_track(file.subspan(toff, tsize), d.sectors, &d.boot, toff);
     }
     fill_protection(d);
     add_boot_protection(d, d.boot);
@@ -304,6 +377,9 @@ flux_disk decode_hxc_mfm(std::span<const uint8_t> file)
             const uint32_t cyls = max_c + 1u;
             const uint32_t heads = max_h + 1u;
             const uint32_t spt = max_s;
+            d.chs_cyls = cyls;
+            d.chs_heads = heads;
+            d.chs_spt = spt;
             d.assembled_chs.assign(static_cast<size_t>(cyls * heads * spt) * 512u, 0);
             for (const ibm_sector& s : d.sectors)
             {
@@ -354,6 +430,42 @@ flux_disk inspect_86f(std::span<const uint8_t> file)
     d.protection.emplace_back(
         "flux image (86F); sector map needs HxC .mfm or an 86F decoder");
     return d;
+}
+
+bool patch_mfm_chs(std::vector<uint8_t>& mfm, const flux_disk& flux,
+                   std::span<const uint8_t> new_chs)
+{
+    if (flux.assembled_chs.size() != new_chs.size() || flux.chs_spt == 0u ||
+        flux.chs_heads == 0u)
+    {
+        return false;
+    }
+    const uint32_t heads = flux.chs_heads;
+    const uint32_t spt = flux.chs_spt;
+    for (const ibm_sector& s : flux.sectors)
+    {
+        if (s.bytes != 512u || s.sector < 1u || s.sector > spt || !s.has_dam ||
+            s.data.size() < 512u)
+        {
+            continue;
+        }
+        const size_t lba =
+            (static_cast<size_t>(s.cyl) * heads + s.head) * spt + (s.sector - 1u);
+        const size_t off = lba * 512u;
+        if (off + 512u > new_chs.size())
+        {
+            continue;
+        }
+        if (std::memcmp(s.data.data(), new_chs.data() + off, 512u) == 0)
+        {
+            continue;
+        }
+        if (!encode_dam_payload(mfm, s, std::span<const uint8_t>{new_chs.data() + off, 512u}))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 void add_boot_protection(flux_disk& disk, std::span<const uint8_t> boot)

@@ -42,13 +42,15 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.10`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.11`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima`.
 
 ```bash
 dumpfloppy disk.ima
 dumpfloppy --no-color --no-hex disk.ima -o report.txt
 dumpfloppy ./floppies -o ./reports/
+dumpfloppy disk.ima -u HELLO.TXT
+dumpfloppy disk.mfm -u PENGUIN.EXE
 ```
 
 | Default | Switch |
@@ -57,6 +59,7 @@ dumpfloppy ./floppies -o ./reports/
 | Boot hex dump on | `--no-hex` |
 | Deleted entries shown | `--no-deleted` |
 | Extract files | `-x` / `--extract` (optional glob) |
+| Update a named file | `-u` / `--update FILE` (repeatable; silent) |
 
 ## Example (Elvira 720K Disk 2)
 

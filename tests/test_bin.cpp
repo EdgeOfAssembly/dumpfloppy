@@ -50,13 +50,13 @@ const char* bin_or_skip()
 
 } /* namespace */
 
-TEST_CASE("binary -v prints dumpfloppy 0.10", "[cli][bin]")
+TEST_CASE("binary -v prints dumpfloppy 0.11", "[cli][bin]")
 {
     const char* bin = bin_or_skip();
     int rc = 0;
     const std::string out = slurp_popen(std::string(bin) + " -v", rc);
     REQUIRE(rc == 0);
-    REQUIRE(out.find("dumpfloppy 0.10") != std::string::npos);
+    REQUIRE(out.find("dumpfloppy 0.11") != std::string::npos);
 }
 
 TEST_CASE("binary --version matches -v", "[cli][bin]")
@@ -176,4 +176,47 @@ TEST_CASE("binary directory batch expands .ima files", "[cli][bin]")
         ++n;
     }
     REQUIRE(n >= 2);
+}
+
+TEST_CASE("binary -u overwrites silently and round-trips", "[cli][bin][update]")
+{
+    const char* bin = bin_or_skip();
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+                     "update-silent";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto img = dir / "sample.ima";
+    const auto bytes = dumpfloppy_test::make_fat12_sample();
+    {
+        std::ofstream out(img, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+    }
+    const auto host = dir / "HELLO.TXT";
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out << "New payload!\nX";
+    }
+    int rc = 0;
+    const std::string cmd = std::string("cd \"") + dir.string() + "\" && " + bin +
+                            " -u HELLO.TXT \"" + img.string() + "\"";
+    const std::string out = slurp_popen(cmd, rc);
+    REQUIRE(rc == 0);
+    REQUIRE(out.empty());
+
+    const auto xdir = dir / "x";
+    std::filesystem::create_directories(xdir);
+    int rc2 = 0;
+    const std::string xcmd = std::string("cd \"") + xdir.string() + "\" && " + bin +
+                             " -x HELLO.TXT \"" + img.string() + "\"";
+    const std::string xout = slurp_popen(xcmd, rc2);
+    REQUIRE(rc2 == 0);
+    REQUIRE(xout.empty());
+    std::ifstream hello(xdir / "HELLO.TXT", std::ios::binary);
+    REQUIRE(hello);
+    std::string body((std::istreambuf_iterator<char>(hello)),
+                     std::istreambuf_iterator<char>());
+    REQUIRE(body == "New payload!\nX");
 }

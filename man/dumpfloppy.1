@@ -10,7 +10,12 @@ dumpfloppy \- expose secrets in FAT12 floppy images (.img / .ima)
 reads a raw IBM PC floppy image
 .RI ( .img
 or WinImage
-.IR .ima )
+.IR .ima ),
+an HxC
+.I .mfm
+bitstream, or an 86Box
+.I .86f
+flux image
 and prints everything it can prove from the bytes: BIOS boot signature,
 jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
 serial and volume label, the full directory (including deleted 8.3
@@ -64,7 +69,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.10
+.B dumpfloppy 0.11
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -118,6 +123,32 @@ A following
 /
 .I .ima
 path is the floppy image, not a glob.
+.TP
+.BI \-u ", " \-\-update " FILE"
+Overwrite the live 8.3 file in the image whose name matches
+.IR FILE 's
+basename (case-insensitive).
+Repeatable.
+No listing is printed.
+Same size writes the payload onto the existing cluster chain.
+A smaller host file frees the unused tail clusters.
+A larger host file allocates free clusters, and relocates later live
+files when sequential growth needs their clusters.
+Both FAT copies and the directory size / first-cluster fields are
+updated.
+Raw
+.I .img
+/
+.I .ima
+images are rewritten in place.
+HxC
+.I .mfm
+images patch changed 512-byte DAM payloads (extra HLS IDs are left
+untouched).
+.I .86f
+flux images are refused.
+.B \-\-update=\fIFILE\fR
+is unambiguous.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -141,6 +172,13 @@ Extract only
 files:
 .RS
 .B dumpfloppy disk1.ima \-x '*.PKD'
+.RE
+.PP
+Overwrite
+.B PENGUIN.EXE
+in a Batman HxC dump after editing the host file:
+.RS
+.B dumpfloppy disk1.mfm \-u PENGUIN.EXE
 .RE
 .PP
 Plain text, no hex, write beside the image:

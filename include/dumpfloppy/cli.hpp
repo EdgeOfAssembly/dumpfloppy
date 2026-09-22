@@ -7,6 +7,7 @@
 
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/report.hpp"
+#include "dumpfloppy/update.hpp"
 
 #include <filesystem>
 #include <string>
@@ -26,6 +27,7 @@ struct cli_options
     std::filesystem::path output{}; /**< Empty → stdout. */
     bool has_output = false;
     extract_options extract{};
+    update_options update{};
     std::vector<std::filesystem::path> inputs{};
 };
 

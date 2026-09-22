@@ -39,6 +39,26 @@ bool fat_get(std::span<const uint8_t> fat, fat_kind kind, uint32_t cluster,
     return false;
 }
 
+bool fat_set(std::span<uint8_t> fat, fat_kind kind, uint32_t cluster, uint16_t value)
+{
+    if (kind == fat_kind::fat12)
+    {
+        return fat12_entry_set(fat.data(), fat.size(), cluster, value) == 0;
+    }
+    if (kind == fat_kind::fat16)
+    {
+        const size_t off = static_cast<size_t>(cluster) * 2u;
+        if (off + 2u > fat.size())
+        {
+            return false;
+        }
+        fat[off] = static_cast<uint8_t>(value & 0xFFu);
+        fat[off + 1u] = static_cast<uint8_t>((value >> 8) & 0xFFu);
+        return true;
+    }
+    return false;
+}
+
 std::vector<uint16_t> walk_chain(std::span<const uint8_t> fat, fat_kind kind,
                                  uint16_t start, uint32_t max_cluster,
                                  std::string& notes)

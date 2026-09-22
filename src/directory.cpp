@@ -73,14 +73,15 @@ void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
                      fat_kind kind, std::span<const uint8_t> fat,
                      std::span<const uint8_t> dir_bytes, const std::string& dir_path,
                      std::vector<dir_entry>& out,
-                     std::unordered_set<uint16_t>& visited_dirs);
+                     std::unordered_set<uint16_t>& visited_dirs, size_t dir_base_off,
+                     const std::vector<uint16_t>* dir_chain);
 
 void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
                     fat_kind kind, std::span<const uint8_t> fat,
                     std::span<const uint8_t> slot, const std::string& dir_path,
                     std::string& pending_lfn, bool after_term,
                     std::vector<dir_entry>& out,
-                    std::unordered_set<uint16_t>& visited_dirs)
+                    std::unordered_set<uint16_t>& visited_dirs, size_t slot_vol_off)
 {
     const uint8_t first = slot[0];
     const uint8_t attr = slot[11];
@@ -108,6 +109,7 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
     e.deleted = deleted;
     e.after_terminator = after_term;
     e.attributes = attr;
+    e.dir_slot_off = slot_vol_off;
     if ((attr & k_attr_volume) != 0u && (attr & k_attr_directory) == 0u)
     {
         e.name_83 = format_volume_label(slot.data(), deleted);
@@ -205,7 +207,7 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
             const size_t n = std::min<size_t>(cluster_bytes, image.size() - off);
             sub.insert(sub.end(), image.data() + off, image.data() + off + n);
         }
-        parse_dir_bytes(image, bpb, kind, fat, sub, e.path, out, visited_dirs);
+        parse_dir_bytes(image, bpb, kind, fat, sub, e.path, out, visited_dirs, 0, &chain);
     }
 }
 
@@ -213,9 +215,12 @@ void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
                      fat_kind kind, std::span<const uint8_t> fat,
                      std::span<const uint8_t> dir_bytes, const std::string& dir_path,
                      std::vector<dir_entry>& out,
-                     std::unordered_set<uint16_t>& visited_dirs)
+                     std::unordered_set<uint16_t>& visited_dirs, size_t dir_base_off,
+                     const std::vector<uint16_t>* dir_chain)
 {
     const size_t slots = dir_bytes.size() / 32u;
+    const uint32_t cluster_bytes =
+        static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
     bool seen_end = false;
     std::string pending_lfn;
     for (size_t i = 0; i < slots; ++i)
@@ -228,8 +233,19 @@ void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
             pending_lfn.clear();
             continue;
         }
+        size_t vol_off = dir_base_off + i * 32u;
+        if (dir_chain != nullptr && !dir_chain->empty() && cluster_bytes > 0u)
+        {
+            const size_t byte_off = i * 32u;
+            const size_t ci = byte_off / cluster_bytes;
+            const size_t rem = byte_off % cluster_bytes;
+            if (ci < dir_chain->size())
+            {
+                vol_off = cluster_offset(bpb, (*dir_chain)[ci]) + rem;
+            }
+        }
         parse_one_slot(image, bpb, kind, fat, slot, dir_path, pending_lfn, seen_end,
-                       out, visited_dirs);
+                       out, visited_dirs, vol_off);
     }
 }
 
@@ -372,7 +388,7 @@ std::vector<dir_entry> list_directories(std::span<const uint8_t> image,
     const size_t n = std::min(root_bytes, image.size() - root_off);
     const std::span<const uint8_t> root{image.data() + root_off, n};
     std::unordered_set<uint16_t> visited;
-    parse_dir_bytes(image, bpb, kind, fat, root, "", out, visited);
+    parse_dir_bytes(image, bpb, kind, fat, root, "", out, visited, root_off, nullptr);
     return out;
 }
 

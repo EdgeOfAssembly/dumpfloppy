@@ -139,6 +139,7 @@ struct dir_entry
     std::string type{};           /**< Stub type: DATA, DIR, or VOL (DOS sniff later). */
     std::string xxh64{};          /**< XXH64 of the recovered payload (16 hex). */
     std::string notes{};
+    size_t dir_slot_off = 0; /**< Offset of this 32-byte slot in the volume. */
 };
 
 /** @brief Volume identity gathered from EBPB and the root directory. */

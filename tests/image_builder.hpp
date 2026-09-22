@@ -131,6 +131,91 @@ inline std::vector<uint8_t> make_fat12_sample(uint32_t serial = 0x1234ABCDu,
     return img;
 }
 
+/**
+ * @brief Two live files in consecutive clusters so a grow must relocate FILEB.
+ *
+ * FILEA.TXT occupies clusters 2–3 (600 bytes). FILEB.TXT occupies cluster 4
+ * (10 bytes). Growing FILEA to three clusters relocates FILEB.
+ */
+inline std::vector<uint8_t> make_fat12_packed()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+
+    uint8_t* b = img.data();
+    b[0] = 0xEB;
+    b[1] = 0x3C;
+    b[2] = 0x90;
+    std::memcpy(b + 3, "DUMPFLPY", 8);
+    poke_le16(b + 11, k_bps);
+    b[13] = k_spc;
+    poke_le16(b + 14, k_reserved);
+    b[16] = k_fats;
+    poke_le16(b + 17, k_root_ent);
+    poke_le16(b + 19, k_total_sec);
+    b[21] = k_media;
+    poke_le16(b + 22, k_spf);
+    poke_le16(b + 24, k_spt);
+    poke_le16(b + 26, k_heads);
+    b[510] = 0x55;
+    b[511] = 0xAA;
+
+    uint8_t* fat0 = img.data() + static_cast<size_t>(k_reserved) * k_bps;
+    const size_t fat_len = static_cast<size_t>(k_spf) * k_bps;
+    fat12_entry_set(fat0, fat_len, 0, static_cast<uint16_t>(0xF00u | k_media));
+    fat12_entry_set(fat0, fat_len, 1, 0xFFF);
+    fat12_entry_set(fat0, fat_len, 2, 3);    /* FILEA.TXT */
+    fat12_entry_set(fat0, fat_len, 3, 0xFFF);
+    fat12_entry_set(fat0, fat_len, 4, 0xFFF); /* FILEB.TXT */
+
+    uint8_t* fat1 = fat0 + fat_len;
+    std::memcpy(fat1, fat0, fat_len);
+
+    uint8_t* root = fat1 + fat_len;
+    uint8_t* aent = root;
+    put_name11(aent, "FILEA   TXT");
+    aent[11] = 0x20;
+    poke_le16(aent + 26, 2);
+    poke_le32(aent + 28, 600);
+    uint8_t* bent = root + 32;
+    put_name11(bent, "FILEB   TXT");
+    bent[11] = 0x20;
+    poke_le16(bent + 26, 4);
+    poke_le32(bent + 28, 10);
+
+    const size_t data = static_cast<size_t>(k_reserved + k_fats * k_spf + 1u) * k_bps;
+    std::vector<uint8_t> a(600, static_cast<uint8_t>('A'));
+    std::memcpy(img.data() + data, a.data(), a.size());
+    std::memcpy(img.data() + data + 2u * k_bps, "FILEB-DATA", 10);
+
+    return img;
+}
+
+/**
+ * @brief One file occupying every data cluster (grow must fail).
+ */
+inline std::vector<uint8_t> make_fat12_full()
+{
+    std::vector<uint8_t> img = make_fat12_sample();
+    uint8_t* fat0 = img.data() + static_cast<size_t>(k_reserved) * k_bps;
+    const size_t fat_len = static_cast<size_t>(k_spf) * k_bps;
+    /* Data clusters 2 .. 61 (60 clusters). Chain HELLO through all of them. */
+    constexpr uint32_t k_last = 61;
+    for (uint32_t c = 2; c < k_last; ++c)
+    {
+        fat12_entry_set(fat0, fat_len, c, static_cast<uint16_t>(c + 1u));
+    }
+    fat12_entry_set(fat0, fat_len, k_last, 0xFFF);
+    /* Cluster 3 was GONE.TXT; keep it in HELLO's chain and drop the deleted slot. */
+    uint8_t* fat1 = fat0 + fat_len;
+    std::memcpy(fat1, fat0, fat_len);
+    uint8_t* root = fat1 + fat_len;
+    uint8_t* hello = root + 32;
+    poke_le16(hello + 26, 2);
+    poke_le32(hello + 28, 60u * k_bps);
+    std::memset(root + 64, 0, 32); /* erase deleted GONE.TXT */
+    return img;
+}
+
 /** @brief Custom booter: JMP + 55 AA, no FAT BPB. */
 inline std::vector<uint8_t> make_booter_sample()
 {

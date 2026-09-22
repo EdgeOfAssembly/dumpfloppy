@@ -67,6 +67,10 @@ std::string usage_text()
        << "  -x, --extract [GLOB] Extract files to the current directory (no listing).\n"
        << "                       Default: all payloads, deleted included.\n"
        << "                       Quote globs: -x '*.PKD' -x '5??.PKD'\n"
+       << "  -u, --update FILE    Overwrite the same-named 8.3 file in the image.\n"
+       << "                       Repeatable. Silent (no listing). Same size: in-place;\n"
+       << "                       grow/shrink allocates or frees clusters and relocates\n"
+       << "                       later live files when sequential growth needs them.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -137,6 +141,25 @@ cli_options parse_cli(int argc, char** argv)
         {
             o.extract.enabled = true;
             o.extract.patterns.push_back(arg.substr(2));
+            continue;
+        }
+        if (!end_opts && (arg == "-u" || arg == "--update"))
+        {
+            if (i + 1 >= argc || argv[i + 1] == nullptr)
+            {
+                o.ok = false;
+                o.error = "missing FILE after " + arg;
+                return o;
+            }
+            ++i;
+            o.update.enabled = true;
+            o.update.hosts.emplace_back(argv[i]);
+            continue;
+        }
+        if (!end_opts && arg.starts_with("--update="))
+        {
+            o.update.enabled = true;
+            o.update.hosts.emplace_back(arg.substr(9));
             continue;
         }
         if (!end_opts && (arg == "-o" || arg == "--output"))

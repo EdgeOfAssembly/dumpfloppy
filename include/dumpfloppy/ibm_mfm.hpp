@@ -25,6 +25,10 @@ struct ibm_sector
     bool dam_crc_ok = false;
     bool has_dam = false;
     std::vector<uint8_t> data{}; /**< DAM payload when present. */
+    size_t track_file_off = 0;   /**< Byte offset of this track in the .mfm. */
+    size_t track_byte_len = 0;
+    size_t dam_bit_off = 0;      /**< Bit index of DAM payload in the track. */
+    uint8_t dam_mark = 0xFB;
 };
 
 /** @brief Decoded HxC MFM (or empty if the bytes are not that container). */
@@ -41,6 +45,9 @@ struct flux_disk
     std::vector<std::string> protection{};
     std::string note{};
     std::vector<uint8_t> assembled_chs{}; /**< Standard 512-byte CHS image, if any. */
+    uint32_t chs_cyls = 0;
+    uint32_t chs_heads = 0;
+    uint32_t chs_spt = 0;
 };
 
 /**
@@ -57,6 +64,16 @@ struct flux_disk
  * @brief Scan a 512-byte boot payload for INT 13h AH=10h / INT 1E hooks.
  */
 void add_boot_protection(flux_disk& disk, std::span<const uint8_t> boot);
+
+/**
+ * @brief Write changed 512-byte CHS sectors back into an HxC `.mfm` bitstream.
+ *
+ * Extra HLS IDs are left untouched. @p new_chs must match @a assembled_chs size.
+ *
+ * @retval true  All changed standard sectors were encoded.
+ */
+[[nodiscard]] bool patch_mfm_chs(std::vector<uint8_t>& mfm, const flux_disk& flux,
+                                 std::span<const uint8_t> new_chs);
 
 } /* namespace dumpfloppy */
 

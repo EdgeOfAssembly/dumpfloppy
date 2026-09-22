@@ -5,8 +5,10 @@
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
 #include "dumpfloppy/extract.hpp"
+#include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/report.hpp"
+#include "dumpfloppy/update.hpp"
 #include "dumpfloppy/version.hpp"
 
 #include <cstdlib>
@@ -138,7 +140,58 @@ int main(int argc, char** argv)
             rc = 1;
             continue;
         }
-        const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+        dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+        if (cli.update.enabled)
+        {
+            if (dumpfloppy::update_files(a, cli.update, std::cerr) < 0)
+            {
+                rc = 1;
+                continue;
+            }
+            std::vector<uint8_t> out_bytes;
+            if (a.flux.present && a.flux.format_name == "HXC MFM")
+            {
+                std::vector<uint8_t> mfm = a.image.bytes;
+                if (!dumpfloppy::patch_mfm_chs(mfm, a.flux, a.flux.assembled_chs))
+                {
+                    std::cerr << "dumpfloppy: MFM encode failed for '"
+                              << files[i].string() << "'\n";
+                    rc = 1;
+                    continue;
+                }
+                out_bytes = std::move(mfm);
+            }
+            else
+            {
+                out_bytes = a.image.bytes;
+            }
+            std::ofstream img_out(files[i], std::ios::binary | std::ios::trunc);
+            if (!img_out)
+            {
+                std::cerr << "dumpfloppy: cannot write '" << files[i].string() << "'\n";
+                rc = 1;
+                continue;
+            }
+            if (!out_bytes.empty())
+            {
+                img_out.write(reinterpret_cast<const char*>(out_bytes.data()),
+                              static_cast<std::streamsize>(out_bytes.size()));
+            }
+            if (!img_out)
+            {
+                std::cerr << "dumpfloppy: short write '" << files[i].string() << "'\n";
+                rc = 1;
+                continue;
+            }
+            if (cli.extract.enabled)
+            {
+                if (dumpfloppy::extract_files(a, cli.extract, std::cerr) < 0)
+                {
+                    rc = 1;
+                }
+            }
+            continue;
+        }
         if (cli.extract.enabled)
         {
             if (dumpfloppy::extract_files(a, cli.extract, std::cerr) < 0)

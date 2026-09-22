@@ -45,6 +45,12 @@ struct fat_summary
                            uint32_t cluster, uint16_t& out);
 
 /**
+ * @brief Write one FAT entry (FAT12 or FAT16).
+ */
+[[nodiscard]] bool fat_set(std::span<uint8_t> fat, fat_kind kind, uint32_t cluster,
+                           uint16_t value);
+
+/**
  * @brief Walk a cluster chain from @p start until EOC, bad, or cycle.
  *
  * @param[in]  fat         One FAT copy.
