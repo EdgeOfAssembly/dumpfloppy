@@ -9,7 +9,6 @@
 
 #include <span>
 #include <string>
-#include <vector>
 
 namespace dumpfloppy
 {

@@ -1,6 +1,6 @@
 /**
  * @file image.hpp
- * @brief Load a raw floppy image (`.img` / `.ima`) into memory.
+ * @brief Load a floppy image (`.img` / `.ima` / `.mfm` / `.86f`) into memory.
  */
 #ifndef DUMPFLOPPY_IMAGE_HPP
 #define DUMPFLOPPY_IMAGE_HPP

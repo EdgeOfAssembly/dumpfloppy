@@ -5,6 +5,7 @@
 #ifndef DUMPFLOPPY_IBM_MFM_HPP
 #define DUMPFLOPPY_IBM_MFM_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -25,9 +26,9 @@ struct ibm_sector
     bool dam_crc_ok = false;
     bool has_dam = false;
     std::vector<uint8_t> data{}; /**< DAM payload when present. */
-    size_t track_file_off = 0;   /**< Byte offset of this track in the .mfm. */
-    size_t track_byte_len = 0;
-    size_t dam_bit_off = 0;      /**< Bit index of DAM payload in the track. */
+    std::size_t track_file_off = 0; /**< Byte offset of this track in the .mfm. */
+    std::size_t track_byte_len = 0;
+    std::size_t dam_bit_off = 0;    /**< Bit index of DAM payload in the track. */
     uint8_t dam_mark = 0xFB;
 };
 

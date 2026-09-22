@@ -7,6 +7,7 @@
 
 #include "dumpfloppy/types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -72,9 +73,10 @@ walk_chain(std::span<const uint8_t> fat, fat_kind kind, uint16_t start,
 /**
  * @brief Byte offset of cluster @p cluster (2-based) in the image.
  *
- * @return Size of image if the cluster is out of range (caller must check).
+ * @return @c SIZE_MAX (`std::size_t(-1)`) if the cluster is out of range.
+ *         Callers must treat @c off >= image size as invalid.
  */
-[[nodiscard]] size_t cluster_offset(const bpb_info& bpb, uint32_t cluster);
+[[nodiscard]] std::size_t cluster_offset(const bpb_info& bpb, uint32_t cluster);
 
 } /* namespace dumpfloppy */
 

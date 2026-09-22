@@ -38,18 +38,22 @@ const formats::pop_arc k_pop_arc{};
 
 std::vector<const file_format*> all_formats()
 {
-    std::vector<const file_format*> out;
-    out.push_back(&k_fat12);
-    out.push_back(&k_hxc_mfm);
-    out.push_back(&k_box86f);
-    out.push_back(&k_pkd);
-    out.push_back(&k_com);
-    out.push_back(&k_sea_arc);
-    out.push_back(&k_pop_arc);
+    static const std::vector<const file_format*> k_all = []()
+    {
+        std::vector<const file_format*> out;
+        out.push_back(&k_fat12);
+        out.push_back(&k_hxc_mfm);
+        out.push_back(&k_box86f);
+        out.push_back(&k_pkd);
+        out.push_back(&k_com);
+        out.push_back(&k_sea_arc);
+        out.push_back(&k_pop_arc);
 #ifdef DUMPFLOPPY_HAVE_GENERATED_FORMATS
-    append_generated_formats(out);
+        append_generated_formats(out);
 #endif
-    return out;
+        return out;
+    }();
+    return k_all;
 }
 
 const file_format* identify_format(std::span<const uint8_t> data, format_kind kind)
@@ -87,6 +91,7 @@ std::string identify_type(std::span<const uint8_t> data, format_kind kind,
             if (named->match_name(name))
             {
                 label = named->type();
+                break;
             }
         }
     }

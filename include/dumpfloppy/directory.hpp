@@ -58,8 +58,11 @@ list_directories(std::span<const uint8_t> image, const bpb_info& bpb,
 /**
  * @brief Recover a file's bytes by walking its FAT cluster chain.
  *
- * Stops at @p e.size or at the end of readable clusters (deleted files
- * whose FAT slots were reused may be truncated).
+ * Stops at @p e.size or at the end of readable clusters.
+ *
+ * Deleted files whose @a first_cluster was reused must not follow the live
+ * FAT (that would dump the new file). Recover contiguous clusters until a
+ * live-owned or bad cluster, and mark truncation.
  *
  * @param[in] image Whole image.
  * @param[in] bpb   Valid BPB.

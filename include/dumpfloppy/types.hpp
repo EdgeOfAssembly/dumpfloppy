@@ -5,6 +5,7 @@
 #ifndef DUMPFLOPPY_TYPES_HPP
 #define DUMPFLOPPY_TYPES_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -136,10 +137,10 @@ struct dir_entry
     bool after_terminator = false;/**< Non-zero slot after a 0x00 entry. */
     std::vector<uint16_t> cluster_chain{};
     std::string magic{};          /**< First-bytes identity (MZ, …). */
-    std::string type{};           /**< Stub type: DATA, DIR, or VOL (DOS sniff later). */
+    std::string type{};           /**< Catalog Type label (clipped to 24 chars; default DATA). */
     std::string xxh64{};          /**< XXH64 of the recovered payload (16 hex). */
     std::string notes{};
-    size_t dir_slot_off = 0; /**< Offset of this 32-byte slot in the volume. */
+    std::size_t dir_slot_off = 0; /**< Offset of this 32-byte slot in the volume. */
 };
 
 /** @brief Volume identity gathered from EBPB and the root directory. */

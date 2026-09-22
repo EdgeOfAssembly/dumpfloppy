@@ -23,10 +23,10 @@ namespace dumpfloppy
 [[nodiscard]] std::vector<const file_format*> all_formats();
 
 /**
- * @brief First matching format, or nullptr (caller then uses `"DATA"`).
+ * @brief First matching format of @p kind, or nullptr (caller then uses `"DATA"`).
  *
  * @param[in] data Bytes to sniff.
- * @param[in] kind If not defaulted, only this kind is considered.
+ * @param[in] kind Only this kind is considered (no default).
  */
 [[nodiscard]] const file_format*
 identify_format(std::span<const uint8_t> data, format_kind kind);
@@ -34,8 +34,8 @@ identify_format(std::span<const uint8_t> data, format_kind kind);
 /**
  * @brief Type label: DATA, then extension (`match_name`), then magic.
  *
- * Later stages replace earlier ones. Magic is last, so a renamed
- * `.COM` that starts `MZ` becomes EXE.
+ * Name matching is first-wins (same as magic). Magic still overrides a
+ * name hit, so a renamed `.COM` that starts `MZ` becomes EXE.
  */
 [[nodiscard]] std::string identify_type(std::span<const uint8_t> data,
                                         format_kind kind,
