@@ -350,6 +350,8 @@ bool relocate_payload(std::vector<uint8_t>& volume, const bpb_info& bpb, fat_kin
  *
  * Star Control TACTICS.PKG: a deleted dirent may carry the live file's
  * `cluster_chain` after `first_cluster` reuse. Those FAT slots stay allocated.
+ * Grow calls this before relocating a live neighbour so an orphan can become
+ * the dest; a second call after `take_free` is a no-op once chains are cleared.
  *
  * @param[in,out] fat         FAT0.
  * @param[in]     kind        FAT12 or FAT16.
@@ -508,6 +510,12 @@ bool replace_one(std::vector<uint8_t>& volume, const bpb_info& bpb, fat_kind kin
         for (uint16_t c : wanted)
         {
             forbidden.insert(c);
+        }
+        if (!move_idx.empty())
+        {
+            /* Orphans must be free before relocate; reclaim after a failed
+               neighbour move never runs. Live-owned clusters stay allocated. */
+            reclaim_deleted(fat, kind, entries, max_cluster);
         }
         for (int o : move_idx)
         {

@@ -1,6 +1,6 @@
 /**
  * @file test_update.cpp
- * @brief FAT replace: same size, shrink, grow, relocate, reclaim, disk-full, MFM DAM.
+ * @brief FAT replace: same size, shrink, grow, relocate, reclaim-first, disk-full, MFM DAM.
  */
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
@@ -328,6 +328,65 @@ TEST_CASE("update reclaim frees a deleted chain that is not live-owned", "[updat
     REQUIRE(hello->cluster_chain[0] == 2);
     REQUIRE(hello->cluster_chain[1] == 3);
     REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *hello) == big);
+
+    const dumpfloppy::fat_summary fat =
+        dumpfloppy::summarise_fat(a.image.bytes, a.bpb, a.kind);
+    REQUIRE(fat.copies_match);
+}
+
+TEST_CASE("update reclaim before relocate moves neighbour onto orphan",
+          "[update][reclaim]")
+{
+    const auto bytes = dumpfloppy_test::make_fat12_reclaim_then_relocate();
+    const auto img = write_temp(bytes, "upd-reclaim-reloc.ima");
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    const auto* filea = find_name(a, "FILEA.TXT");
+    REQUIRE(filea != nullptr);
+    REQUIRE(filea->first_cluster == 2);
+    REQUIRE(filea->cluster_chain.size() == 1);
+    const auto* fileb = find_name(a, "FILEB.TXT");
+    REQUIRE(fileb != nullptr);
+    REQUIRE(fileb->first_cluster == 3);
+    REQUIRE(fileb->cluster_chain.size() == 1);
+
+    bool saw_orphan = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.deleted && e.first_cluster == 61)
+        {
+            saw_orphan = true;
+            REQUIRE(e.cluster_chain.size() == 1);
+            REQUIRE(e.cluster_chain[0] == 61);
+        }
+    }
+    REQUIRE(saw_orphan);
+
+    std::vector<uint8_t> big(600, static_cast<uint8_t>('Z'));
+    const auto host = write_temp(big, "FILEA.TXT");
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back(host);
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == 1);
+    REQUIRE(err.str().empty());
+
+    filea = find_name(a, "FILEA.TXT");
+    REQUIRE(filea != nullptr);
+    REQUIRE(filea->size == 600);
+    REQUIRE(filea->cluster_chain.size() == 2);
+    REQUIRE(filea->cluster_chain[0] == 2);
+    REQUIRE(filea->cluster_chain[1] == 3);
+    REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *filea) == big);
+
+    fileb = find_name(a, "FILEB.TXT");
+    REQUIRE(fileb != nullptr);
+    REQUIRE(fileb->first_cluster == 61);
+    REQUIRE(fileb->cluster_chain.size() == 1);
+    REQUIRE(fileb->cluster_chain[0] == 61);
+    REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *fileb) ==
+            (std::vector<uint8_t>{'F', 'I', 'L', 'E', 'B', '-', 'D', 'A', 'T', 'A'}));
 
     const dumpfloppy::fat_summary fat =
         dumpfloppy::summarise_fat(a.image.bytes, a.bpb, a.kind);

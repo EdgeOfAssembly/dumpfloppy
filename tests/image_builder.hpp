@@ -454,6 +454,40 @@ inline std::vector<uint8_t> make_fat12_relocate_tight()
     return img;
 }
 
+/**
+ * @brief FILEA@2, FILEB@3 (1 cluster), deleted orphan at 61, FILLER 4–60.
+ *
+ * Growing FILEA wants cluster 3. Relocating FILEB needs one free cluster;
+ * only the deleted orphan can provide it. Reclaim must run *before* relocate
+ * or the grow aborts with no free dest. Would fail if reclaim ran only after
+ * a failed neighbour move.
+ */
+inline std::vector<uint8_t> make_fat12_reclaim_then_relocate()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+    write_min_fat12_boot(img.data());
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_init_media(fat0, fat_len);
+    fat12_entry_set(fat0, fat_len, 2, 0xFFF);  /* FILEA.TXT */
+    fat12_entry_set(fat0, fat_len, 3, 0xFFF);  /* FILEB.TXT */
+    fat12_chain(fat0, fat_len, 4, 60);         /* FILLER.BIN */
+    fat12_entry_set(fat0, fat_len, 61, 0xFFF); /* deleted GONE.TXT */
+    fat12_mirror_fat1(img);
+
+    uint8_t* root = fat12_root(img);
+    put_file_dirent(root, "FILEA   TXT", 2, 10);
+    put_file_dirent(root + 32, "FILEB   TXT", 3, 10);
+    put_file_dirent(root + 64, "FILLER  BIN", 4, 57u * k_bps);
+    put_file_dirent(root + 96, "GONE    TXT", 61, 4, true);
+
+    const size_t data = fat12_data_off();
+    std::memcpy(img.data() + data, "FILEA-DATA", 10);
+    std::memcpy(img.data() + data + k_bps, "FILEB-DATA", 10);
+    std::memcpy(img.data() + data + static_cast<size_t>(61u - 2u) * k_bps, "BYE\n", 4);
+    return img;
+}
+
 /** @brief Custom booter: JMP + 55 AA, no FAT BPB. */
 inline std::vector<uint8_t> make_booter_sample()
 {

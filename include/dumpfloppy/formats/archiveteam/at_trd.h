@@ -33,11 +33,28 @@ public:
 
     [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
     {
-        /* Wiki (TR-DOS filesystem): 256-byte sectors, 16/track; sizes 655360,
-         * 327680, or 163840. TRD page notes files may be shorter if unused
-         * sectors are omitted — only full sizes are sniffed here. */
-        return data.size() == 655360u || data.size() == 327680u
-            || data.size() == 163840u;
+        /* Wiki (TR-DOS filesystem): 256-byte sectors, 16/track; full sizes
+         * 655360 / 327680 / 163840. Those last two collide with IBM 320K/160K
+         * .img, so size alone is not enough — require the disk-info block at
+         * logical sector 8 (ID 0xE7 == 0x10, or 0xE1–0xE4 geometry). */
+        const std::size_t n = data.size();
+        if (n != 655360u && n != 327680u && n != 163840u)
+        {
+            return false;
+        }
+        constexpr std::size_t k_info = 8u * 256u;
+        if (n < k_info + 0xE8u)
+        {
+            return false;
+        }
+        const uint8_t id = data[k_info + 0xE7u];
+        if (id == 0x10u)
+        {
+            return true;
+        }
+        const uint8_t first_sec = data[k_info + 0xE1u];
+        const uint8_t disk_type = data[k_info + 0xE3u];
+        return first_sec < 16u && disk_type >= 0x16u && disk_type <= 0x19u;
     }
 };
 

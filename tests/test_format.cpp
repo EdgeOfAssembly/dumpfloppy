@@ -8,6 +8,7 @@
 #include "dumpfloppy/format.h"
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/formats/arc.h"
+#include "dumpfloppy/formats/archiveteam/at_trd.h"
 #include "dumpfloppy/formats/fat12.h"
 #include "dumpfloppy/formats/pkd.h"
 #include "dumpfloppy/image.hpp"
@@ -195,6 +196,67 @@ TEST_CASE("HxC MFM and 86F magics are disk images", "[format]")
     const uint8_t f86[8] = {'8', '6', 'B', 'F', 12, 2, 0, 0};
     REQUIRE(dumpfloppy::identify_type(f86, dumpfloppy::format_kind::disk_image) ==
             "86BOX 86F");
+}
+
+TEST_CASE("TRD detect requires disk-info signature, not IBM 160K/320K size",
+          "[format][trd]")
+{
+    dumpfloppy::formats::at_trd trd{};
+    REQUIRE(trd.type() == "TR-DOS TRD");
+
+    std::vector<uint8_t> ibm160(163840u, 0);
+    ibm160[0] = 0xEB;
+    ibm160[1] = 0x10;
+    ibm160[2] = 0x90;
+    ibm160[510] = 0x55;
+    ibm160[511] = 0xAA;
+    REQUIRE_FALSE(trd.detect(ibm160));
+    REQUIRE(dumpfloppy::identify_type(ibm160, dumpfloppy::format_kind::disk_image) !=
+            "TR-DOS TRD");
+
+    auto fat160 = dumpfloppy_test::make_fat12_sample();
+    fat160.resize(163840u, 0);
+    REQUIRE(dumpfloppy::formats::fat12{}.detect(fat160));
+    REQUIRE_FALSE(trd.detect(fat160));
+    REQUIRE(dumpfloppy::identify_type(fat160, dumpfloppy::format_kind::disk_image) ==
+            "FAT12");
+
+    std::vector<uint8_t> ibm320(327680u, 0);
+    REQUIRE_FALSE(trd.detect(ibm320));
+    REQUIRE(dumpfloppy::identify_type(ibm320, dumpfloppy::format_kind::disk_image) !=
+            "TR-DOS TRD");
+
+    std::vector<uint8_t> empty640(655360u, 0);
+    REQUIRE_FALSE(trd.detect(empty640));
+
+    auto stamp_trd_info = [](std::vector<uint8_t>& img, uint8_t disk_type, bool with_id)
+    {
+        constexpr std::size_t k_info = 8u * 256u;
+        img[k_info + 0xE1u] = 0; /* first free sector */
+        img[k_info + 0xE2u] = 1; /* first free track */
+        img[k_info + 0xE3u] = disk_type;
+        img[k_info + 0xE4u] = 0; /* file count */
+        if (with_id)
+        {
+            img[k_info + 0xE7u] = 0x10;
+        }
+    };
+
+    std::vector<uint8_t> trd160(163840u, 0);
+    stamp_trd_info(trd160, 0x19u, true);
+    REQUIRE(trd.detect(trd160));
+    REQUIRE(dumpfloppy::identify_type(trd160, dumpfloppy::format_kind::disk_image) ==
+            "TR-DOS TRD");
+
+    std::vector<uint8_t> trd160_geom(163840u, 0);
+    stamp_trd_info(trd160_geom, 0x19u, false);
+    REQUIRE(trd.detect(trd160_geom));
+
+    std::vector<uint8_t> trd640(655360u, 0);
+    stamp_trd_info(trd640, 0x16u, true);
+    REQUIRE(trd.detect(trd640));
+    REQUIRE(dumpfloppy::identify_type(trd640, dumpfloppy::format_kind::disk_image) ==
+            "TR-DOS TRD");
 }
 
 TEST_CASE("unknown blob stays DATA", "[format]")
