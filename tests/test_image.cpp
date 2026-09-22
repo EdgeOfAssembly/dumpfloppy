@@ -125,6 +125,46 @@ TEST_CASE("deleted entries blink on light-red when colour is on", "[image][ansi]
     REQUIRE(plain.str().find("deleted") != std::string::npos);
 }
 
+TEST_CASE("directory table is 8.3 names, left-justified, no cl= prefix", "[image]")
+{
+    const auto bytes = dumpfloppy_test::make_fat12_sample();
+    const auto path = write_temp(bytes, "listing.ima");
+    auto loaded = dumpfloppy::load_image(path);
+    REQUIRE(loaded);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    opt.hex_boot = false;
+    std::ostringstream plain;
+    dumpfloppy::write_report(a, plain, opt);
+    const std::string s = plain.str();
+
+    REQUIRE(s.find("Name") != std::string::npos);
+    REQUIRE(s.find("Attributes") != std::string::npos);
+    REQUIRE(s.find("Cluster") != std::string::npos);
+    REQUIRE(s.find("Modified") != std::string::npos);
+    REQUIRE(s.find("RHSVDA") == std::string::npos);
+    REQUIRE(s.find("cl=") == std::string::npos);
+    REQUIRE(s.find("\\HELLO") == std::string::npos);
+    REQUIRE(s.find("HELLO.TXT") != std::string::npos);
+
+    std::string hello_line;
+    std::istringstream in(s);
+    std::string line;
+    while (std::getline(in, line))
+    {
+        if (line.find("HELLO.TXT") != std::string::npos)
+        {
+            hello_line = line;
+            break;
+        }
+    }
+    REQUIRE_FALSE(hello_line.empty());
+    REQUIRE(hello_line.find('\\') == std::string::npos);
+    /* Name column starts after "  " + mark + space. */
+    REQUIRE(hello_line.substr(4, 9) == "HELLO.TXT");
+}
+
 TEST_CASE("format_volume_serial is high-word first", "[util]")
 {
     REQUIRE(dumpfloppy::format_volume_serial(0x1234ABCDu) == "1234-ABCD");

@@ -27,8 +27,8 @@ WARN := -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wformat=2 \
 
 INCLUDES := -Iinclude -I$(LIBSF_INC)
 
-CFLAGS_COMMON := -std=gnu23 $(WARN) $(INCLUDES) -fPIC
-CXXFLAGS_COMMON := -std=gnu++23 $(WARN) $(INCLUDES) $(CRYPTO_CFLAGS) -fPIC
+CFLAGS_COMMON := -std=gnu23 $(WARN) $(INCLUDES) -fPIC -MMD -MP
+CXXFLAGS_COMMON := -std=gnu++23 $(WARN) $(INCLUDES) $(CRYPTO_CFLAGS) -fPIC -MMD -MP
 
 LDFLAGS_COMMON := -Wl,-O1 -Wl,--hash-style=gnu -Wl,-z,relro -pthread $(CRYPTO_LIBS)
 
@@ -71,6 +71,7 @@ TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)
 OBJ_MAIN := $(SRC_MAIN:.cpp=.o)
+DEP := $(OBJ_C:.o=.d) $(OBJ_CXX:.o=.d) $(OBJ_MAIN:.o=.d)
 
 .PHONY: all clean test tests verify release profile install tags docs man-lint
 
@@ -127,6 +128,8 @@ man-lint:
 	mandoc -T lint man/dumpfloppy.1
 
 clean:
-	rm -f $(TARGET) $(TEST_BIN) $(OBJ_C) $(OBJ_CXX) $(OBJ_MAIN) \
+	rm -f $(TARGET) $(TEST_BIN) $(OBJ_C) $(OBJ_CXX) $(OBJ_MAIN) $(DEP) \
 	      gmon.out profile.txt tags
 	rm -rf html latex
+
+-include $(DEP)

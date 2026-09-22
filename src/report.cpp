@@ -16,6 +16,8 @@
 #include <ostream>
 #include <span>
 #include <sstream>
+#include <string>
+#include <string_view>
 
 namespace dumpfloppy
 {
@@ -116,14 +118,52 @@ void emit_deleted_line(std::ostream& out, bool color, const std::string& line)
     }
 }
 
-std::string entry_line(const dir_entry& e)
+/**
+ * Left-justify @p s into exactly @p width characters (pad or clip).
+ * FAT12 8.3 names are at most 12 characters (`NAME.EXT`); the Name
+ * column is 15 so they always fit.
+ */
+std::string field(std::string_view s, size_t width)
+{
+    std::string out;
+    out.reserve(width);
+    const size_t n = std::min(s.size(), width);
+    out.append(s.data(), n);
+    if (n < width)
+    {
+        out.append(width - n, ' ');
+    }
+    return out;
+}
+
+/* Fixed directory-table widths (all columns left-justified). */
+constexpr size_t k_w_mark = 1;
+constexpr size_t k_w_name = 15;      /* 8.3 + slack */
+constexpr size_t k_w_attr = 10;      /* header "Attributes" */
+constexpr size_t k_w_size = 10;      /* FAT size is 32-bit */
+constexpr size_t k_w_cluster = 7;    /* header "Cluster"; FAT12 max 4084 */
+constexpr size_t k_w_modified = 19;  /* YYYY-MM-DD HH:MM:SS */
+
+std::string directory_header()
 {
     std::ostringstream os;
+    os << "  " << field(" ", k_w_mark) << ' ' << field("Name", k_w_name) << "  "
+       << field("Attributes", k_w_attr) << "  " << field("Size", k_w_size) << "  "
+       << field("Cluster", k_w_cluster) << "  " << field("Modified", k_w_modified);
+    return os.str();
+}
+
+std::string entry_line(const dir_entry& e)
+{
     const char mark = e.deleted ? 'D' : ' ';
-    os << "  " << mark << ' ' << std::left << std::setw(22) << e.path << ' '
-       << format_attributes(e.attributes) << ' ' << std::right << std::setw(10)
-       << e.size << "  cl=" << std::setw(5) << e.first_cluster << "  "
-       << format_dos_date(e.write_date) << ' ' << format_dos_time(e.write_time);
+    const std::string modified =
+        format_dos_date(e.write_date) + " " + format_dos_time(e.write_time);
+    std::ostringstream os;
+    os << "  " << field(std::string_view(&mark, 1), k_w_mark) << ' '
+       << field(e.name_83, k_w_name) << "  " << field(format_attributes(e.attributes), k_w_attr)
+       << "  " << field(std::to_string(e.size), k_w_size) << "  "
+       << field(std::to_string(e.first_cluster), k_w_cluster) << "  "
+       << field(modified, k_w_modified);
     if (!e.magic.empty())
     {
         os << "  [" << e.magic << "]";
@@ -328,7 +368,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
 
     section(out, color, "DIRECTORY");
-    out << "  mark  path                   RHSVDA       size  cluster  written\n";
+    out << directory_header() << '\n';
     size_t shown = 0;
     size_t deleted_n = 0;
     for (const dir_entry& e : a.entries)

@@ -62,9 +62,9 @@ std::string lfn_from_slot(std::span<const uint8_t> e)
 
 std::string join_path(const std::string& dir, const std::string& name)
 {
-    if (dir.empty() || dir == "\\")
+    if (dir.empty())
     {
-        return std::string("\\") + name;
+        return name;
     }
     return dir + "\\" + name;
 }
@@ -347,7 +347,7 @@ std::vector<dir_entry> list_directories(std::span<const uint8_t> image,
     const size_t n = std::min(root_bytes, image.size() - root_off);
     const std::span<const uint8_t> root{image.data() + root_off, n};
     std::unordered_set<uint16_t> visited;
-    parse_dir_bytes(image, bpb, kind, fat, root, "\\", out, visited);
+    parse_dir_bytes(image, bpb, kind, fat, root, "", out, visited);
     return out;
 }
 

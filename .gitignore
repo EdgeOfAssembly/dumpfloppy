@@ -1,6 +1,7 @@
 /dumpfloppy
 /tests/run_tests
 *.o
+*.d
 /html/
 /latex/
 /tags

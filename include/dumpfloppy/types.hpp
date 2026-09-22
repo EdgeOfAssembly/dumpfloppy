@@ -116,7 +116,7 @@ struct ebpb_info
 /** @brief One 8.3 / LFN-backed directory entry (live or deleted). */
 struct dir_entry
 {
-    std::string path{};           /**< `\\FOO\\BAR.TXT` using backslashes. */
+    std::string path{};           /**< Relative DOS path (`FOO\\BAR.TXT`), no leading slash. */
     std::string name_83{};        /**< Display 8.3 (`FILE.TXT` / `?ILE.TXT`). */
     std::string lfn{};            /**< UTF-8 long name when present. */
     uint8_t attributes = 0;

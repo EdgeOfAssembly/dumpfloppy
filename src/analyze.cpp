@@ -102,8 +102,7 @@ analysis analyse(floppy_image image)
                 {
                     used.insert(c);
                 }
-                if (!e.deleted && (e.path == "\\IO.SYS" || name_is(e, "io.sys") ||
-                                   name_is(e, "ibmbio.com")))
+                if (!e.deleted && (name_is(e, "io.sys") || name_is(e, "ibmbio.com")))
                 {
                     has_io = true;
                 }
