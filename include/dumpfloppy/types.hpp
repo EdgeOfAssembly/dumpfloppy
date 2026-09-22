@@ -18,6 +18,8 @@ enum class container_kind
 {
     img_raw,     /**< `.img` raw sector dump. */
     ima_winimage,/**< `.ima` WinImage raw dump (same layout as `.img`). */
+    hxc_mfm,     /**< HxC `.mfm` bitstream. */
+    box86f,      /**< 86Box `.86f` surface image. */
     unknown_raw  /**< Explicit path with another extension. */
 };
 

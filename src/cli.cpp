@@ -19,7 +19,7 @@ namespace
 bool is_floppy_ext(const std::filesystem::path& p)
 {
     const std::string ext = ascii_lower(p.extension().string());
-    return ext == ".img" || ext == ".ima";
+    return ext == ".img" || ext == ".ima" || ext == ".mfm" || ext == ".86f";
 }
 
 bool looks_like_image_operand(const std::string& tok)
@@ -49,14 +49,13 @@ std::string usage_text()
     std::ostringstream os;
     os << "Usage: " << k_program << " [options] [images…]\n"
        << "\n"
-       << "  images    Floppy images (.img / .ima) and/or directories.\n"
-       << "            Directories expand to *.img and *.ima (batch; no --batch).\n"
+       << "  images    Floppy images (.img / .ima / .mfm / .86f) and/or directories.\n"
+       << "            Directories expand to those extensions (batch; no --batch).\n"
        << "            Options and inputs may be interleaved.\n"
        << "\n"
        << "Dump BIOS boot sector, FAT12/16 BPB, volume serial and label,\n"
-       << "directory (including deleted entries), FAT copies, orphans, and\n"
-       << "other floppy secrets. Deleted names use light-red background with\n"
-       << "white bold blinking text (disable with --no-color).\n"
+       << "directory (including deleted entries), HxC/86F flux metadata,\n"
+       << "copy-protection schemes, and a whole-image XXH64 catalog lookup.\n"
        << "\n"
        << "Options:\n"
        << "  -h, --help           Show this help and exit\n"

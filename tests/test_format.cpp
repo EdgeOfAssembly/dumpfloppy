@@ -3,6 +3,7 @@
  * @brief Abstract format default type and FAT12 disk detect.
  */
 #include "dumpfloppy/analyze.hpp"
+#include "dumpfloppy/catalog.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/format.h"
 #include "dumpfloppy/format_registry.hpp"
@@ -49,6 +50,57 @@ TEST_CASE("xxh64_hex is 16 lowercase hex chars", "[format]")
     const std::vector<uint8_t> hello{'H', 'e', 'l', 'l', 'o', ',', ' ', 'f',
                                      'l', 'o', 'p', 'p', 'y', '\n'};
     REQUIRE(dumpfloppy::xxh64_hex(hello) == "a41fb567443800ac");
+}
+
+TEST_CASE("catalog lookup by whole-image XXH64", "[format][catalog]")
+{
+    const auto hit = dumpfloppy::catalog_lookup("93a5a1a9002057dd");
+    REQUIRE(hit.found);
+    REQUIRE(hit.title.find("Commando") != std::string::npos);
+    REQUIRE(hit.protection.find("AH=10h") != std::string::npos);
+    REQUIRE_FALSE(dumpfloppy::catalog_lookup("0000000000000000").found);
+}
+
+TEST_CASE("Commando HxC dump is catalogued with CRC protection", "[format][commando]")
+{
+    const std::filesystem::path img{
+        "/tmp/Commando (Booter) (1986) (Data East USA, Inc.) (180K) [cp] [!]/"
+        "Commando (Booter) (1986) (Data East USA, Inc.) (180K) [cp] [!].mfm"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Commando .mfm is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "93a5a1a9002057dd");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.title.find("Commando") != std::string::npos);
+    REQUIRE(a.flux.present);
+    REQUIRE(a.flux.tracks == 40);
+    REQUIRE(a.flux.sides == 1);
+    bool long_sec = false;
+    bool bad_crc = false;
+    for (const dumpfloppy::ibm_sector& s : a.flux.sectors)
+    {
+        if (s.cyl == 39 && s.sector == 7 && s.bytes == 1024)
+        {
+            long_sec = true;
+            bad_crc = !s.dam_crc_ok;
+        }
+    }
+    REQUIRE(long_sec);
+    REQUIRE(bad_crc);
+}
+
+TEST_CASE("HxC MFM and 86F magics are disk images", "[format]")
+{
+    const uint8_t mfm[8] = {'H', 'X', 'C', 'M', 'F', 'M', 0, 40};
+    REQUIRE(dumpfloppy::identify_type(mfm, dumpfloppy::format_kind::disk_image) ==
+            "HXC MFM");
+    const uint8_t f86[8] = {'8', '6', 'B', 'F', 12, 2, 0, 0};
+    REQUIRE(dumpfloppy::identify_type(f86, dumpfloppy::format_kind::disk_image) ==
+            "86BOX 86F");
 }
 
 TEST_CASE("unknown blob stays DATA", "[format]")

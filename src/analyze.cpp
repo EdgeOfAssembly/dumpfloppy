@@ -4,12 +4,15 @@
  */
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/bpb.hpp"
+#include "dumpfloppy/catalog.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat12_codec.h"
 #include "dumpfloppy/format_registry.hpp"
+#include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/util.hpp"
 
 #include <algorithm>
+#include <span>
 #include <unordered_set>
 
 namespace dumpfloppy
@@ -51,9 +54,28 @@ analysis analyse(floppy_image image)
     const std::span<const uint8_t> boot =
         bytes.subspan(0, std::min<size_t>(512u, bytes.size()));
 
-    a.bpb = parse_bpb(boot);
-    a.ebpb = parse_ebpb(boot, a.bpb);
-    a.boot = classify_boot(boot, a.bpb);
+    a.catalog = catalog_lookup(a.image.xxh64);
+    a.flux = decode_hxc_mfm(bytes);
+    if (!a.flux.present)
+    {
+        a.flux = inspect_86f(bytes);
+    }
+
+    std::span<const uint8_t> boot_span = boot;
+    if (a.flux.present && a.flux.boot.size() >= 32u)
+    {
+        boot_span = std::span<const uint8_t>(a.flux.boot);
+    }
+
+    a.bpb = parse_bpb(boot_span);
+    a.ebpb = parse_ebpb(boot_span, a.bpb);
+    a.boot = classify_boot(boot_span, a.bpb);
+    if (a.flux.present && !a.flux.boot.empty() && !a.boot.is_booter)
+    {
+        a.boot.is_booter = true;
+        a.boot.kind = boot_class::custom_booter;
+        a.boot.kind_text = "custom / game booter (decoded IBM MFM track 0)";
+    }
     a.kind = fat_kind_from_bpb(a.bpb);
 
     if (a.bpb.looks_valid)

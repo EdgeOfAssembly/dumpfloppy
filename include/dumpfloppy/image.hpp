@@ -22,6 +22,7 @@ struct floppy_image
     std::filesystem::path path{};
     std::vector<uint8_t> bytes{};
     std::string sha256{};
+    std::string xxh64{};
     container_kind container = container_kind::unknown_raw;
     geometry size_geometry{};
 };

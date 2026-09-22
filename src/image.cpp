@@ -60,6 +60,7 @@ load_image(const std::filesystem::path& path)
     }
 
     img.sha256 = sha256_hex(img.bytes);
+    img.xxh64 = xxh64_hex(img.bytes);
     img.container = container_from_path(path.string());
     img.size_geometry = geometry_from_size(static_cast<uint64_t>(sz));
     return img;

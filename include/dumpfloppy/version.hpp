@@ -9,7 +9,7 @@ namespace dumpfloppy
 {
 
 /** @brief Semantic version string for this release. */
-inline constexpr const char* k_version = "0.7";
+inline constexpr const char* k_version = "0.8";
 
 /** @brief Program name used in usage and version lines. */
 inline constexpr const char* k_program = "dumpfloppy";

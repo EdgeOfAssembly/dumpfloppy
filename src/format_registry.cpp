@@ -3,8 +3,10 @@
  * @brief Format table (core + generated extras).
  */
 #include "dumpfloppy/format_registry.hpp"
+#include "dumpfloppy/formats/box86f.h"
 #include "dumpfloppy/formats/com.h"
 #include "dumpfloppy/formats/fat12.h"
+#include "dumpfloppy/formats/hxc_mfm.h"
 #include "dumpfloppy/formats/pkd.h"
 
 #include <iterator>
@@ -25,6 +27,8 @@ namespace
 const formats::fat12 k_fat12{};
 const formats::pkd k_pkd{};
 const formats::com k_com{};
+const formats::hxc_mfm k_hxc_mfm{};
+const formats::box86f k_box86f{};
 
 } /* namespace */
 
@@ -32,6 +36,8 @@ std::vector<const file_format*> all_formats()
 {
     std::vector<const file_format*> out;
     out.push_back(&k_fat12);
+    out.push_back(&k_hxc_mfm);
+    out.push_back(&k_box86f);
     out.push_back(&k_pkd);
     out.push_back(&k_com);
 #ifdef DUMPFLOPPY_HAVE_GENERATED_FORMATS

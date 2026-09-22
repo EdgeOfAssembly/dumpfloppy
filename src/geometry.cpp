@@ -126,6 +126,14 @@ container_kind container_from_path(const std::string& path)
     {
         return container_kind::img_raw;
     }
+    if (lower.size() >= 4 && lower.ends_with(".mfm"))
+    {
+        return container_kind::hxc_mfm;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".86f"))
+    {
+        return container_kind::box86f;
+    }
     return container_kind::unknown_raw;
 }
 

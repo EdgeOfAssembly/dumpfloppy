@@ -6,7 +6,9 @@
 #define DUMPFLOPPY_ANALYZE_HPP
 
 #include "dumpfloppy/boot.hpp"
+#include "dumpfloppy/catalog.hpp"
 #include "dumpfloppy/fat.hpp"
+#include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/types.hpp"
 
@@ -32,6 +34,8 @@ struct analysis
     uint64_t volume_bytes = 0;
     uint64_t trailing_bytes = 0;
     bool truncated = false;
+    flux_disk flux{};
+    catalog_hit catalog{};
 };
 
 /**

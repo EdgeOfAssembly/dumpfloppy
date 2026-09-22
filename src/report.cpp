@@ -7,6 +7,7 @@
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/geometry.hpp"
+#include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/version.hpp"
 
@@ -55,8 +56,12 @@ const char* container_name(container_kind k)
             return "IMA (WinImage raw; same sector layout as IMG)";
         case container_kind::img_raw:
             return "IMG (raw sector dump)";
+        case container_kind::hxc_mfm:
+            return "HxC MFM bitstream (.mfm)";
+        case container_kind::box86f:
+            return "86Box 86F surface (.86f)";
         default:
-            return "raw (extension is not .img/.ima)";
+            return "raw (not .img/.ima/.mfm/.86f)";
     }
 }
 
@@ -203,6 +208,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         kv(out, "Size", os.str());
     }
     kv(out, "SHA-256", a.image.sha256);
+    kv(out, "XXH64", a.image.xxh64);
     kv(out, "Format", identify_type(a.image.bytes, format_kind::disk_image));
     kv(out, "Container", container_name(a.image.container));
     if (a.image.size_geometry.cylinders != 0u)
@@ -223,6 +229,65 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         kv(out, "Truncated", "yes");
     }
     out << '\n';
+
+    if (a.catalog.found)
+    {
+        section(out, color, "CATALOG");
+        kv(out, "Title", a.catalog.title);
+        kv(out, "Protection", a.catalog.protection);
+        out << '\n';
+    }
+
+    if (a.flux.present)
+    {
+        section(out, color, "FLUX / MFM");
+        kv(out, "Format", a.flux.format_name);
+        if (a.flux.tracks != 0u)
+        {
+            std::ostringstream os;
+            os << a.flux.tracks << " tracks × " << a.flux.sides << " sides, "
+               << a.flux.rpm << " rpm, " << a.flux.bitrate_kbps << " kbps";
+            kv(out, "Geometry", os.str());
+        }
+        kv(out, "IBM sectors", std::to_string(a.flux.sectors.size()));
+        if (!a.flux.note.empty())
+        {
+            kv(out, "Note", a.flux.note);
+        }
+        out << '\n';
+
+        section(out, color, "COPY PROTECTION");
+        if (a.flux.protection.empty() && !a.catalog.found)
+        {
+            out << "  (none detected)\n";
+        }
+        for (const std::string& s : a.flux.protection)
+        {
+            out << "  * " << s << '\n';
+        }
+        out << '\n';
+
+        if (!a.flux.sectors.empty())
+        {
+            section(out, color, "SECTORS");
+            out << "  C   H  S   bytes  IDAM  DAM\n";
+            for (const ibm_sector& s : a.flux.sectors)
+            {
+                if (s.size_code == 2u && s.dam_crc_ok && s.idam_crc_ok)
+                {
+                    continue;
+                }
+                out << "  " << std::setw(3) << static_cast<unsigned>(s.cyl) << "  "
+                    << static_cast<unsigned>(s.head) << "  "
+                    << std::setw(2) << static_cast<unsigned>(s.sector) << "  "
+                    << std::setw(5) << s.bytes << "  "
+                    << (s.idam_crc_ok ? "ok  " : "BAD ") << "  "
+                    << (s.has_dam ? (s.dam_crc_ok ? "ok" : "CRC BAD") : "none")
+                    << '\n';
+            }
+            out << "  (standard 512-byte CRC-ok sectors omitted)\n\n";
+        }
+    }
 
     section(out, color, "BOOT");
     kv(out, "Jump", describe_jump(a.bpb.jump));
@@ -369,6 +434,13 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         out << '\n';
     }
 
+    if (a.flux.present && a.entries.empty())
+    {
+        section(out, color, "DIRECTORY");
+        out << "  (no FAT — booter / non-DOS volume; contents are IBM sectors above)\n\n";
+    }
+    else
+    {
     section(out, color, "DIRECTORY");
     put_style(out, color, TUI_BOLD);
     put_style(out, color, TUI_WHITE);
@@ -400,6 +472,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
     out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
     out << '\n';
+    }
 
     if (!a.secrets.empty())
     {
@@ -414,9 +487,13 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     if (opt.hex_boot)
     {
         section(out, color, "BOOT SECTOR HEX");
-        const std::span<const uint8_t> boot =
+        std::span<const uint8_t> boot =
             std::span<const uint8_t>(a.image.bytes)
                 .subspan(0, std::min<size_t>(512u, a.image.bytes.size()));
+        if (a.flux.present && a.flux.boot.size() >= 32u)
+        {
+            boot = std::span<const uint8_t>(a.flux.boot);
+        }
         hex_dump(out, boot);
         out << '\n';
     }

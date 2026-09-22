@@ -37,6 +37,7 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find("--no-color") != std::string::npos);
     REQUIRE(u.find("-o, --output") != std::string::npos);
     REQUIRE(u.find("-x, --extract") != std::string::npos);
+    REQUIRE(u.find(".mfm") != std::string::npos);
     REQUIRE(u.find(dumpfloppy::k_version) != std::string::npos);
 }
 
