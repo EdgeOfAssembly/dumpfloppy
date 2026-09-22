@@ -21,7 +21,7 @@ def main() -> None:
         p
         for p in FMT_ROOT.rglob("*.h")
         if p.name not in {"generated_formats.h", "fat12.h", "pkd.h", "com.h",
-                          "hxc_mfm.h", "box86f.h"}
+                          "hxc_mfm.h", "box86f.h", "arc.h", "pop_arc.h"}
     )
     classes: list[tuple[str, Path]] = []
     seen: set[str] = set()

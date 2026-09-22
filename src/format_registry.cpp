@@ -3,11 +3,13 @@
  * @brief Format table (core + generated extras).
  */
 #include "dumpfloppy/format_registry.hpp"
+#include "dumpfloppy/formats/arc.h"
 #include "dumpfloppy/formats/box86f.h"
 #include "dumpfloppy/formats/com.h"
 #include "dumpfloppy/formats/fat12.h"
 #include "dumpfloppy/formats/hxc_mfm.h"
 #include "dumpfloppy/formats/pkd.h"
+#include "dumpfloppy/formats/pop_arc.h"
 
 #include <iterator>
 #include <vector>
@@ -29,6 +31,8 @@ const formats::pkd k_pkd{};
 const formats::com k_com{};
 const formats::hxc_mfm k_hxc_mfm{};
 const formats::box86f k_box86f{};
+const formats::sea_arc k_sea_arc{};
+const formats::pop_arc k_pop_arc{};
 
 } /* namespace */
 
@@ -40,6 +44,8 @@ std::vector<const file_format*> all_formats()
     out.push_back(&k_box86f);
     out.push_back(&k_pkd);
     out.push_back(&k_com);
+    out.push_back(&k_sea_arc);
+    out.push_back(&k_pop_arc);
 #ifdef DUMPFLOPPY_HAVE_GENERATED_FORMATS
     append_generated_formats(out);
 #endif

@@ -7,6 +7,7 @@
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/format.h"
 #include "dumpfloppy/format_registry.hpp"
+#include "dumpfloppy/formats/arc.h"
 #include "dumpfloppy/formats/fat12.h"
 #include "dumpfloppy/formats/pkd.h"
 #include "dumpfloppy/image.hpp"
@@ -135,6 +136,55 @@ TEST_CASE("Batman Disk 1 MFM is HLS + FAT12 PENGUIN.EXE", "[format][batman]")
     }
     REQUIRE(s241);
     REQUIRE(s45);
+}
+
+TEST_CASE("SEA ARC magic 0x1A is SEA ARC; Populous ARC is POP ARC", "[format][arc]")
+{
+    dumpfloppy::formats::sea_arc_header h{};
+    h.magic = 0x1A;
+    h.method = 8;
+    std::memcpy(h.name, "HELLO.TXT", 10);
+    h.packed_size = 4;
+    h.unpacked_size = 4;
+    std::vector<uint8_t> sea(sizeof(h) + 4u);
+    std::memcpy(sea.data(), &h, sizeof(h));
+    sea[sizeof(h)] = 'A';
+    REQUIRE(dumpfloppy::identify_type(sea, dumpfloppy::format_kind::file, "X.ARC") ==
+            "SEA ARC");
+
+    std::vector<uint8_t> pop{0x01, 0x00, 0x10, 0xC0, 0x00, 0x00};
+    const char* n = "POPULOUS.EXE";
+    pop.insert(pop.end(), n, n + 13);
+    pop.insert(pop.end(), {0x01, 0x00, 0x5E, 0x28, 0x00, 0x00});
+    REQUIRE(dumpfloppy::identify_type(pop, dumpfloppy::format_kind::file, "POPULOUS.ARC") ==
+            "POP ARC");
+}
+
+TEST_CASE("Populous IMA is catalogued unprotected FAT12", "[format][populous]")
+{
+    const std::filesystem::path img{
+        "/tmp/Populous (1989) (Electronic Arts, Inc.) (360K) [!]/"
+        "Populous (1989) (Electronic Arts, Inc.) (360K) [!].ima"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Populous .ima is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "a4cb00f350c51e63");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("none") != std::string::npos);
+    bool saw_arc = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.name_83 == "POPULOUS.ARC")
+        {
+            saw_arc = true;
+            REQUIRE(e.type == "POP ARC");
+        }
+    }
+    REQUIRE(saw_arc);
 }
 
 TEST_CASE("HxC MFM and 86F magics are disk images", "[format]")
