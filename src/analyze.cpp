@@ -79,13 +79,23 @@ analysis analyse(floppy_image image)
     }
     a.kind = fat_kind_from_bpb(a.bpb);
 
+    /* Raw HxC/86F bytes are a bitstream, not a FAT volume. Walking the
+       directory against image.bytes invents garbage 8.3 names. */
+    const bool flux_without_chs =
+        a.flux.present && a.flux.assembled_chs.empty();
+    if (flux_without_chs)
+    {
+        a.secrets.emplace_back(
+            "CHS assembly failed; flux bitstream is not a FAT volume");
+    }
+
     std::span<const uint8_t> volume = bytes;
     if (!a.flux.assembled_chs.empty())
     {
         volume = a.flux.assembled_chs;
     }
 
-    if (a.bpb.looks_valid)
+    if (a.bpb.looks_valid && !flux_without_chs)
     {
         a.volume_bytes = static_cast<uint64_t>(a.bpb.total_sectors) *
                          a.bpb.bytes_per_sector;
@@ -111,7 +121,7 @@ analysis analyse(floppy_image image)
         a.volume.label_ebpb = a.ebpb.volume_label;
     }
 
-    if (a.bpb.looks_valid &&
+    if (a.bpb.looks_valid && !flux_without_chs &&
         (a.kind == fat_kind::fat12 || a.kind == fat_kind::fat16))
     {
         a.fat = summarise_fat(volume, a.bpb, a.kind);

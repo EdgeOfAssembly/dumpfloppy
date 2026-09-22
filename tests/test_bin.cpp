@@ -188,6 +188,58 @@ TEST_CASE("binary glued -uFILE is not an unknown option", "[cli][bin]")
     const std::string err =
         slurp_popen(std::string(bin) + " -uHELLO.TXT 2>&1 >/dev/null", rc);
     REQUIRE(err.find("unknown option") == std::string::npos);
+    REQUIRE(rc != 0);
+}
+
+TEST_CASE("binary -u with no image exits 1, not usage", "[cli][bin][update]")
+{
+    const char* bin = bin_or_skip();
+    int rc = 0;
+    const std::string out =
+        slurp_popen(std::string(bin) + " -u HELLO.TXT 2>&1", rc);
+    REQUIRE(rc != 0);
+    REQUIRE(out.find("Usage:") == std::string::npos);
+    REQUIRE(out.find("dumpfloppy:") != std::string::npos);
+    REQUIRE(out.find("no image") != std::string::npos);
+}
+
+TEST_CASE("binary -x with no image exits 1, not usage", "[cli][bin][extract]")
+{
+    const char* bin = bin_or_skip();
+    int rc = 0;
+    const std::string out = slurp_popen(std::string(bin) + " -x 2>&1", rc);
+    REQUIRE(rc != 0);
+    REQUIRE(out.find("Usage:") == std::string::npos);
+    REQUIRE(out.find("dumpfloppy:") != std::string::npos);
+    REQUIRE(out.find("no image") != std::string::npos);
+}
+
+TEST_CASE("binary -o with -x warns that -o is ignored", "[cli][bin][extract]")
+{
+    const char* bin = bin_or_skip();
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+                     "o-ignored-x";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto img = dir / "sample.ima";
+    const auto bytes = dumpfloppy_test::make_fat12_sample();
+    {
+        std::ofstream out(img, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+    }
+    int rc = 0;
+    const std::string cmd = std::string("cd \"") + dir.string() + "\" && " + bin +
+                            " -o ignored.txt -x HELLO.TXT \"" + img.string() +
+                            "\" 2>&1";
+    const std::string out = slurp_popen(cmd, rc);
+    REQUIRE(rc == 0);
+    REQUIRE(out.find("ignored") != std::string::npos);
+    REQUIRE(out.find("-o") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(dir / "ignored.txt"));
+    std::ifstream hello(dir / "HELLO.TXT", std::ios::binary);
+    REQUIRE(hello);
 }
 
 TEST_CASE("binary glued -uFILE overwrites silently and round-trips",
@@ -275,4 +327,6 @@ TEST_CASE("binary -u overwrites silently and round-trips", "[cli][bin][update]")
     std::string body((std::istreambuf_iterator<char>(hello)),
                      std::istreambuf_iterator<char>());
     REQUIRE(body == "New payload!\nX");
+    REQUIRE_FALSE(std::filesystem::exists(
+        std::filesystem::path(img.string() + ".dumpfloppy-tmp")));
 }

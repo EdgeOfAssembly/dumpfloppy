@@ -201,3 +201,49 @@ TEST_CASE("load_image rejects missing files", "[image]")
     REQUIRE_FALSE(loaded);
     REQUIRE(loaded.error().find("no such") != std::string::npos);
 }
+
+TEST_CASE("86F flux with empty CHS does not FAT-walk the bitstream",
+          "[image][86f][flux]")
+{
+    /* 86BF magic so inspect_86f sets present; BPB at offset 11 stays a
+       valid FAT12 so a missing CHS gate would list HELLO.TXT from raw bytes. */
+    auto bytes = dumpfloppy_test::make_fat12_sample();
+    REQUIRE(bytes.size() >= 8u);
+    bytes[0] = '8';
+    bytes[1] = '6';
+    bytes[2] = 'B';
+    bytes[3] = 'F';
+    bytes[4] = 12;
+    bytes[5] = 2;
+    bytes[6] = 0;
+    bytes[7] = 0;
+
+    dumpfloppy::floppy_image img{};
+    img.bytes = std::move(bytes);
+    img.path = "synthetic.86f";
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(img));
+    REQUIRE(a.flux.present);
+    REQUIRE(a.flux.format_name == "86BOX 86F");
+    REQUIRE(a.flux.assembled_chs.empty());
+    REQUIRE(a.entries.empty());
+
+    bool saw_hello = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.name_83.find("HELLO") != std::string::npos)
+        {
+            saw_hello = true;
+        }
+    }
+    REQUIRE_FALSE(saw_hello);
+
+    bool saw_chs = false;
+    for (const std::string& s : a.secrets)
+    {
+        if (s.find("CHS") != std::string::npos)
+        {
+            saw_chs = true;
+        }
+    }
+    REQUIRE(saw_chs);
+}
