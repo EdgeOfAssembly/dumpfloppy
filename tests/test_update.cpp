@@ -268,7 +268,7 @@ TEST_CASE("update reclaim does not steal a live TACTICS chain", "[update][reclai
         if (e.deleted && e.first_cluster == 2)
         {
             saw_deleted_reuse = true;
-            REQUIRE_FALSE(e.cluster_chain.empty());
+            REQUIRE(e.cluster_chain.empty()); /* first cluster is live-owned */
         }
     }
     REQUIRE(saw_deleted_reuse);

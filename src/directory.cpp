@@ -4,10 +4,15 @@
  */
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/bpb.hpp"
+#include "dumpfloppy/fat12_codec.h"
 #include "dumpfloppy/util.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
+#include <string_view>
 #include <unordered_set>
+#include <vector>
 
 namespace dumpfloppy
 {
@@ -67,6 +72,174 @@ std::string join_path(const std::string& dir, const std::string& name)
         return name;
     }
     return dir + "\\" + name;
+}
+
+[[nodiscard]] uint32_t inclusive_max_cluster(const bpb_info& bpb)
+{
+    const uint32_t n = data_cluster_count(bpb);
+    return (n == 0u) ? 1u : (1u + n);
+}
+
+void append_note(dir_entry& e, std::string_view msg)
+{
+    if (msg.empty())
+    {
+        return;
+    }
+    if (!e.notes.empty())
+    {
+        e.notes += "; ";
+    }
+    e.notes += msg;
+}
+
+[[nodiscard]] bool occupies_data_clusters(const dir_entry& e)
+{
+    if (e.deleted)
+    {
+        return false;
+    }
+    if (e.name_83 == "." || e.name_83 == "..")
+    {
+        return false;
+    }
+    if ((e.attributes & k_attr_volume) != 0u &&
+        (e.attributes & k_attr_directory) == 0u)
+    {
+        return false;
+    }
+    return true;
+}
+
+[[nodiscard]] bool fat_slot_is_bad(std::span<const uint8_t> fat, fat_kind kind,
+                                   uint32_t cluster)
+{
+    uint16_t v = 0;
+    if (!fat_get(fat, kind, cluster, v))
+    {
+        return true;
+    }
+    if (kind == fat_kind::fat12)
+    {
+        return fat12_is_bad(v) != 0;
+    }
+    return v == 0xFFF7u;
+}
+
+void sniff_at_cluster(std::span<const uint8_t> image, const bpb_info& bpb, dir_entry& e,
+                      uint16_t cluster)
+{
+    const size_t off = cluster_offset(bpb, cluster);
+    if (off >= image.size())
+    {
+        return;
+    }
+    const size_t n = std::min<size_t>(16u, image.size() - off);
+    e.magic = sniff_magic(std::span<const uint8_t>{image.data() + off, n});
+}
+
+void note_size_vs_chain(dir_entry& e, uint32_t cluster_bytes)
+{
+    if ((e.attributes & k_attr_directory) != 0u || cluster_bytes == 0u ||
+        e.cluster_chain.empty())
+    {
+        return;
+    }
+    const uint64_t cap =
+        static_cast<uint64_t>(e.cluster_chain.size()) * cluster_bytes;
+    if (e.size > cap)
+    {
+        append_note(e, "size larger than cluster chain");
+    }
+}
+
+/**
+ * @brief Fill deleted @a cluster_chain from live occupancy (once per volume).
+ *
+ * Never follows a live dirent's FAT chain. Contiguous clusters from
+ * @a first_cluster until a live-owned or bad cluster; empty when the first
+ * cluster was reused (Star Control TACTICS.PKG).
+ */
+void recover_deleted_payloads(std::span<const uint8_t> image, const bpb_info& bpb,
+                              fat_kind kind, std::span<const uint8_t> fat,
+                              std::vector<dir_entry>& entries)
+{
+    const uint32_t max_cluster = inclusive_max_cluster(bpb);
+    const uint32_t cluster_bytes =
+        static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
+    std::vector<uint8_t> live_owned(static_cast<size_t>(max_cluster) + 1u, 0);
+    for (const dir_entry& e : entries)
+    {
+        if (!occupies_data_clusters(e))
+        {
+            continue;
+        }
+        if (e.first_cluster >= 2u && e.first_cluster <= max_cluster)
+        {
+            live_owned[static_cast<size_t>(e.first_cluster)] = 1;
+        }
+        for (uint16_t c : e.cluster_chain)
+        {
+            if (c <= max_cluster)
+            {
+                live_owned[static_cast<size_t>(c)] = 1;
+            }
+        }
+    }
+
+    for (dir_entry& e : entries)
+    {
+        if (!e.deleted || e.first_cluster < 2u)
+        {
+            continue;
+        }
+        e.cluster_chain.clear();
+        e.magic.clear();
+        if (cluster_bytes == 0u)
+        {
+            continue;
+        }
+        const uint32_t need =
+            (e.size == 0u) ? 0u : (e.size + cluster_bytes - 1u) / cluster_bytes;
+        uint32_t cl = e.first_cluster;
+        const char* stop = nullptr;
+        for (uint32_t i = 0; i < need; ++i)
+        {
+            if (cl < 2u || cl > max_cluster)
+            {
+                stop = "deleted payload truncated (cluster out of range)";
+                break;
+            }
+            if (live_owned[static_cast<size_t>(cl)] != 0u)
+            {
+                stop = (i == 0u) ? "deleted payload truncated (first cluster reused by a live file)"
+                                 : "deleted payload truncated (hit a live-owned cluster)";
+                break;
+            }
+            if (fat_slot_is_bad(fat, kind, cl))
+            {
+                stop = "deleted payload truncated (hit a bad cluster)";
+                break;
+            }
+            const size_t off = cluster_offset(bpb, cl);
+            if (off >= image.size())
+            {
+                stop = "deleted payload truncated (cluster out of range)";
+                break;
+            }
+            e.cluster_chain.push_back(static_cast<uint16_t>(cl));
+            ++cl;
+        }
+        if (stop != nullptr)
+        {
+            append_note(e, stop);
+        }
+        if (!e.cluster_chain.empty())
+        {
+            sniff_at_cluster(image, bpb, e, e.cluster_chain.front());
+        }
+        note_size_vs_chain(e, cluster_bytes);
+    }
 }
 
 void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
@@ -137,11 +310,7 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
     }
 
     const bool is_dot = (e.name_83 == "." || e.name_83 == "..");
-    const uint32_t max_cluster = [&]()
-    {
-        const uint32_t n = data_cluster_count(bpb);
-        return (n == 0u) ? 1u : (1u + n);
-    }();
+    const uint32_t max_cluster = inclusive_max_cluster(bpb);
 
     if ((attr & k_attr_volume) != 0u && (attr & k_attr_directory) == 0u)
     {
@@ -149,36 +318,19 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
         return;
     }
 
-    if (!is_dot && e.first_cluster >= 2u)
+    /* Deleted chains wait for volume occupancy in recover_deleted_payloads. */
+    if (!deleted && !is_dot && e.first_cluster >= 2u)
     {
         std::string chain_notes;
         e.cluster_chain = walk_chain(fat, kind, e.first_cluster, max_cluster, chain_notes);
         if (!chain_notes.empty())
         {
-            e.notes = chain_notes;
+            append_note(e, chain_notes);
         }
-        const size_t off = cluster_offset(bpb, e.first_cluster);
-        if (off < image.size())
-        {
-            const size_t n = std::min<size_t>(16u, image.size() - off);
-            e.magic = sniff_magic(std::span<const uint8_t>{image.data() + off, n});
-        }
+        sniff_at_cluster(image, bpb, e, e.first_cluster);
         const uint32_t cluster_bytes =
             static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
-        if ((attr & k_attr_directory) == 0u && cluster_bytes > 0u &&
-            !e.cluster_chain.empty())
-        {
-            const uint64_t cap =
-                static_cast<uint64_t>(e.cluster_chain.size()) * cluster_bytes;
-            if (e.size > cap)
-            {
-                if (!e.notes.empty())
-                {
-                    e.notes += "; ";
-                }
-                e.notes += "size larger than cluster chain";
-            }
-        }
+        note_size_vs_chain(e, cluster_bytes);
     }
 
     out.push_back(e);
@@ -389,6 +541,7 @@ std::vector<dir_entry> list_directories(std::span<const uint8_t> image,
     const std::span<const uint8_t> root{image.data() + root_off, n};
     std::unordered_set<uint16_t> visited;
     parse_dir_bytes(image, bpb, kind, fat, root, "", out, visited, root_off, nullptr);
+    recover_deleted_payloads(image, bpb, kind, fat, out);
     return out;
 }
 
@@ -421,24 +574,8 @@ std::vector<uint8_t> read_file_contents(std::span<const uint8_t> image,
     const uint32_t cluster_bytes =
         static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
     const uint32_t want = e.size;
-    std::vector<uint16_t> clusters = e.cluster_chain;
-    if (e.deleted && e.first_cluster >= 2u && cluster_bytes > 0u)
-    {
-        const uint32_t need = (want + cluster_bytes - 1u) / cluster_bytes;
-        if (clusters.size() < need)
-        {
-            const uint32_t nclus = data_cluster_count(bpb);
-            const uint32_t last = (nclus == 0u) ? 1u : (1u + nclus);
-            clusters.clear();
-            uint32_t cl = e.first_cluster;
-            for (uint32_t i = 0; i < need && cl >= 2u && cl <= last; ++i, ++cl)
-            {
-                clusters.push_back(static_cast<uint16_t>(cl));
-            }
-        }
-    }
     out.reserve(want);
-    for (uint16_t cl : clusters)
+    for (uint16_t cl : e.cluster_chain)
     {
         if (out.size() >= want)
         {

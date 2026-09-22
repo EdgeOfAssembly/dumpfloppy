@@ -338,6 +338,74 @@ inline std::vector<uint8_t> make_fat12_tactics_reuse()
 }
 
 /**
+ * @brief Live TACTICS.PKG + deleted dirent, same `first_cluster` and same size.
+ *
+ * Clusters 2–3 hold the live 600-byte package. Deleted `?ACTICS.PKG` names
+ * cluster 2 and size 600, so a FAT walk of the deleted slot would hash and
+ * extract the live payload. Occupancy-aware recovery must yield an empty
+ * chain. Cluster 4 is HELLO.TXT; cluster 5 is deleted GONE.TXT (still
+ * allocated) so orphan undelete still recovers the four-byte `BYE` payload.
+ */
+inline std::vector<uint8_t> make_fat12_tactics_same_cluster()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+    write_min_fat12_boot(img.data());
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_init_media(fat0, fat_len);
+    fat12_chain(fat0, fat_len, 2, 3);          /* live TACTICS.PKG */
+    fat12_entry_set(fat0, fat_len, 4, 0xFFF);  /* HELLO.TXT */
+    fat12_entry_set(fat0, fat_len, 5, 0xFFF);  /* deleted GONE.TXT */
+    fat12_mirror_fat1(img);
+
+    uint8_t* root = fat12_root(img);
+    const std::vector<uint8_t> tactics = tactics_live_bytes();
+    const uint32_t tsz = static_cast<uint32_t>(tactics.size());
+    put_file_dirent(root, "TACTICS PKG", 2, tsz);
+    put_file_dirent(root + 32, "TACTICS PKG", 2, tsz, true);
+    put_file_dirent(root + 64, "HELLO   TXT", 4, 14);
+    put_file_dirent(root + 96, "GONE    TXT", 5, 4, true);
+
+    const size_t data = fat12_data_off();
+    std::memcpy(img.data() + data, tactics.data(), tactics.size());
+    std::memcpy(img.data() + data + 2u * k_bps, "Hello, floppy\n", 14);
+    std::memcpy(img.data() + data + 3u * k_bps, "BYE\n", 4);
+    return img;
+}
+
+/**
+ * @brief Deleted dirent starts on an orphan cluster; the next cluster is live.
+ *
+ * Cluster 2 holds leftover `OLD-HEAD` (FAT EOC, no live owner). Cluster 3 is
+ * live NEW.BIN. Deleted OLD.BIN names first_cluster 2 and size 600, so a
+ * contiguous undelete that ignored occupancy would swallow the live file.
+ */
+inline std::vector<uint8_t> make_fat12_deleted_before_live()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+    write_min_fat12_boot(img.data());
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_init_media(fat0, fat_len);
+    fat12_entry_set(fat0, fat_len, 2, 0xFFF); /* orphan leftover */
+    fat12_entry_set(fat0, fat_len, 3, 0xFFF); /* live NEW.BIN */
+    fat12_mirror_fat1(img);
+
+    uint8_t* root = fat12_root(img);
+    put_file_dirent(root, "OLD     BIN", 2, 600, true);
+    put_file_dirent(root + 32, "NEW     BIN", 3, 512);
+
+    const size_t data = fat12_data_off();
+    const char old_tag[] = "OLD-HEAD leftover that is not the live file";
+    std::memcpy(img.data() + data, old_tag, sizeof(old_tag) - 1u);
+    std::vector<uint8_t> live(512, static_cast<uint8_t>('N'));
+    const char new_tag[] = "NEW-LIVE-FILE";
+    std::memcpy(live.data(), new_tag, sizeof(new_tag) - 1u);
+    std::memcpy(img.data() + data + k_bps, live.data(), live.size());
+    return img;
+}
+
+/**
  * @brief Deleted GONE.TXT still owns cluster 3; the rest of the disk is full.
  *
  * Growing HELLO.TXT needs that orphan cluster. Reclaim must free it (it is
