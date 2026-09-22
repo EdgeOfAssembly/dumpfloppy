@@ -14,7 +14,7 @@ or WinImage
 and prints everything it can prove from the bytes: BIOS boot signature,
 jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
 serial and volume label, the full directory (including deleted 8.3
-slots), a Type stub (DATA, DIR, or VOL), MD5 of each file,
+slots), a Type label (DATA until a format matches), XXH64 of each file,
 cluster chains, orphans,
 and a hex dump of sector 0.
 .PP
@@ -64,7 +64,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.4
+.B dumpfloppy 0.5
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

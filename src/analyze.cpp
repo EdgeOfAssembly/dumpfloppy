@@ -6,6 +6,7 @@
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat12_codec.h"
+#include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/util.hpp"
 
 #include <algorithm>
@@ -107,8 +108,8 @@ analysis analyse(floppy_image image)
                 }
                 const std::vector<uint8_t> payload =
                     read_file_contents(bytes, a.bpb, e);
-                e.md5 = md5_hex(payload);
-                e.type = "DATA";
+                e.xxh64 = xxh64_hex(payload);
+                e.type = identify_type(payload, format_kind::file);
             }
 
             std::unordered_set<uint16_t> used;

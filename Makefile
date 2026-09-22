@@ -19,6 +19,12 @@ ifeq ($(CRYPTO_LIBS),)
   CRYPTO_LIBS := -lcrypto
 endif
 
+XXH_CFLAGS := $(shell pkg-config --cflags libxxhash 2>/dev/null)
+XXH_LIBS   := $(shell pkg-config --libs libxxhash 2>/dev/null)
+ifeq ($(XXH_LIBS),)
+  XXH_LIBS := -lxxhash
+endif
+
 CATCH_CFLAGS := $(shell pkg-config --cflags catch2-with-main 2>/dev/null)
 CATCH_LIBS   := $(shell pkg-config --libs catch2-with-main 2>/dev/null)
 
@@ -28,9 +34,9 @@ WARN := -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wformat=2 \
 INCLUDES := -Iinclude -I$(LIBSF_INC)
 
 CFLAGS_COMMON := -std=gnu23 $(WARN) $(INCLUDES) -fPIC -MMD -MP
-CXXFLAGS_COMMON := -std=gnu++23 $(WARN) $(INCLUDES) $(CRYPTO_CFLAGS) -fPIC -MMD -MP
+CXXFLAGS_COMMON := -std=gnu++23 $(WARN) $(INCLUDES) $(CRYPTO_CFLAGS) $(XXH_CFLAGS) -fPIC -MMD -MP
 
-LDFLAGS_COMMON := -Wl,-O1 -Wl,--hash-style=gnu -Wl,-z,relro -pthread $(CRYPTO_LIBS)
+LDFLAGS_COMMON := -Wl,-O1 -Wl,--hash-style=gnu -Wl,-z,relro -pthread $(CRYPTO_LIBS) $(XXH_LIBS)
 
 CXXFLAGS_OPTIMIZED := -O3 -march=x86-64 -mtune=generic -fno-omit-frame-pointer
 
@@ -63,15 +69,25 @@ TEST_BIN := tests/run_tests
 SRC_C := src/fat12_codec.c
 SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/boot.cpp src/fat.cpp src/directory.cpp src/analyze.cpp \
-           src/report.cpp src/cli.cpp src/extract.cpp
+           src/report.cpp src/cli.cpp src/extract.cpp src/format_registry.cpp
 SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
-            tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp
+            tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \
+            tests/test_format.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)
 OBJ_MAIN := $(SRC_MAIN:.cpp=.o)
 DEP := $(OBJ_C:.o=.d) $(OBJ_CXX:.o=.d) $(OBJ_MAIN:.o=.d)
+
+GEN_FMT := include/dumpfloppy/formats/generated_formats.h
+FMT_HDRS := $(wildcard include/dumpfloppy/formats/archiveteam/*.h) \
+            $(wildcard include/dumpfloppy/formats/shikadi/*.h)
+
+$(GEN_FMT): scripts/gen_format_registry.py $(FMT_HDRS)
+	python3 scripts/gen_format_registry.py
+
+src/format_registry.o: $(GEN_FMT)
 
 .PHONY: all clean test tests verify release profile install tags docs man-lint
 

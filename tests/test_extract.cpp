@@ -118,7 +118,7 @@ TEST_CASE("analysis fills MD5 and Type DATA for payloads", "[extract][identity]"
         if (e.name_83 == "HELLO.TXT")
         {
             saw = true;
-            REQUIRE(e.md5 == "ec252e95cb88a8cb5c9682cd892a0ccf");
+            REQUIRE(e.xxh64 == "a41fb567443800ac");
             REQUIRE(e.type == "DATA");
         }
         if (e.name_83 == "TESTVOL")

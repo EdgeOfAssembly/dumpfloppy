@@ -144,12 +144,12 @@ TEST_CASE("directory table is 8.3 names, left-justified, no cl= prefix", "[image
     REQUIRE(s.find("Cluster") != std::string::npos);
     REQUIRE(s.find("Modified") != std::string::npos);
     REQUIRE(s.find("Type") != std::string::npos);
-    REQUIRE(s.find("Checksum") != std::string::npos);
+    REQUIRE(s.find("XXH64 Checksum") != std::string::npos);
     REQUIRE(s.find("RHSVDA") == std::string::npos);
     REQUIRE(s.find("cl=") == std::string::npos);
     REQUIRE(s.find("\\HELLO") == std::string::npos);
     REQUIRE(s.find("HELLO.TXT") != std::string::npos);
-    REQUIRE(s.find("ec252e95cb88a8cb5c9682cd892a0ccf") != std::string::npos);
+    REQUIRE(s.find("a41fb567443800ac") != std::string::npos);
 
     std::string hello_line;
     std::istringstream in(s);

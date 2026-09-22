@@ -13,8 +13,11 @@ C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`).
 - **Volume label** from EBPB *and* the root directory (they can differ)
 - FAT copies, free/bad/orphan clusters
 - Directory tree including **deleted** 8.3 names (`0xE5` → `?`)
+- Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
+- **XXH64** of each recovered file (16 hex)
 - Deleted rows: light-red background, white **bold blinking** text (`tui/ansi.h`)
 - Boot-sector hex dump and printable strings
+- Format catalog: `include/dumpfloppy/formats/` (Archiveteam floppy images + Shikadi file formats)
 
 ## Build
 
@@ -39,7 +42,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.4`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.5`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima`.
 
 ```bash

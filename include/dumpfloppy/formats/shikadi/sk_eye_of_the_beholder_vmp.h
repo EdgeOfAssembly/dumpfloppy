@@ -1,0 +1,44 @@
+/**
+ * @file sk_eye_of_the_beholder_vmp.h
+ * @brief Eye of the Beholder VMP Format
+ * @see https://moddingwiki.shikadi.net/wiki/Eye_of_the_Beholder_VMP_Format
+ */
+#ifndef DUMPFLOPPY_FORMATS_SK_EYE_OF_THE_BEHOLDER_VMP_H
+#define DUMPFLOPPY_FORMATS_SK_EYE_OF_THE_BEHOLDER_VMP_H
+
+#include "dumpfloppy/format.h"
+
+namespace dumpfloppy
+{
+namespace formats
+{
+
+class sk_eye_of_the_beholder_vmp final : public file_format
+{
+public:
+    [[nodiscard]] std::string type() const override
+    {
+        return "EOB VMP";
+    }
+
+    [[nodiscard]] std::string_view source_url() const override
+    {
+        return "https://moddingwiki.shikadi.net/wiki/Eye_of_the_Beholder_VMP_Format";
+    }
+
+    [[nodiscard]] format_kind kind() const override
+    {
+        return format_kind::file;
+    }
+
+    [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
+    {
+        (void)data;
+        return false;
+    }
+};
+
+} /* namespace formats */
+} /* namespace dumpfloppy */
+
+#endif

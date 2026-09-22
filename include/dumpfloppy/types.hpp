@@ -135,7 +135,7 @@ struct dir_entry
     std::vector<uint16_t> cluster_chain{};
     std::string magic{};          /**< First-bytes identity (MZ, …). */
     std::string type{};           /**< Stub type: DATA, DIR, or VOL (DOS sniff later). */
-    std::string md5{};            /**< MD5 of the recovered payload (32 hex). */
+    std::string xxh64{};          /**< XXH64 of the recovered payload (16 hex). */
     std::string notes{};
 };
 

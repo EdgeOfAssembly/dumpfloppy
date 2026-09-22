@@ -5,6 +5,7 @@
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/directory.hpp"
+#include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/geometry.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/version.hpp"
@@ -139,7 +140,7 @@ std::string field(std::string_view s, size_t width)
 /*
  * Inner widths = max(header, content); each field then adds 2 spaces.
  * Name 12, Attributes 10, Size 7 (floppy files), Cluster 7, Modified 19,
- * Type 4 (DATA/DIR/VOL stub), Checksum 32 (MD5 hex).
+ * Type 16 (format label, default DATA), XXH64 Checksum 16 hex.
  */
 constexpr size_t k_w_mark = 1;
 constexpr size_t k_w_name = 12;
@@ -147,8 +148,8 @@ constexpr size_t k_w_attr = 10;
 constexpr size_t k_w_size = 7;
 constexpr size_t k_w_cluster = 7;
 constexpr size_t k_w_modified = 19;
-constexpr size_t k_w_type = 4;
-constexpr size_t k_w_sum = 32;
+constexpr size_t k_w_type = 16;
+constexpr size_t k_w_sum = 16;
 
 std::string directory_header()
 {
@@ -156,7 +157,7 @@ std::string directory_header()
     os << "  " << field(" ", k_w_mark) << field("Name", k_w_name)
        << field("Attributes", k_w_attr) << field("Size", k_w_size)
        << field("Cluster", k_w_cluster) << field("Modified", k_w_modified)
-       << field("Type", k_w_type) << field("Checksum", k_w_sum);
+       << field("Type", k_w_type) << field("XXH64 Checksum", k_w_sum);
     return os.str();
 }
 
@@ -171,7 +172,7 @@ std::string entry_line(const dir_entry& e)
        << field(std::to_string(e.size), k_w_size)
        << field(std::to_string(e.first_cluster), k_w_cluster)
        << field(modified, k_w_modified) << field(e.type, k_w_type)
-       << field(e.md5, k_w_sum);
+       << field(e.xxh64, k_w_sum);
     if (!e.notes.empty())
     {
         os << e.notes;
@@ -202,6 +203,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         kv(out, "Size", os.str());
     }
     kv(out, "SHA-256", a.image.sha256);
+    kv(out, "Format", identify_type(a.image.bytes, format_kind::disk_image));
     kv(out, "Container", container_name(a.image.container));
     if (a.image.size_geometry.cylinders != 0u)
     {

@@ -104,9 +104,9 @@ namespace dumpfloppy
 [[nodiscard]] std::string sha256_hex(std::span<const uint8_t> data);
 
 /**
- * @brief MD5 of @p data as 32 lowercase hex characters.
+ * @brief XXH64 of @p data as 16 lowercase hex characters (seed 0).
  */
-[[nodiscard]] std::string md5_hex(std::span<const uint8_t> data);
+[[nodiscard]] std::string xxh64_hex(std::span<const uint8_t> data);
 
 /**
  * @brief Case-insensitive glob (`*` any run, `?` one character).
