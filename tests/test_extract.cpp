@@ -68,6 +68,7 @@ TEST_CASE("extract writes payload and deleted files", "[extract]")
     opt.dest_dir = dest;
     std::ostringstream err;
     REQUIRE(dumpfloppy::extract_files(a, opt, err) == 2);
+    REQUIRE(err.str().empty());
 
     std::ifstream hello(dest / "HELLO.TXT", std::ios::binary);
     REQUIRE(hello);
@@ -143,4 +144,34 @@ TEST_CASE("unmatched extract pattern fails", "[extract]")
     std::ostringstream err;
     REQUIRE(dumpfloppy::extract_files(a, opt, err) == -1);
     REQUIRE(err.str().find("no files matched") != std::string::npos);
+}
+
+TEST_CASE("extract PENGUIN.EXE from Batman MFM CHS", "[extract][batman]")
+{
+    const std::filesystem::path img{
+        "/tmp/Batman - The Caped Crusader (1989) (Data East USA, Inc.) (360K) [cp] [!]/"
+        "Batman - The Caped Crusader (1989) (Data East USA, Inc.) (360K) (Disk 1) [cp] [!].mfm"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Batman Disk 1 .mfm is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    const auto dest =
+        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "batman-x";
+    std::filesystem::remove_all(dest);
+    dumpfloppy::extract_options opt{};
+    opt.enabled = true;
+    opt.dest_dir = dest;
+    opt.patterns.emplace_back("PENGUIN.EXE");
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::extract_files(a, opt, err) == 1);
+    REQUIRE(err.str().empty());
+    std::ifstream exe(dest / "PENGUIN.EXE", std::ios::binary);
+    REQUIRE(exe);
+    char mz[2] = {};
+    exe.read(mz, 2);
+    REQUIRE(mz[0] == 'M');
+    REQUIRE(mz[1] == 'Z');
 }

@@ -64,8 +64,9 @@ std::string usage_text()
        << "      --no-color       Disable ANSI colour (default: on)\n"
        << "      --no-hex         Skip boot-sector hex dump (default: dump)\n"
        << "      --no-deleted     Hide deleted directory entries (default: show)\n"
-       << "  -x, --extract [GLOB] Write files to the current directory (default: all,\n"
-       << "                       including deleted). Quote globs: -x '*.PKD' -x '5??.PKD'\n"
+       << "  -x, --extract [GLOB] Extract files to the current directory (no listing).\n"
+       << "                       Default: all payloads, deleted included.\n"
+       << "                       Quote globs: -x '*.PKD' -x '5??.PKD'\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();

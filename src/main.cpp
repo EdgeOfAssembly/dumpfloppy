@@ -145,6 +145,7 @@ int main(int argc, char** argv)
             {
                 rc = 1;
             }
+            continue;
         }
         if (cli.has_output)
         {

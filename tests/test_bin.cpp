@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <sys/wait.h>
 
@@ -105,6 +106,36 @@ TEST_CASE("binary dumps a sample image with serial on stdout", "[cli][bin]")
     REQUIRE(out.find("HELLO.TXT") != std::string::npos);
     REQUIRE(out.find("deleted") != std::string::npos);
     REQUIRE(out.find("FAT12") != std::string::npos);
+}
+
+TEST_CASE("binary -x extracts without listing", "[cli][bin][extract]")
+{
+    const char* bin = bin_or_skip();
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+                     "extract-silent";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto img = dir / "sample.ima";
+    const auto bytes = dumpfloppy_test::make_fat12_sample();
+    {
+        std::ofstream out(img, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+    }
+    int rc = 0;
+    const std::string cmd = std::string("cd \"") + dir.string() + "\" && " + bin +
+                            " -x HELLO.TXT \"" + img.string() + "\"";
+    const std::string out = slurp_popen(cmd, rc);
+    REQUIRE(rc == 0);
+    REQUIRE(out.find("DIRECTORY") == std::string::npos);
+    REQUIRE(out.find("IMAGE") == std::string::npos);
+    REQUIRE(out.find("extracted") == std::string::npos);
+    std::ifstream hello(dir / "HELLO.TXT", std::ios::binary);
+    REQUIRE(hello);
+    std::string body((std::istreambuf_iterator<char>(hello)),
+                     std::istreambuf_iterator<char>());
+    REQUIRE(body == "Hello, floppy\n");
 }
 
 TEST_CASE("binary missing file is non-zero and message on stderr", "[cli][bin]")

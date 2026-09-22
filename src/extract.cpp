@@ -7,6 +7,7 @@
 #include "dumpfloppy/util.hpp"
 
 #include <fstream>
+#include <span>
 #include <system_error>
 
 namespace dumpfloppy
@@ -104,8 +105,12 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
                 return -1;
             }
         }
+        const std::span<const uint8_t> volume =
+            !a.flux.assembled_chs.empty()
+                ? std::span<const uint8_t>(a.flux.assembled_chs)
+                : std::span<const uint8_t>(a.image.bytes);
         const std::vector<uint8_t> bytes =
-            read_file_contents(a.image.bytes, a.bpb, e);
+            read_file_contents(volume, a.bpb, e);
         std::ofstream out(dest, std::ios::binary | std::ios::trunc);
         if (!out)
         {
@@ -122,8 +127,6 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             err << "dumpfloppy: short write '" << dest.string() << "'\n";
             return -1;
         }
-        err << "dumpfloppy: extracted " << dest.string() << " (" << bytes.size()
-            << " bytes)\n";
         ++written;
     }
     if (!opt.patterns.empty() && matched == 0)
