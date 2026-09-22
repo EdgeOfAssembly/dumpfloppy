@@ -4,6 +4,7 @@
  */
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
+#include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/version.hpp"
@@ -138,6 +139,13 @@ int main(int argc, char** argv)
             continue;
         }
         const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+        if (cli.extract.enabled)
+        {
+            if (dumpfloppy::extract_files(a, cli.extract, std::cerr) < 0)
+            {
+                rc = 1;
+            }
+        }
         if (cli.has_output)
         {
             const std::filesystem::path dest =

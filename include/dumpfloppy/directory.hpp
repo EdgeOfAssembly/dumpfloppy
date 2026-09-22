@@ -45,6 +45,25 @@ list_directories(std::span<const uint8_t> image, const bpb_info& bpb,
  */
 [[nodiscard]] std::string sniff_magic(std::span<const uint8_t> head);
 
+/**
+ * @brief True when @p e is a regular file (not `.` / `..` / dir / volume).
+ */
+[[nodiscard]] bool is_payload_file(const dir_entry& e);
+
+/**
+ * @brief Recover a file's bytes by walking its FAT cluster chain.
+ *
+ * Stops at @p e.size or at the end of readable clusters (deleted files
+ * whose FAT slots were reused may be truncated).
+ *
+ * @param[in] image Whole image.
+ * @param[in] bpb   Valid BPB.
+ * @param[in] e     Directory entry with @a cluster_chain filled.
+ */
+[[nodiscard]] std::vector<uint8_t>
+read_file_contents(std::span<const uint8_t> image, const bpb_info& bpb,
+                   const dir_entry& e);
+
 } /* namespace dumpfloppy */
 
 #endif /* DUMPFLOPPY_DIRECTORY_HPP */

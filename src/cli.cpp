@@ -7,6 +7,7 @@
 #include "dumpfloppy/version.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <sstream>
 #include <system_error>
 
@@ -19,6 +20,26 @@ bool is_floppy_ext(const std::filesystem::path& p)
 {
     const std::string ext = ascii_lower(p.extension().string());
     return ext == ".img" || ext == ".ima";
+}
+
+bool looks_like_image_operand(const std::string& tok)
+{
+    if (tok.empty())
+    {
+        return false;
+    }
+    std::error_code ec{};
+    const std::filesystem::path p(tok);
+    if (std::filesystem::is_directory(p, ec))
+    {
+        return true;
+    }
+    return is_floppy_ext(p);
+}
+
+bool is_option_token(const std::string& tok)
+{
+    return tok.size() >= 2u && tok[0] == '-' && tok != "--";
 }
 
 } /* namespace */
@@ -44,6 +65,8 @@ std::string usage_text()
        << "      --no-color       Disable ANSI colour (default: on)\n"
        << "      --no-hex         Skip boot-sector hex dump (default: dump)\n"
        << "      --no-deleted     Hide deleted directory entries (default: show)\n"
+       << "  -x, --extract [GLOB] Write files to the current directory (default: all,\n"
+       << "                       including deleted). Quote globs: -x '*.PKD' -x '5??.PKD'\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -84,6 +107,36 @@ cli_options parse_cli(int argc, char** argv)
         if (!end_opts && arg == "--no-deleted")
         {
             o.report.show_deleted = false;
+            continue;
+        }
+        if (!end_opts && (arg == "-x" || arg == "--extract"))
+        {
+            o.extract.enabled = true;
+            if (i + 1 < argc && argv[i + 1] != nullptr)
+            {
+                const std::string next = argv[i + 1];
+                const bool globby =
+                    next.find('*') != std::string::npos ||
+                    next.find('?') != std::string::npos;
+                if (!is_option_token(next) &&
+                    (globby || !looks_like_image_operand(next)))
+                {
+                    ++i;
+                    o.extract.patterns.push_back(next);
+                }
+            }
+            continue;
+        }
+        if (!end_opts && arg.starts_with("--extract="))
+        {
+            o.extract.enabled = true;
+            o.extract.patterns.push_back(arg.substr(10));
+            continue;
+        }
+        if (!end_opts && arg.starts_with("-x") && arg.size() > 2u)
+        {
+            o.extract.enabled = true;
+            o.extract.patterns.push_back(arg.substr(2));
             continue;
         }
         if (!end_opts && (arg == "-o" || arg == "--output"))

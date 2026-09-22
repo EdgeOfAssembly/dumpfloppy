@@ -5,6 +5,7 @@
 #ifndef DUMPFLOPPY_CLI_HPP
 #define DUMPFLOPPY_CLI_HPP
 
+#include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/report.hpp"
 
 #include <filesystem>
@@ -24,6 +25,7 @@ struct cli_options
     report_options report{};
     std::filesystem::path output{}; /**< Empty → stdout. */
     bool has_output = false;
+    extract_options extract{};
     std::vector<std::filesystem::path> inputs{};
 };
 

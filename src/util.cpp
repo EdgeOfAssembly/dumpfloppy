@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdio>
+#include <openssl/evp.h>
 #include <openssl/sha.h>
 
 namespace dumpfloppy
@@ -127,6 +128,78 @@ std::string sha256_hex(std::span<const uint8_t> data)
         hex[i * 2u + 1u] = k_digits[digest[i] & 0x0Fu];
     }
     return hex;
+}
+
+std::string md5_hex(std::span<const uint8_t> data)
+{
+    unsigned char digest[EVP_MAX_MD_SIZE] = {};
+    unsigned int len = 0;
+    if (EVP_Digest(data.data(), data.size(), digest, &len, EVP_md5(), nullptr) != 1)
+    {
+        return {};
+    }
+    std::string hex;
+    hex.resize(static_cast<size_t>(len) * 2u);
+    static constexpr char k_digits[] = "0123456789abcdef";
+    for (unsigned int i = 0; i < len; ++i)
+    {
+        hex[i * 2u] = k_digits[(digest[i] >> 4) & 0x0Fu];
+        hex[i * 2u + 1u] = k_digits[digest[i] & 0x0Fu];
+    }
+    return hex;
+}
+
+namespace
+{
+
+char ascii_fold(char c)
+{
+    if (c >= 'A' && c <= 'Z')
+    {
+        return static_cast<char>(c - 'A' + 'a');
+    }
+    return c;
+}
+
+bool glob_match_at(std::string_view pat, std::string_view name)
+{
+    while (!pat.empty())
+    {
+        if (pat.front() == '*')
+        {
+            pat.remove_prefix(1);
+            if (pat.empty())
+            {
+                return true;
+            }
+            for (size_t i = 0; i <= name.size(); ++i)
+            {
+                if (glob_match_at(pat, name.substr(i)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (name.empty())
+        {
+            return false;
+        }
+        if (pat.front() != '?' && ascii_fold(pat.front()) != ascii_fold(name.front()))
+        {
+            return false;
+        }
+        pat.remove_prefix(1);
+        name.remove_prefix(1);
+    }
+    return name.empty();
+}
+
+} /* namespace */
+
+bool glob_match(std::string_view pattern, std::string_view name)
+{
+    return glob_match_at(pattern, name);
 }
 
 std::vector<std::string> printable_runs(std::span<const uint8_t> data, size_t min_len)

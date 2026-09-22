@@ -104,6 +104,19 @@ namespace dumpfloppy
 [[nodiscard]] std::string sha256_hex(std::span<const uint8_t> data);
 
 /**
+ * @brief MD5 of @p data as 32 lowercase hex characters.
+ */
+[[nodiscard]] std::string md5_hex(std::span<const uint8_t> data);
+
+/**
+ * @brief Case-insensitive glob (`*` any run, `?` one character).
+ *
+ * @param[in] pattern Glob (e.g. `*.PKD`, `5??.PKD`).
+ * @param[in] name    8.3 or path to test.
+ */
+[[nodiscard]] bool glob_match(std::string_view pattern, std::string_view name);
+
+/**
  * @brief Printable runs of length >= 4 inside @p data (boot-sector strings).
  */
 [[nodiscard]] std::vector<std::string> printable_runs(std::span<const uint8_t> data,

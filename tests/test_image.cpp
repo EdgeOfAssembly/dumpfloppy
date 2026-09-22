@@ -143,10 +143,13 @@ TEST_CASE("directory table is 8.3 names, left-justified, no cl= prefix", "[image
     REQUIRE(s.find("Attributes") != std::string::npos);
     REQUIRE(s.find("Cluster") != std::string::npos);
     REQUIRE(s.find("Modified") != std::string::npos);
+    REQUIRE(s.find("Type") != std::string::npos);
+    REQUIRE(s.find("Checksum") != std::string::npos);
     REQUIRE(s.find("RHSVDA") == std::string::npos);
     REQUIRE(s.find("cl=") == std::string::npos);
     REQUIRE(s.find("\\HELLO") == std::string::npos);
     REQUIRE(s.find("HELLO.TXT") != std::string::npos);
+    REQUIRE(s.find("ec252e95cb88a8cb5c9682cd892a0ccf") != std::string::npos);
 
     std::string hello_line;
     std::istringstream in(s);
@@ -161,8 +164,21 @@ TEST_CASE("directory table is 8.3 names, left-justified, no cl= prefix", "[image
     }
     REQUIRE_FALSE(hello_line.empty());
     REQUIRE(hello_line.find('\\') == std::string::npos);
-    /* Name column starts after "  " + mark + space. */
-    REQUIRE(hello_line.substr(4, 9) == "HELLO.TXT");
+    /* indent 2 + mark 1 + 2-space gap. */
+    REQUIRE(hello_line.substr(5, 9) == "HELLO.TXT");
+
+    std::string gone_line;
+    std::istringstream in2(s);
+    while (std::getline(in2, line))
+    {
+        if (line.find("?ONE.TXT") != std::string::npos)
+        {
+            gone_line = line;
+            break;
+        }
+    }
+    REQUIRE_FALSE(gone_line.empty());
+    REQUIRE(gone_line.find("  deleted") == std::string::npos);
 }
 
 TEST_CASE("format_volume_serial is high-word first", "[util]")

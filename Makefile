@@ -19,6 +19,12 @@ ifeq ($(CRYPTO_LIBS),)
   CRYPTO_LIBS := -lcrypto
 endif
 
+MAGIC_CFLAGS := $(shell pkg-config --cflags libmagic 2>/dev/null)
+MAGIC_LIBS   := $(shell pkg-config --libs libmagic 2>/dev/null)
+ifeq ($(MAGIC_LIBS),)
+  MAGIC_LIBS := -lmagic
+endif
+
 CATCH_CFLAGS := $(shell pkg-config --cflags catch2-with-main 2>/dev/null)
 CATCH_LIBS   := $(shell pkg-config --libs catch2-with-main 2>/dev/null)
 
@@ -28,9 +34,9 @@ WARN := -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wformat=2 \
 INCLUDES := -Iinclude -I$(LIBSF_INC)
 
 CFLAGS_COMMON := -std=gnu23 $(WARN) $(INCLUDES) -fPIC -MMD -MP
-CXXFLAGS_COMMON := -std=gnu++23 $(WARN) $(INCLUDES) $(CRYPTO_CFLAGS) -fPIC -MMD -MP
+CXXFLAGS_COMMON := -std=gnu++23 $(WARN) $(INCLUDES) $(CRYPTO_CFLAGS) $(MAGIC_CFLAGS) -fPIC -MMD -MP
 
-LDFLAGS_COMMON := -Wl,-O1 -Wl,--hash-style=gnu -Wl,-z,relro -pthread $(CRYPTO_LIBS)
+LDFLAGS_COMMON := -Wl,-O1 -Wl,--hash-style=gnu -Wl,-z,relro -pthread $(CRYPTO_LIBS) $(MAGIC_LIBS)
 
 CXXFLAGS_OPTIMIZED := -O3 -march=x86-64 -mtune=generic -fno-omit-frame-pointer
 
@@ -63,10 +69,10 @@ TEST_BIN := tests/run_tests
 SRC_C := src/fat12_codec.c
 SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/boot.cpp src/fat.cpp src/directory.cpp src/analyze.cpp \
-           src/report.cpp src/cli.cpp
+           src/report.cpp src/cli.cpp src/identify.cpp src/extract.cpp
 SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
-            tests/test_image.cpp tests/test_bin.cpp
+            tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)

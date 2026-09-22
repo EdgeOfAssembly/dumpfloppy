@@ -36,6 +36,7 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find("-v, --version") != std::string::npos);
     REQUIRE(u.find("--no-color") != std::string::npos);
     REQUIRE(u.find("-o, --output") != std::string::npos);
+    REQUIRE(u.find("-x, --extract") != std::string::npos);
     REQUIRE(u.find(dumpfloppy::k_version) != std::string::npos);
 }
 
@@ -76,4 +77,35 @@ TEST_CASE("parse_cli --no-hex and --no-deleted", "[cli]")
     REQUIRE(o.ok);
     REQUIRE_FALSE(o.report.hex_boot);
     REQUIRE_FALSE(o.report.show_deleted);
+}
+
+TEST_CASE("parse_cli -x extract all vs glob vs --extract=", "[cli]")
+{
+    const auto all = parse({"disk.ima", "-x"});
+    REQUIRE(all.ok);
+    REQUIRE(all.extract.enabled);
+    REQUIRE(all.extract.patterns.empty());
+    REQUIRE(all.inputs.size() == 1);
+
+    const auto glob = parse({"disk.ima", "-x", "*.PKD"});
+    REQUIRE(glob.ok);
+    REQUIRE(glob.extract.enabled);
+    REQUIRE(glob.extract.patterns.size() == 1);
+    REQUIRE(glob.extract.patterns[0] == "*.PKD");
+    REQUIRE(glob.inputs.size() == 1);
+
+    const auto eq = parse({"--extract=5??.PKD", "disk.ima"});
+    REQUIRE(eq.ok);
+    REQUIRE(eq.extract.patterns[0] == "5??.PKD");
+
+    /* .ima suffix is an image operand, not a glob. */
+    const auto img = parse({"-x", "disk.ima"});
+    REQUIRE(img.ok);
+    REQUIRE(img.extract.enabled);
+    REQUIRE(img.extract.patterns.empty());
+    REQUIRE(img.inputs.size() == 1);
+    REQUIRE(img.inputs[0] == "disk.ima");
+
+    const auto named = parse({"disk.ima", "-x", "591.PKD"});
+    REQUIRE(named.extract.patterns[0] == "591.PKD");
 }

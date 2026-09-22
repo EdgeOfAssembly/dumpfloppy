@@ -14,7 +14,13 @@ or WinImage
 and prints everything it can prove from the bytes: BIOS boot signature,
 jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
 serial and volume label, the full directory (including deleted 8.3
-slots), cluster chains, orphans, and a hex dump of sector 0.
+slots), libmagic MIME type, MD5 of each file, cluster chains, orphans,
+and a hex dump of sector 0.
+.PP
+.B \-x
+/
+.B \-\-extract
+writes recovered files (deleted included) into the current directory.
 .PP
 .I .img
 and
@@ -57,7 +63,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.2
+.B dumpfloppy 0.3
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -86,6 +92,30 @@ Skip the 512-byte boot-sector hex dump (default: dump).
 .TP
 .B \-\-no-deleted
 Omit deleted directory entries (default: show them).
+.TP
+.BR \-x ", " \-\-extract " [" \fIGLOB\fR "]"
+Extract files into the current directory by walking FAT cluster chains.
+Deleted 8.3 names are included.
+With no
+.I GLOB
+every payload file is written.
+.I GLOB
+supports
+.B *
+(any run of characters) and
+.B ?
+(one character), matched case-insensitively against the 8.3 name.
+Quote globs so the shell does not expand them:
+.B \-x '*.PKD'
+or
+.B \-x '5??.PKD' .
+.B \-\-extract=\fIGLOB\fR
+is unambiguous.
+A following
+.I .img
+/
+.I .ima
+path is the floppy image, not a glob.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -97,6 +127,18 @@ Bad arguments, unreadable image, or at least one input failed.
 Dump a 720K WinImage floppy:
 .RS
 .B dumpfloppy disk1.ima
+.RE
+.PP
+Extract every file, including deleted names, into the current directory:
+.RS
+.B dumpfloppy disk1.ima \-x
+.RE
+.PP
+Extract only
+.B .PKD
+files:
+.RS
+.B dumpfloppy disk1.ima \-x '*.PKD'
 .RE
 .PP
 Plain text, no hex, write beside the image:

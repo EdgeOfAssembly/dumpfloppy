@@ -134,6 +134,8 @@ struct dir_entry
     bool after_terminator = false;/**< Non-zero slot after a 0x00 entry. */
     std::vector<uint16_t> cluster_chain{};
     std::string magic{};          /**< First-bytes identity (MZ, …). */
+    std::string mime{};           /**< libmagic MIME type of the payload. */
+    std::string md5{};            /**< MD5 of the recovered payload (32 hex). */
     std::string notes{};
 };
 

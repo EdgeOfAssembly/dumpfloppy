@@ -119,37 +119,44 @@ void emit_deleted_line(std::ostream& out, bool color, const std::string& line)
 }
 
 /**
- * Left-justify @p s into exactly @p width characters (pad or clip).
- * FAT12 8.3 names are at most 12 characters (`NAME.EXT`); the Name
- * column is 15 so they always fit.
+ * Left-justify @p s into @p width characters, then two spaces of gap.
+ * FAT12 8.3 names are at most 12 characters (`NAME.EXT`).
  */
 std::string field(std::string_view s, size_t width)
 {
     std::string out;
-    out.reserve(width);
+    out.reserve(width + 2u);
     const size_t n = std::min(s.size(), width);
     out.append(s.data(), n);
     if (n < width)
     {
         out.append(width - n, ' ');
     }
+    out.append(2, ' ');
     return out;
 }
 
-/* Fixed directory-table widths (all columns left-justified). */
+/*
+ * Inner widths = max(header, content); each field then adds 2 spaces.
+ * Name 12, Attributes 10, Size 7 (floppy files), Cluster 7, Modified 19,
+ * Type 24 (libmagic MIME), Checksum 32 (MD5 hex).
+ */
 constexpr size_t k_w_mark = 1;
-constexpr size_t k_w_name = 15;      /* 8.3 + slack */
-constexpr size_t k_w_attr = 10;      /* header "Attributes" */
-constexpr size_t k_w_size = 10;      /* FAT size is 32-bit */
-constexpr size_t k_w_cluster = 7;    /* header "Cluster"; FAT12 max 4084 */
-constexpr size_t k_w_modified = 19;  /* YYYY-MM-DD HH:MM:SS */
+constexpr size_t k_w_name = 12;
+constexpr size_t k_w_attr = 10;
+constexpr size_t k_w_size = 7;
+constexpr size_t k_w_cluster = 7;
+constexpr size_t k_w_modified = 19;
+constexpr size_t k_w_type = 24;
+constexpr size_t k_w_sum = 32;
 
 std::string directory_header()
 {
     std::ostringstream os;
-    os << "  " << field(" ", k_w_mark) << ' ' << field("Name", k_w_name) << "  "
-       << field("Attributes", k_w_attr) << "  " << field("Size", k_w_size) << "  "
-       << field("Cluster", k_w_cluster) << "  " << field("Modified", k_w_modified);
+    os << "  " << field(" ", k_w_mark) << field("Name", k_w_name)
+       << field("Attributes", k_w_attr) << field("Size", k_w_size)
+       << field("Cluster", k_w_cluster) << field("Modified", k_w_modified)
+       << field("Type", k_w_type) << field("Checksum", k_w_sum);
     return os.str();
 }
 
@@ -159,26 +166,19 @@ std::string entry_line(const dir_entry& e)
     const std::string modified =
         format_dos_date(e.write_date) + " " + format_dos_time(e.write_time);
     std::ostringstream os;
-    os << "  " << field(std::string_view(&mark, 1), k_w_mark) << ' '
-       << field(e.name_83, k_w_name) << "  " << field(format_attributes(e.attributes), k_w_attr)
-       << "  " << field(std::to_string(e.size), k_w_size) << "  "
-       << field(std::to_string(e.first_cluster), k_w_cluster) << "  "
-       << field(modified, k_w_modified);
-    if (!e.magic.empty())
-    {
-        os << "  [" << e.magic << "]";
-    }
+    os << "  " << field(std::string_view(&mark, 1), k_w_mark)
+       << field(e.name_83, k_w_name) << field(format_attributes(e.attributes), k_w_attr)
+       << field(std::to_string(e.size), k_w_size)
+       << field(std::to_string(e.first_cluster), k_w_cluster)
+       << field(modified, k_w_modified) << field(e.mime, k_w_type)
+       << field(e.md5, k_w_sum);
     if (!e.notes.empty())
     {
-        os << "  " << e.notes;
-    }
-    if (e.deleted)
-    {
-        os << "  deleted";
+        os << e.notes;
     }
     if (e.after_terminator)
     {
-        os << "  after-0x00";
+        os << "after-0x00";
     }
     return os.str();
 }
@@ -368,7 +368,11 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
 
     section(out, color, "DIRECTORY");
-    out << directory_header() << '\n';
+    put_style(out, color, TUI_BOLD);
+    put_style(out, color, TUI_WHITE);
+    out << directory_header();
+    put_style(out, color, TUI_RESET);
+    out << '\n';
     size_t shown = 0;
     size_t deleted_n = 0;
     for (const dir_entry& e : a.entries)

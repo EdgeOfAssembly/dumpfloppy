@@ -351,4 +351,53 @@ std::vector<dir_entry> list_directories(std::span<const uint8_t> image,
     return out;
 }
 
+bool is_payload_file(const dir_entry& e)
+{
+    if (e.name_83 == "." || e.name_83 == "..")
+    {
+        return false;
+    }
+    if ((e.attributes & k_attr_directory) != 0u)
+    {
+        return false;
+    }
+    if ((e.attributes & k_attr_volume) != 0u)
+    {
+        return false;
+    }
+    return true;
+}
+
+std::vector<uint8_t> read_file_contents(std::span<const uint8_t> image,
+                                        const bpb_info& bpb, const dir_entry& e)
+{
+    std::vector<uint8_t> out;
+    if (!is_payload_file(e) || e.size == 0u || bpb.bytes_per_sector == 0u ||
+        bpb.sectors_per_cluster == 0u)
+    {
+        return out;
+    }
+    const uint32_t cluster_bytes =
+        static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
+    const uint32_t want = e.size;
+    out.reserve(want);
+    for (uint16_t cl : e.cluster_chain)
+    {
+        if (out.size() >= want)
+        {
+            break;
+        }
+        const size_t off = cluster_offset(bpb, cl);
+        if (off >= image.size())
+        {
+            break;
+        }
+        const size_t remain = static_cast<size_t>(want) - out.size();
+        const size_t n = std::min({static_cast<size_t>(cluster_bytes), remain,
+                                   image.size() - off});
+        out.insert(out.end(), image.data() + off, image.data() + off + n);
+    }
+    return out;
+}
+
 } /* namespace dumpfloppy */

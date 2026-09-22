@@ -39,7 +39,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.2`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.3`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima`.
 
 ```bash
@@ -53,6 +53,7 @@ dumpfloppy ./floppies -o ./reports/
 | ANSI colour on | `--no-color` |
 | Boot hex dump on | `--no-hex` |
 | Deleted entries shown | `--no-deleted` |
+| Extract files | `-x` / `--extract` (optional glob) |
 
 ## Example (Elvira 720K Disk 2)
 
