@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -439,4 +440,80 @@ TEST_CASE("decode_hxc_mfm 18-spt blob does not flag S10-S18 as HLS", "[mfm][hxc]
     {
         REQUIRE_FALSE(hls_mentions_sector(d, sec));
     }
+}
+
+TEST_CASE("SS 9-spt plus one H1 IDAM does not raise chs_heads", "[mfm][chs]")
+{
+    dumpfloppy::flux_disk d{};
+    for (uint8_t sec = 1; sec <= 9; ++sec)
+    {
+        d.sectors.push_back(make_sec(0, 0, sec, 0x10));
+    }
+    d.sectors.push_back(make_sec(0, 1, 1, 0xEE));
+    dumpfloppy::finish_ibm_flux(d);
+    REQUIRE(d.chs_spt == 9);
+    REQUIRE(d.chs_heads == 1);
+    REQUIRE(d.assembled_chs.size() == 9u * 512u);
+}
+
+TEST_CASE("patch_mfm_chs leaves extra-head DAMs untouched", "[mfm][patch]")
+{
+    constexpr size_t k_track = 4096;
+    /* 2 cyl × 2 heads × 9 spt. Extra C0:H2:S1 aliases LBA 18 = C1:H0:S1 if
+       patch forgets to skip head >= chs_heads. */
+    dumpfloppy::flux_disk flux{};
+    flux.chs_cyls = 2;
+    flux.chs_heads = 2;
+    flux.chs_spt = 9;
+    flux.assembled_chs.assign(2u * 2u * 9u * 512u, 0x11);
+    const size_t lba_c1h0s1 = (1u * 2u + 0u) * 9u;
+    std::fill(flux.assembled_chs.begin() + static_cast<std::ptrdiff_t>(lba_c1h0s1 * 512u),
+              flux.assembled_chs.begin() + static_cast<std::ptrdiff_t>((lba_c1h0s1 + 1u) * 512u),
+              static_cast<uint8_t>(0xAA));
+
+    dumpfloppy::ibm_sector real{};
+    real.cyl = 1;
+    real.head = 0;
+    real.sector = 1;
+    real.bytes = 512;
+    real.size_code = 2;
+    real.has_dam = true;
+    real.dam_mark = 0xFB;
+    real.track_file_off = 0;
+    real.track_byte_len = k_track;
+    real.dam_bit_off = 0;
+    real.data.assign(512, 0xAA);
+    flux.sectors.push_back(real);
+
+    dumpfloppy::ibm_sector extra{};
+    extra.cyl = 0;
+    extra.head = 2;
+    extra.sector = 1;
+    extra.bytes = 512;
+    extra.size_code = 2;
+    extra.has_dam = true;
+    extra.dam_mark = 0xFB;
+    extra.track_file_off = 2048;
+    extra.track_byte_len = k_track;
+    extra.dam_bit_off = 0;
+    extra.data.assign(512, 0xEE);
+    flux.sectors.push_back(extra);
+
+    std::vector<uint8_t> mfm(4096, 0);
+    std::vector<uint8_t> neu = flux.assembled_chs;
+    std::fill(neu.begin() + static_cast<std::ptrdiff_t>(lba_c1h0s1 * 512u),
+              neu.begin() + static_cast<std::ptrdiff_t>((lba_c1h0s1 + 1u) * 512u),
+              static_cast<uint8_t>(0xBB));
+    REQUIRE(dumpfloppy::patch_mfm_chs(mfm, flux, neu));
+
+    bool extra_touched = false;
+    for (size_t i = 2048; i < mfm.size(); ++i)
+    {
+        if (mfm[i] != 0u)
+        {
+            extra_touched = true;
+            break;
+        }
+    }
+    REQUIRE_FALSE(extra_touched);
 }

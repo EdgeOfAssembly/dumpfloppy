@@ -129,7 +129,6 @@ void geometry_from_modal(const std::vector<ibm_sector>& secs, chs_policy& g)
     }
 
     uint32_t head_hits[256] = {};
-    uint32_t n_in = 0;
     for (const ibm_sector& s : secs)
     {
         if (!is_std_512(s) || s.sector < 1u || s.sector > g.spt)
@@ -137,11 +136,10 @@ void geometry_from_modal(const std::vector<ibm_sector>& secs, chs_policy& g)
             continue;
         }
         head_hits[s.head] += 1u;
-        n_in += 1u;
     }
-    const uint32_t min_hits = (n_in >= 16u) ? 2u : 1u;
+    /* A single extra H1 IDAM is HLS, not a second side. */
     g.heads = 1u;
-    if (head_hits[1] >= min_hits)
+    if (head_hits[1] >= 2u)
     {
         g.heads = 2u;
     }
@@ -651,8 +649,8 @@ bool patch_mfm_chs(std::vector<uint8_t>& mfm, const flux_disk& flux,
     const uint32_t spt = flux.chs_spt;
     for (const ibm_sector& s : flux.sectors)
     {
-        if (s.bytes != 512u || s.sector < 1u || s.sector > spt || !s.has_dam ||
-            s.data.size() < 512u)
+        if (s.bytes != 512u || s.sector < 1u || s.sector > spt || s.head >= heads ||
+            !s.has_dam || s.data.size() < 512u)
         {
             continue;
         }
