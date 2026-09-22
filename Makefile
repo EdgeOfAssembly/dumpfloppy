@@ -70,12 +70,13 @@ SRC_C := src/fat12_codec.c
 SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/boot.cpp src/fat.cpp src/directory.cpp src/analyze.cpp \
            src/report.cpp src/cli.cpp src/extract.cpp src/update.cpp \
-           src/format_registry.cpp src/ibm_mfm.cpp src/catalog.cpp
+           src/format_registry.cpp src/ibm_mfm.cpp src/catalog.cpp \
+           src/cbm.cpp
 SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \
             tests/test_format.cpp tests/test_update.cpp tests/test_deleted.cpp \
-            tests/test_mfm.cpp
+            tests/test_mfm.cpp tests/test_cbm.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)
