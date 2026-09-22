@@ -1,6 +1,7 @@
 # dumpfloppy
 
-C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`).
+C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`),
+HxC bitstreams (`.mfm`), and 86Box flux dumps (`.86f`).
 
 `.ima` is WinImage’s raw dump; the sector layout is the same as `.img`.
 
@@ -43,7 +44,7 @@ dumpfloppy [options] [images…]
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
 `dumpfloppy 0.12`. Options and paths may be interleaved. A directory argument
-expands to `*.img` / `*.ima`.
+expands to `*.img` / `*.ima` / `*.mfm` / `*.86f`.
 
 ```bash
 dumpfloppy disk.ima
@@ -51,15 +52,16 @@ dumpfloppy --no-color --no-hex disk.ima -o report.txt
 dumpfloppy ./floppies -o ./reports/
 dumpfloppy disk.ima -u HELLO.TXT
 dumpfloppy disk.mfm -u PENGUIN.EXE
+dumpfloppy disk.mfm -uPENGUIN.EXE
 ```
 
 | Default | Switch |
 |---------|--------|
 | ANSI colour on | `--no-color` |
 | Boot hex dump on | `--no-hex` |
-| Deleted entries shown | `--no-deleted` |
+| Deleted entries shown in the listing | `--no-deleted` (listing only; `-x` still extracts deleted) |
 | Extract files | `-x` / `--extract` (optional glob) |
-| Update a named file | `-u` / `--update FILE` (repeatable; silent) |
+| Update a named file | `-u` / `--update FILE` (repeatable; silent; glued `-uFILE` ok) |
 
 ## Example (Elvira 720K Disk 2)
 

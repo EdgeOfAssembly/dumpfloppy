@@ -57,9 +57,11 @@ root-directory volume label is still reported.
 .PP
 Options and image paths may appear in any order.
 A directory operand expands to
-.I *.img
+.I *.img ,
+.I *.ima ,
+.I *.mfm ,
 and
-.I *.ima
+.I *.86f
 in that directory (non-recursive).
 .SH OPTIONS
 .TP
@@ -96,7 +98,12 @@ TTY).
 Skip the 512-byte boot-sector hex dump (default: dump).
 .TP
 .B \-\-no-deleted
-Omit deleted directory entries (default: show them).
+Omit deleted directory entries from the listing (default: show them).
+This switch is listing-only:
+.B \-x
+/
+.B \-\-extract
+still writes deleted payloads.
 .TP
 .BR \-x ", " \-\-extract " [" \fIGLOB\fR "]"
 Extract files into the current directory by walking FAT cluster chains.
@@ -121,6 +128,10 @@ A following
 .I .img
 /
 .I .ima
+/
+.I .mfm
+/
+.I .86f
 path is the floppy image, not a glob.
 .TP
 .BI \-u ", " \-\-update " FILE"
@@ -146,6 +157,10 @@ images patch changed 512-byte DAM payloads (extra HLS IDs are left
 untouched).
 .I .86f
 flux images are refused.
+Glued
+.B \-uFILE
+is accepted (same as
+.B \-u FILE ).
 .B \-\-update=\fIFILE\fR
 is unambiguous.
 .SH EXIT STATUS
@@ -178,6 +193,11 @@ Overwrite
 in a Batman HxC dump after editing the host file:
 .RS
 .B dumpfloppy disk1.mfm \-u PENGUIN.EXE
+.RE
+.PP
+Same update with the glued short option:
+.RS
+.B dumpfloppy disk1.mfm \-uPENGUIN.EXE
 .RE
 .PP
 Plain text, no hex, write beside the image:

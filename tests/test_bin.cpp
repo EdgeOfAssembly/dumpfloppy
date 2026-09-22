@@ -2,6 +2,7 @@
  * @file test_bin.cpp
  * @brief Process-level CLI contracts against the dumpfloppy binary.
  */
+#include "dumpfloppy/version.hpp"
 #include "image_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -50,13 +51,15 @@ const char* bin_or_skip()
 
 } /* namespace */
 
-TEST_CASE("binary -v prints dumpfloppy 0.12", "[cli][bin]")
+TEST_CASE("binary -v prints dumpfloppy k_version", "[cli][bin]")
 {
     const char* bin = bin_or_skip();
     int rc = 0;
     const std::string out = slurp_popen(std::string(bin) + " -v", rc);
     REQUIRE(rc == 0);
-    REQUIRE(out.find("dumpfloppy 0.12") != std::string::npos);
+    const std::string needle =
+        std::string(dumpfloppy::k_program) + " " + dumpfloppy::k_version;
+    REQUIRE(out.find(needle) != std::string::npos);
 }
 
 TEST_CASE("binary --version matches -v", "[cli][bin]")
@@ -176,6 +179,59 @@ TEST_CASE("binary directory batch expands .ima files", "[cli][bin]")
         ++n;
     }
     REQUIRE(n >= 2);
+}
+
+TEST_CASE("binary glued -uFILE is not an unknown option", "[cli][bin]")
+{
+    const char* bin = bin_or_skip();
+    int rc = 0;
+    const std::string err =
+        slurp_popen(std::string(bin) + " -uHELLO.TXT 2>&1 >/dev/null", rc);
+    REQUIRE(err.find("unknown option") == std::string::npos);
+}
+
+TEST_CASE("binary glued -uFILE overwrites silently and round-trips",
+          "[cli][bin][update]")
+{
+    const char* bin = bin_or_skip();
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+                     "update-glued";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto img = dir / "sample.ima";
+    const auto bytes = dumpfloppy_test::make_fat12_sample();
+    {
+        std::ofstream out(img, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+    }
+    const auto host = dir / "HELLO.TXT";
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out << "Glued payload!\nY";
+    }
+    int rc = 0;
+    const std::string cmd = std::string("cd \"") + dir.string() + "\" && " + bin +
+                            " -uHELLO.TXT \"" + img.string() + "\"";
+    const std::string out = slurp_popen(cmd, rc);
+    REQUIRE(rc == 0);
+    REQUIRE(out.empty());
+
+    const auto xdir = dir / "x";
+    std::filesystem::create_directories(xdir);
+    int rc2 = 0;
+    const std::string xcmd = std::string("cd \"") + xdir.string() + "\" && " + bin +
+                             " -x HELLO.TXT \"" + img.string() + "\"";
+    const std::string xout = slurp_popen(xcmd, rc2);
+    REQUIRE(rc2 == 0);
+    REQUIRE(xout.empty());
+    std::ifstream hello(xdir / "HELLO.TXT", std::ios::binary);
+    REQUIRE(hello);
+    std::string body((std::istreambuf_iterator<char>(hello)),
+                     std::istreambuf_iterator<char>());
+    REQUIRE(body == "Glued payload!\nY");
 }
 
 TEST_CASE("binary -u overwrites silently and round-trips", "[cli][bin][update]")

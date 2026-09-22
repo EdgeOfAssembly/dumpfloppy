@@ -63,7 +63,8 @@ std::string usage_text()
        << "  -o, --output PATH    Write report to a file or directory (default: stdout)\n"
        << "      --no-color       Disable ANSI colour (default: on)\n"
        << "      --no-hex         Skip boot-sector hex dump (default: dump)\n"
-       << "      --no-deleted     Hide deleted directory entries (default: show)\n"
+       << "      --no-deleted     Hide deleted directory entries in the listing only\n"
+       << "                       (extract still includes them; default: show)\n"
        << "  -x, --extract [GLOB] Extract files to the current directory (no listing).\n"
        << "                       Default: all payloads, deleted included.\n"
        << "                       Quote globs: -x '*.PKD' -x '5??.PKD'\n"
@@ -71,6 +72,7 @@ std::string usage_text()
        << "                       Repeatable. Silent (no listing). Same size: in-place;\n"
        << "                       grow/shrink allocates or frees clusters and relocates\n"
        << "                       later live files when sequential growth needs them.\n"
+       << "                       Accepts -u FILE, -uFILE, and --update=FILE.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -162,6 +164,12 @@ cli_options parse_cli(int argc, char** argv)
             o.update.hosts.emplace_back(arg.substr(9));
             continue;
         }
+        if (!end_opts && arg.starts_with("-u") && arg.size() > 2u)
+        {
+            o.update.enabled = true;
+            o.update.hosts.emplace_back(arg.substr(2));
+            continue;
+        }
         if (!end_opts && (arg == "-o" || arg == "--output"))
         {
             if (i + 1 >= argc || argv[i + 1] == nullptr)
@@ -233,7 +241,7 @@ expand_inputs(const std::vector<std::filesystem::path>& inputs, std::string& err
     }
     if (out.empty() && !inputs.empty())
     {
-        err = "no .img/.ima files found in the given directories";
+        err = "no .img/.ima/.mfm/.86f files found in the given directories";
     }
     return out;
 }

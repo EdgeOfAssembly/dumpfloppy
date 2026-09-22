@@ -36,13 +36,20 @@ struct cli_options
  *
  * @param[in] argc Argument count.
  * @param[in] argv Argument vector (`argv[0]` is the program name).
+ * @return Parsed options. @a ok is false and @a error is set on a bad flag
+ *         or a missing option argument.
  */
 [[nodiscard]] cli_options parse_cli(int argc, char** argv);
 
 /**
- * @brief Expand directory operands to `*.img` / `*.ima` (non-recursive).
+ * @brief Expand directory operands to `*.img` / `*.ima` / `*.mfm` / `*.86f`
+ *        (non-recursive).
  *
  * Explicit file operands are kept as-is. Hidden names are skipped in dirs.
+ *
+ * @param[in]  inputs Operand paths (files and/or directories).
+ * @param[out] err    Set when directories yielded no matching images.
+ * @return Flattened image paths (each directory’s matches sorted by path).
  */
 [[nodiscard]] std::vector<std::filesystem::path>
 expand_inputs(const std::vector<std::filesystem::path>& inputs, std::string& err);

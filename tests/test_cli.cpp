@@ -6,6 +6,8 @@
 #include "dumpfloppy/version.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -38,7 +40,10 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find("-o, --output") != std::string::npos);
     REQUIRE(u.find("-x, --extract") != std::string::npos);
     REQUIRE(u.find("-u, --update") != std::string::npos);
+    REQUIRE(u.find("-uFILE") != std::string::npos);
+    REQUIRE(u.find("listing only") != std::string::npos);
     REQUIRE(u.find(".mfm") != std::string::npos);
+    REQUIRE(u.find(".86f") != std::string::npos);
     REQUIRE(u.find(dumpfloppy::k_version) != std::string::npos);
 }
 
@@ -110,4 +115,79 @@ TEST_CASE("parse_cli -x extract all vs glob vs --extract=", "[cli]")
 
     const auto named = parse({"disk.ima", "-x", "591.PKD"});
     REQUIRE(named.extract.patterns[0] == "591.PKD");
+}
+
+TEST_CASE("parse_cli glued -uFILE like -xGLOB", "[cli]")
+{
+    const auto glued = parse({"-uPENGUIN.EXE", "disk.mfm"});
+    REQUIRE(glued.ok);
+    REQUIRE(glued.update.enabled);
+    REQUIRE(glued.update.hosts.size() == 1);
+    REQUIRE(glued.update.hosts[0] == "PENGUIN.EXE");
+    REQUIRE(glued.inputs.size() == 1);
+    REQUIRE(glued.inputs[0] == "disk.mfm");
+
+    const auto spaced = parse({"disk.ima", "-u", "HELLO.TXT"});
+    REQUIRE(spaced.ok);
+    REQUIRE(spaced.update.enabled);
+    REQUIRE(spaced.update.hosts.size() == 1);
+    REQUIRE(spaced.update.hosts[0] == "HELLO.TXT");
+
+    const auto eq = parse({"--update=FILEB.TXT", "disk.ima"});
+    REQUIRE(eq.ok);
+    REQUIRE(eq.update.hosts[0] == "FILEB.TXT");
+
+    const auto many = parse({"-uA.TXT", "-uB.TXT", "disk.ima"});
+    REQUIRE(many.ok);
+    REQUIRE(many.update.hosts.size() == 2);
+    REQUIRE(many.update.hosts[0] == "A.TXT");
+    REQUIRE(many.update.hosts[1] == "B.TXT");
+
+    const auto missing = parse({"-u"});
+    REQUIRE_FALSE(missing.ok);
+    REQUIRE(missing.error.find("missing FILE") != std::string::npos);
+
+    const std::string u = dumpfloppy::usage_text();
+    REQUIRE(u.find("-uFILE") != std::string::npos);
+}
+
+TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f", "[cli]")
+{
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+                     "expand-empty";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    {
+        std::ofstream out(dir / "readme.txt");
+        REQUIRE(out);
+        out << "nope\n";
+    }
+    std::string err;
+    const auto got = dumpfloppy::expand_inputs({dir}, err);
+    REQUIRE(got.empty());
+    REQUIRE(err.find(".img") != std::string::npos);
+    REQUIRE(err.find(".ima") != std::string::npos);
+    REQUIRE(err.find(".mfm") != std::string::npos);
+    REQUIRE(err.find(".86f") != std::string::npos);
+}
+
+TEST_CASE("expand_inputs directory batch includes .mfm and .86f", "[cli]")
+{
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+                     "expand-exts";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    for (const char* name : {"a.ima", "b.mfm", "c.86f", "d.txt"})
+    {
+        std::ofstream out(dir / name);
+        REQUIRE(out);
+        out << "x\n";
+    }
+    std::string err;
+    const auto got = dumpfloppy::expand_inputs({dir}, err);
+    REQUIRE(err.empty());
+    REQUIRE(got.size() == 3);
+    REQUIRE(got[0].filename() == "a.ima");
+    REQUIRE(got[1].filename() == "b.mfm");
+    REQUIRE(got[2].filename() == "c.86f");
 }
