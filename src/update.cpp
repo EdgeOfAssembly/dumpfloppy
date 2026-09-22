@@ -8,6 +8,7 @@
 #include "dumpfloppy/fat.hpp"
 #include "dumpfloppy/fat12_codec.h"
 #include "dumpfloppy/util.hpp"
+#include "dumpfloppy/volume.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -687,8 +688,7 @@ int update_files(analysis& a, const update_options& opt, std::ostream& err)
         return -1;
     }
 
-    std::vector<uint8_t>& volume =
-        !a.flux.assembled_chs.empty() ? a.flux.assembled_chs : a.image.bytes;
+    std::vector<uint8_t>& volume = volume_bytes_mut(a);
     const std::vector<uint8_t> snapshot = volume;
     const std::vector<dir_entry> entries_snap = a.entries;
     const uint32_t max_cluster = a.fat.max_cluster;

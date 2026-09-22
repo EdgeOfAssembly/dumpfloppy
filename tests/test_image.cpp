@@ -7,6 +7,7 @@
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/util.hpp"
+#include "dumpfloppy/volume.hpp"
 #include "image_builder.hpp"
 
 #include <tui/ansi.h>
@@ -334,4 +335,35 @@ TEST_CASE("86F flux with empty CHS does not FAT-walk the bitstream",
         }
     }
     REQUIRE(saw_chs);
+}
+
+TEST_CASE("volume_bytes prefers assembled_chs over image.bytes", "[volume]")
+{
+    dumpfloppy::analysis a{};
+    a.image.bytes = {1, 2, 3};
+
+    REQUIRE(dumpfloppy::volume_bytes(a).data() == a.image.bytes.data());
+    REQUIRE(dumpfloppy::volume_bytes(a).size() == 3u);
+    REQUIRE(&dumpfloppy::volume_bytes_mut(a) == &a.image.bytes);
+
+    dumpfloppy::sector_store raw = dumpfloppy::make_sector_store(a);
+    REQUIRE(raw.bytes.size() == 3u);
+    REQUIRE(raw.sector_size == dumpfloppy::k_ibm_sector_bytes);
+
+    a.bpb.bytes_per_sector = 1024;
+    raw = dumpfloppy::make_sector_store(a);
+    REQUIRE(raw.sector_size == 1024u);
+
+    a.flux.assembled_chs = {9, 9};
+    REQUIRE(dumpfloppy::volume_bytes(a).data() == a.flux.assembled_chs.data());
+    REQUIRE(dumpfloppy::volume_bytes(a).size() == 2u);
+    REQUIRE(&dumpfloppy::volume_bytes_mut(a) == &a.flux.assembled_chs);
+
+    const dumpfloppy::sector_store chs = dumpfloppy::make_sector_store(a);
+    REQUIRE(chs.sector_size == dumpfloppy::k_ibm_sector_bytes);
+    REQUIRE(chs.bytes.size() == 2u);
+
+    dumpfloppy::volume_bytes_mut(a)[0] = 7;
+    REQUIRE(a.flux.assembled_chs[0] == 7);
+    REQUIRE(a.image.bytes[0] == 1);
 }

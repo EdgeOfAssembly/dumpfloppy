@@ -35,9 +35,9 @@ struct update_options
  * FAT-allocated and not present in any live file or directory chain (a
  * deleted TACTICS.PKG must not zero the live package's FAT).
  *
- * Mutates the FAT volume in @p a (`assembled_chs` when present, otherwise
- * @a image.bytes). Directory size / first-cluster and both FAT copies are
- * kept in sync. Deleted names are never chosen.
+ * Mutates the FAT volume in @p a via @ref volume_bytes_mut (`assembled_chs`
+ * when present, otherwise @a image.bytes). Directory size / first-cluster
+ * and both FAT copies are kept in sync. Deleted names are never chosen.
  *
  * @param[in,out] a   Analysis (volume bytes and directory entries).
  * @param[in]     opt Host files to write in.

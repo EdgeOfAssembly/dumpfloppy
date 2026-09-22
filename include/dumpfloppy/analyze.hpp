@@ -18,7 +18,12 @@
 namespace dumpfloppy
 {
 
-/** @brief Complete dump of one image. */
+/**
+ * @brief Complete dump of one image.
+ *
+ * Logical FAT bytes are @ref volume_bytes / @ref make_sector_store
+ * (assembled IBM CHS when present, else raw @a image.bytes).
+ */
 struct analysis
 {
     floppy_image image{};

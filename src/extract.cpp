@@ -5,11 +5,11 @@
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/util.hpp"
+#include "dumpfloppy/volume.hpp"
 
 #include <filesystem>
 #include <fstream>
 #include <ostream>
-#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -219,6 +219,7 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     int written = 0;
     int matched = 0;
     std::unordered_set<std::string> used_dests;
+    const sector_store store = make_sector_store(a);
     for (const dir_entry& e : a.entries)
     {
         if (!extract_matches(e, opt))
@@ -256,12 +257,8 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
                 return -1;
             }
         }
-        const std::span<const uint8_t> volume =
-            !a.flux.assembled_chs.empty()
-                ? std::span<const uint8_t>(a.flux.assembled_chs)
-                : std::span<const uint8_t>(a.image.bytes);
         const std::vector<uint8_t> bytes =
-            read_file_contents(volume, a.bpb, e);
+            read_file_contents(store.bytes, a.bpb, e);
         std::ofstream out(dest, std::ios::binary | std::ios::trunc);
         if (!out)
         {

@@ -10,6 +10,7 @@
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/util.hpp"
+#include "dumpfloppy/volume.hpp"
 
 #include <algorithm>
 #include <span>
@@ -89,11 +90,8 @@ analysis analyse(floppy_image image)
             "CHS assembly failed; flux bitstream is not a FAT volume");
     }
 
-    std::span<const uint8_t> volume = bytes;
-    if (!a.flux.assembled_chs.empty())
-    {
-        volume = a.flux.assembled_chs;
-    }
+    const sector_store store = make_sector_store(a);
+    const std::span<const uint8_t> volume = store.bytes;
 
     if (a.bpb.looks_valid && !flux_without_chs)
     {

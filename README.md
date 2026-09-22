@@ -43,7 +43,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.12`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.13`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f`.
 
 ```bash
