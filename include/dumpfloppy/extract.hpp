@@ -5,7 +5,7 @@
 #ifndef DUMPFLOPPY_EXTRACT_HPP
 #define DUMPFLOPPY_EXTRACT_HPP
 
-#include "dumpfloppy/analyze.hpp"
+#include "dumpfloppy/types.hpp"
 
 #include <filesystem>
 #include <iosfwd>
@@ -14,6 +14,8 @@
 
 namespace dumpfloppy
 {
+
+struct analysis; /**< Complete type in analyze.hpp. */
 
 /** @brief Extract switch: off by default; empty patterns means every file. */
 struct extract_options

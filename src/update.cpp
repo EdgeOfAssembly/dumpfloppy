@@ -3,12 +3,12 @@
  * @brief FAT12/16 in-place replace, shrink, grow, and live-file relocate.
  */
 #include "dumpfloppy/update.hpp"
+#include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat.hpp"
 #include "dumpfloppy/fat12_codec.h"
 #include "dumpfloppy/util.hpp"
-#include "dumpfloppy/volume.hpp"
 
 #include <algorithm>
 #include <cstddef>

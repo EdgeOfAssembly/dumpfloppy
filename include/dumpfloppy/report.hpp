@@ -5,12 +5,12 @@
 #ifndef DUMPFLOPPY_REPORT_HPP
 #define DUMPFLOPPY_REPORT_HPP
 
-#include "dumpfloppy/analyze.hpp"
-
 #include <iosfwd>
 
 namespace dumpfloppy
 {
+
+struct analysis; /**< Complete type in analyze.hpp. */
 
 /** @brief Rendering switches for a text report. */
 struct report_options

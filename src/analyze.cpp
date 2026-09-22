@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <span>
 #include <unordered_set>
+#include <vector>
 
 namespace dumpfloppy
 {
@@ -250,6 +251,24 @@ analysis analyse(floppy_image image)
     }
 
     return a;
+}
+
+std::span<const uint8_t> volume_bytes(const analysis& a)
+{
+    return make_ibm_store(a.flux.assembled_chs, a.image.bytes,
+                          a.bpb.bytes_per_sector)
+        .bytes;
+}
+
+std::vector<uint8_t>& volume_bytes_mut(analysis& a)
+{
+    return ibm_volume_mut(a.flux.assembled_chs, a.image.bytes);
+}
+
+sector_store make_sector_store(const analysis& a)
+{
+    return make_ibm_store(a.flux.assembled_chs, a.image.bytes,
+                          a.bpb.bytes_per_sector);
 }
 
 } /* namespace dumpfloppy */

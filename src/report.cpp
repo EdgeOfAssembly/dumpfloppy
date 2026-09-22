@@ -3,6 +3,7 @@
  * @brief Colourful floppy secret dump. Deleted names use TUI light-red + bold white.
  */
 #include "dumpfloppy/report.hpp"
+#include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/format.h"

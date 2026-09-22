@@ -350,18 +350,31 @@ TEST_CASE("volume_bytes prefers assembled_chs over image.bytes", "[volume]")
     REQUIRE(raw.bytes.size() == 3u);
     REQUIRE(raw.sector_size == dumpfloppy::k_ibm_sector_bytes);
 
+    const dumpfloppy::sector_store ibm_raw = dumpfloppy::make_ibm_store(
+        a.flux.assembled_chs, a.image.bytes, a.bpb.bytes_per_sector);
+    REQUIRE(ibm_raw.bytes.data() == raw.bytes.data());
+    REQUIRE(ibm_raw.sector_size == raw.sector_size);
+
     a.bpb.bytes_per_sector = 1024;
     raw = dumpfloppy::make_sector_store(a);
     REQUIRE(raw.sector_size == 1024u);
+    REQUIRE(dumpfloppy::make_ibm_store(a.flux.assembled_chs, a.image.bytes,
+                                       a.bpb.bytes_per_sector)
+                .sector_size == 1024u);
 
     a.flux.assembled_chs = {9, 9};
     REQUIRE(dumpfloppy::volume_bytes(a).data() == a.flux.assembled_chs.data());
     REQUIRE(dumpfloppy::volume_bytes(a).size() == 2u);
     REQUIRE(&dumpfloppy::volume_bytes_mut(a) == &a.flux.assembled_chs);
+    REQUIRE(&dumpfloppy::ibm_volume_mut(a.flux.assembled_chs, a.image.bytes) ==
+            &a.flux.assembled_chs);
 
     const dumpfloppy::sector_store chs = dumpfloppy::make_sector_store(a);
     REQUIRE(chs.sector_size == dumpfloppy::k_ibm_sector_bytes);
     REQUIRE(chs.bytes.size() == 2u);
+    REQUIRE(dumpfloppy::make_ibm_store(a.flux.assembled_chs, a.image.bytes,
+                                       a.bpb.bytes_per_sector)
+                .sector_size == dumpfloppy::k_ibm_sector_bytes);
 
     dumpfloppy::volume_bytes_mut(a)[0] = 7;
     REQUIRE(a.flux.assembled_chs[0] == 7);

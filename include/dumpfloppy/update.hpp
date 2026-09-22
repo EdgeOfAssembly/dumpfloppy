@@ -5,8 +5,6 @@
 #ifndef DUMPFLOPPY_UPDATE_HPP
 #define DUMPFLOPPY_UPDATE_HPP
 
-#include "dumpfloppy/analyze.hpp"
-
 #include <filesystem>
 #include <iosfwd>
 #include <string>
@@ -14,6 +12,8 @@
 
 namespace dumpfloppy
 {
+
+struct analysis; /**< Complete type in analyze.hpp. */
 
 /** @brief Update switch: off by default; each host path replaces its 8.3 name. */
 struct update_options

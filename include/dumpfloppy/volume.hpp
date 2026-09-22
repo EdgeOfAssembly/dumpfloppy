@@ -1,14 +1,14 @@
 /**
  * @file volume.hpp
- * @brief Logical FAT volume as a sector-addressable byte store.
+ * @brief Logical IBM PC volume as a sector-addressable byte store.
  *
- * Seam between container/codec and the FAT filesystem: HxC IBM CHS when
- * assembled, otherwise the raw `.img` / `.ima` bytes. Not a D64/CBM parser.
+ * Seam between container/codec and the FAT filesystem: assembled HxC IBM
+ * CHS when non-empty, otherwise the raw `.img` / `.ima` bytes. This header
+ * does not include @c analyze.hpp; analysis adapters live next to
+ * @ref analyse. Not a D64/CBM parser.
  */
 #ifndef DUMPFLOPPY_VOLUME_HPP
 #define DUMPFLOPPY_VOLUME_HPP
-
-#include "dumpfloppy/analyze.hpp"
 
 #include <cstdint>
 #include <span>
@@ -24,9 +24,9 @@ inline constexpr uint32_t k_ibm_sector_bytes = 512u;
  * @brief Sector-addressable logical volume (non-owning).
  *
  * @a bytes is the FAT image @ref analyse / extract / update walk:
- * 512-byte IBM CHS from @a flux.assembled_chs when that vector is
- * non-empty, otherwise @a image.bytes. @a sector_size is 512 for
- * assembled CHS; raw img/ima uses the BPB size when it is non-zero.
+ * 512-byte IBM CHS when that span is non-empty, otherwise raw image
+ * bytes. @a sector_size is 512 for assembled CHS; raw img/ima uses the
+ * BPB size when it is non-zero.
  */
 struct sector_store
 {
@@ -35,58 +35,47 @@ struct sector_store
 };
 
 /**
- * @brief Const view of the logical FAT volume bytes.
- *
- * If @a flux.assembled_chs is non-empty, that vector is the store
- * (512-byte IBM CHS). Else @a image.bytes (raw img/ima, or flux that
- * did not assemble CHS). Same selection as the former inline ternary.
- *
- * @param[in] a Analysis after @ref analyse (or a synthetic test object).
- * @return Non-owning span into @p a; empty if both sources are empty.
- */
-[[nodiscard]] inline std::span<const uint8_t> volume_bytes(const analysis& a)
-{
-    if (!a.flux.assembled_chs.empty())
-    {
-        return a.flux.assembled_chs;
-    }
-    return a.image.bytes;
-}
-
-/**
- * @brief Mutable logical FAT volume (same selection as @ref volume_bytes).
- *
- * Used by `-u` / @ref update_files to patch clusters in place. Callers
- * must not reseat the chosen vector (clearing @a assembled_chs after
- * taking this reference would dangle).
- *
- * @param[in,out] a Analysis whose CHS or raw bytes will be mutated.
- * @return Reference to @a assembled_chs or @a image.bytes.
- */
-[[nodiscard]] inline std::vector<uint8_t>& volume_bytes_mut(analysis& a)
-{
-    if (!a.flux.assembled_chs.empty())
-    {
-        return a.flux.assembled_chs;
-    }
-    return a.image.bytes;
-}
-
-/**
- * @brief Named @ref sector_store wrapping @ref volume_bytes.
+ * @brief Select IBM CHS bytes if non-empty, else raw image bytes.
  *
  * Assembled IBM CHS is always @ref k_ibm_sector_bytes. Raw img/ima uses
- * @a bpb.bytes_per_sector when that field is non-zero, otherwise 512.
+ * @p bpb_bps when that value is non-zero, otherwise 512.
  *
- * @param[in] a Analysis to view.
+ * @param[in] assembled_chs 512-byte IBM CHS from flux; empty → use @p raw.
+ * @param[in] raw           `.img` / `.ima` (or unassembled flux) bytes.
+ * @param[in] bpb_bps       BPB bytes/sector; ignored when CHS is selected.
+ * @return Non-owning store; empty if both sources are empty.
  */
-[[nodiscard]] inline sector_store make_sector_store(const analysis& a)
+[[nodiscard]] inline sector_store make_ibm_store(
+    std::span<const uint8_t> assembled_chs, std::span<const uint8_t> raw,
+    uint32_t bpb_bps)
 {
-    const uint32_t ss = !a.flux.assembled_chs.empty()
-                            ? k_ibm_sector_bytes
-                            : (a.bpb.bytes_per_sector != 0u ? a.bpb.bytes_per_sector
-                                                            : k_ibm_sector_bytes);
-    return sector_store{.bytes = volume_bytes(a), .sector_size = ss};
+    if (!assembled_chs.empty())
+    {
+        return sector_store{.bytes = assembled_chs,
+                            .sector_size = k_ibm_sector_bytes};
+    }
+    const uint32_t ss = (bpb_bps != 0u) ? bpb_bps : k_ibm_sector_bytes;
+    return sector_store{.bytes = raw, .sector_size = ss};
+}
+
+/**
+ * @brief Mutable IBM volume (same CHS-vs-raw rule as @ref make_ibm_store).
+ *
+ * @param[in,out] assembled_chs Flux CHS vector; used when non-empty.
+ * @param[in,out] raw           Image bytes used when @p assembled_chs is empty.
+ * @return Reference to the selected vector.
+ *
+ * @warning Callers must not reseat the chosen vector (clearing CHS after
+ *          taking this reference would dangle).
+ */
+[[nodiscard]] inline std::vector<uint8_t>& ibm_volume_mut(
+    std::vector<uint8_t>& assembled_chs, std::vector<uint8_t>& raw)
+{
+    if (!assembled_chs.empty())
+    {
+        return assembled_chs;
+    }
+    return raw;
 }
 
 } /* namespace dumpfloppy */

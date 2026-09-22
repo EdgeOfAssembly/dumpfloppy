@@ -3,6 +3,7 @@
  * @brief Cluster-walk extract of 8.3 files, including deleted names.
  */
 #include "dumpfloppy/extract.hpp"
+#include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/volume.hpp"
