@@ -74,7 +74,8 @@ SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
 SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \
-            tests/test_format.cpp tests/test_update.cpp tests/test_deleted.cpp
+            tests/test_format.cpp tests/test_update.cpp tests/test_deleted.cpp \
+            tests/test_mfm.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)

@@ -3,7 +3,10 @@
  * @brief HxC MFM track walk, IBM IDAM/DAM CRC, boot protection patterns.
  */
 #include "dumpfloppy/ibm_mfm.hpp"
+#include "dumpfloppy/bpb.hpp"
+#include "dumpfloppy/image.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -16,6 +19,246 @@ namespace
 {
 
 constexpr uint8_t k_sync[16] = {0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1};
+
+/** IBM PC floppy SPT floor used for CHS assembly (160K is 8 spt). */
+constexpr uint32_t k_min_spt = 8;
+/** DMF 21 spt / 2.88M ED 36 spt; HLS IDs such as 241 stay outside this. */
+constexpr uint32_t k_max_spt = 36;
+/** Modal heads never exceed DS; a lone head=2 IDAM must not raise geometry. */
+constexpr uint32_t k_max_heads = 2;
+
+struct chs_policy
+{
+    uint32_t cyls = 0;
+    uint32_t heads = 0;
+    uint32_t spt = 0;
+    uint32_t cap_sectors = 0; /**< 0 = only @ref k_max_image_bytes. */
+};
+
+bool is_std_512(const ibm_sector& s)
+{
+    return s.bytes == 512u && s.data.size() >= 512u;
+}
+
+bool geometry_from_bpb(std::span<const uint8_t> boot, chs_policy& g)
+{
+    const bpb_info b = parse_bpb(boot);
+    if (!b.looks_valid || b.bytes_per_sector != 512u)
+    {
+        return false;
+    }
+    if (b.sectors_per_track < k_min_spt || b.sectors_per_track > k_max_spt)
+    {
+        return false;
+    }
+    if (b.head_count < 1u || b.head_count > k_max_heads)
+    {
+        return false;
+    }
+    g.spt = b.sectors_per_track;
+    g.heads = b.head_count;
+    g.cap_sectors = b.total_sectors;
+    return true;
+}
+
+void geometry_from_modal(const std::vector<ibm_sector>& secs, chs_policy& g)
+{
+    struct track_occ
+    {
+        uint32_t key = 0;
+        uint64_t mask = 0;
+    };
+    std::vector<track_occ> tracks;
+    for (const ibm_sector& s : secs)
+    {
+        if (!is_std_512(s) || s.sector < 1u || s.sector > k_max_spt)
+        {
+            continue;
+        }
+        const uint32_t key =
+            (static_cast<uint32_t>(s.cyl) << 8) | static_cast<uint32_t>(s.head);
+        track_occ* row = nullptr;
+        for (track_occ& t : tracks)
+        {
+            if (t.key == key)
+            {
+                row = &t;
+                break;
+            }
+        }
+        if (row == nullptr)
+        {
+            tracks.push_back(track_occ{key, 0});
+            row = &tracks.back();
+        }
+        row->mask |= (uint64_t{1} << s.sector);
+    }
+
+    uint32_t hist[k_max_spt + 1u] = {};
+    for (const track_occ& t : tracks)
+    {
+        uint32_t n = 0;
+        for (uint32_t sec = 1; sec <= k_max_spt; ++sec)
+        {
+            if ((t.mask & (uint64_t{1} << sec)) == 0ull)
+            {
+                break;
+            }
+            n = sec;
+        }
+        if (n >= k_min_spt)
+        {
+            hist[n] += 1u;
+        }
+    }
+    uint32_t best_n = 0;
+    uint32_t best_c = 0;
+    for (uint32_t n = k_min_spt; n <= k_max_spt; ++n)
+    {
+        if (hist[n] > best_c)
+        {
+            best_c = hist[n];
+            best_n = n;
+        }
+    }
+    g.spt = best_n;
+    if (g.spt == 0u)
+    {
+        g.heads = 0;
+        return;
+    }
+
+    uint32_t head_hits[256] = {};
+    uint32_t n_in = 0;
+    for (const ibm_sector& s : secs)
+    {
+        if (!is_std_512(s) || s.sector < 1u || s.sector > g.spt)
+        {
+            continue;
+        }
+        head_hits[s.head] += 1u;
+        n_in += 1u;
+    }
+    const uint32_t min_hits = (n_in >= 16u) ? 2u : 1u;
+    g.heads = 1u;
+    if (head_hits[1] >= min_hits)
+    {
+        g.heads = 2u;
+    }
+}
+
+void count_cylinders(const std::vector<ibm_sector>& secs, chs_policy& g)
+{
+    if (g.spt == 0u || g.heads == 0u)
+    {
+        g.cyls = 0;
+        return;
+    }
+    uint32_t cyl_hits[256] = {};
+    for (const ibm_sector& s : secs)
+    {
+        if (!is_std_512(s) || s.sector < 1u || s.sector > g.spt ||
+            s.head >= g.heads)
+        {
+            continue;
+        }
+        cyl_hits[s.cyl] += 1u;
+    }
+    const uint32_t rich = (g.spt < 8u) ? g.spt : 8u;
+    bool any_rich = false;
+    uint32_t max_c = 0;
+    for (uint32_t c = 0; c < 256u; ++c)
+    {
+        if (cyl_hits[c] >= rich)
+        {
+            any_rich = true;
+            max_c = c;
+        }
+    }
+    if (!any_rich)
+    {
+        max_c = 0;
+        bool any = false;
+        for (uint32_t c = 0; c < 256u; ++c)
+        {
+            if (cyl_hits[c] > 0u)
+            {
+                any = true;
+                max_c = c;
+            }
+        }
+        if (!any)
+        {
+            g.cyls = 0;
+            return;
+        }
+    }
+    g.cyls = max_c + 1u;
+}
+
+chs_policy choose_chs_policy(const flux_disk& d)
+{
+    chs_policy g{};
+    if (!geometry_from_bpb(d.boot, g))
+    {
+        geometry_from_modal(d.sectors, g);
+    }
+    count_cylinders(d.sectors, g);
+    if (g.cyls == 0u && g.spt >= k_min_spt && g.heads != 0u && !d.boot.empty())
+    {
+        g.cyls = 1u;
+    }
+    return g;
+}
+
+void assemble_chs(flux_disk& d, const chs_policy& g)
+{
+    d.chs_cyls = 0;
+    d.chs_heads = 0;
+    d.chs_spt = 0;
+    d.assembled_chs.clear();
+    if (g.spt < k_min_spt || g.heads == 0u || g.cyls == 0u)
+    {
+        return;
+    }
+    const uint64_t stride = static_cast<uint64_t>(g.heads) * g.spt;
+    uint64_t nsec = static_cast<uint64_t>(g.cyls) * stride;
+    uint64_t cap_n = k_max_image_bytes / 512u;
+    if (g.cap_sectors != 0u)
+    {
+        cap_n = std::min(cap_n, static_cast<uint64_t>(g.cap_sectors));
+    }
+    if (nsec > cap_n)
+    {
+        nsec = cap_n;
+    }
+    if (nsec == 0u)
+    {
+        return;
+    }
+    d.chs_spt = g.spt;
+    d.chs_heads = g.heads;
+    const uint32_t cyls_fit = static_cast<uint32_t>(nsec / stride);
+    d.chs_cyls = (cyls_fit != 0u) ? cyls_fit : 1u;
+    d.assembled_chs.assign(static_cast<size_t>(nsec) * 512u, 0);
+    const uint32_t heads = g.heads;
+    const uint32_t spt = g.spt;
+    for (const ibm_sector& s : d.sectors)
+    {
+        if (!is_std_512(s) || s.sector < 1u || s.sector > spt || s.head >= heads)
+        {
+            continue;
+        }
+        const size_t lba = (static_cast<size_t>(s.cyl) * heads + s.head) * spt +
+                           (s.sector - 1u);
+        const size_t off = lba * 512u;
+        if (off + 512u > d.assembled_chs.size())
+        {
+            continue;
+        }
+        std::memcpy(d.assembled_chs.data() + off, s.data.data(), 512u);
+    }
+}
 
 uint16_t crc16_ibm(const uint8_t* data, size_t n)
 {
@@ -169,12 +412,14 @@ void scan_track(std::span<const uint8_t> blob, std::vector<ibm_sector>& out,
     }
 }
 
-void fill_protection(flux_disk& d)
+void fill_protection(flux_disk& d, uint32_t spt, uint32_t heads)
 {
     d.protection.clear();
     unsigned long_n = 0;
     unsigned bad_dam = 0;
     unsigned bad_idam = 0;
+    const uint32_t spt_lim = (spt >= k_min_spt) ? spt : k_max_spt;
+    const uint32_t head_lim = (heads >= 1u) ? heads : k_max_heads;
     std::vector<uint32_t> seen_ids;
     auto id_key = [](const ibm_sector& s) -> uint32_t
     {
@@ -198,7 +443,7 @@ void fill_protection(flux_disk& d)
             continue;
         }
         seen_ids.push_back(key);
-        if (s.sector < 1u || s.sector > 9u)
+        if (s.sector < 1u || s.sector > spt_lim || s.head >= head_lim)
         {
             char buf[96] = {};
             std::snprintf(buf, sizeof(buf),
@@ -307,6 +552,13 @@ bool encode_dam_payload(std::vector<uint8_t>& mfm, const ibm_sector& s,
 
 } /* namespace */
 
+void finish_ibm_flux(flux_disk& disk)
+{
+    const chs_policy g = choose_chs_policy(disk);
+    fill_protection(disk, g.spt, g.heads);
+    assemble_chs(disk, g);
+}
+
 flux_disk decode_hxc_mfm(std::span<const uint8_t> file)
 {
     flux_disk d{};
@@ -347,53 +599,8 @@ flux_disk decode_hxc_mfm(std::span<const uint8_t> file)
         }
         scan_track(file.subspan(toff, tsize), d.sectors, &d.boot, toff);
     }
-    fill_protection(d);
+    finish_ibm_flux(d);
     add_boot_protection(d, d.boot);
-    {
-        uint32_t max_c = 0;
-        uint32_t max_h = 0;
-        uint32_t max_s = 0;
-        for (const ibm_sector& s : d.sectors)
-        {
-            if (s.bytes == 512u && s.sector >= 1u && s.sector <= 18u &&
-                s.data.size() >= 512u)
-            {
-                if (s.cyl > max_c)
-                {
-                    max_c = s.cyl;
-                }
-                if (s.head > max_h)
-                {
-                    max_h = s.head;
-                }
-                if (s.sector > max_s)
-                {
-                    max_s = s.sector;
-                }
-            }
-        }
-        if (max_s >= 8u)
-        {
-            const uint32_t cyls = max_c + 1u;
-            const uint32_t heads = max_h + 1u;
-            const uint32_t spt = max_s;
-            d.chs_cyls = cyls;
-            d.chs_heads = heads;
-            d.chs_spt = spt;
-            d.assembled_chs.assign(static_cast<size_t>(cyls * heads * spt) * 512u, 0);
-            for (const ibm_sector& s : d.sectors)
-            {
-                if (s.bytes != 512u || s.sector < 1u || s.sector > spt ||
-                    s.data.size() < 512u)
-                {
-                    continue;
-                }
-                const size_t lba = (static_cast<size_t>(s.cyl) * heads + s.head) * spt +
-                                   (s.sector - 1u);
-                std::memcpy(d.assembled_chs.data() + lba * 512u, s.data.data(), 512u);
-            }
-        }
-    }
     if (d.boot.size() >= 512u)
     {
         const bool aa55 = d.boot[510] == 0x55u && d.boot[511] == 0xAAu;
