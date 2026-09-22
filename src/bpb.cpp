@@ -5,7 +5,10 @@
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/util.hpp"
 
+#include <cstdint>
 #include <cstdio>
+#include <string>
+#include <string_view>
 
 namespace dumpfloppy
 {
@@ -21,6 +24,112 @@ bool plausible_bps(uint16_t bps)
 {
     return bps == 128u || bps == 256u || bps == 512u || bps == 1024u ||
            bps == 2048u || bps == 4096u;
+}
+
+/**
+ * @brief True when OEM names a DOS 3.0–3.3 volume (no serial-only EBPB).
+ *
+ * Compaq DOS 3.31 with a real 0x28 and OEM `IBM  3.3` is rejected on
+ * purpose: prefer no serial over inventing one from a 3.x stub.
+ */
+bool oem_looks_dos3x(std::string_view oem)
+{
+    const std::string u = ascii_lower(oem);
+    return u.find("3.3") != std::string::npos ||
+           u.find("3.2") != std::string::npos ||
+           u.find("3.1") != std::string::npos ||
+           u.find("3.0") != std::string::npos;
+}
+
+/**
+ * @brief True when the initial jump lands at or past the 0x29 EBPB (0x3E).
+ *
+ * DOS 3.3 typically uses `EB 34` (dest 0x36). DOS 4+ uses `EB 3C` (0x3E).
+ */
+bool jump_skips_full_ebpb(const uint8_t jump[3])
+{
+    if (jump[0] == 0xEBu)
+    {
+        const int dest = 2 + static_cast<int>(static_cast<int8_t>(jump[1]));
+        return dest >= 0x3E;
+    }
+    if (jump[0] == 0xE9u)
+    {
+        const auto rel = static_cast<int16_t>(
+            static_cast<uint16_t>(jump[1]) |
+            (static_cast<uint16_t>(jump[2]) << 8));
+        const int dest = 3 + static_cast<int>(rel);
+        return dest >= 0x3E;
+    }
+    return false;
+}
+
+/**
+ * @brief Jump + OEM look like a DOS 4+ boot that reserved space for an EBPB.
+ */
+bool jump_oem_looks_dos4(const bpb_info& bpb)
+{
+    return jump_skips_full_ebpb(bpb.jump) && is_printable_ascii(bpb.oem) &&
+           !oem_looks_dos3x(bpb.oem);
+}
+
+/**
+ * @brief Bytes 0x27–0x2A look like a FORMAT volume id, not a boot-code tail.
+ *
+ * All-zero is padding (Elvira-style). The other patterns are the IBM PC
+ * loader that sits at 0x24 when 0x26 is `SUB r/m8,r8` rather than a signature.
+ */
+bool serial_field_plausible(std::span<const uint8_t> boot)
+{
+    const uint8_t a = boot[0x27];
+    const uint8_t b = boot[0x28];
+    const uint8_t c = boot[0x29];
+    const uint8_t d = boot[0x2A];
+    if (a == 0u && b == 0u && c == 0u && d == 0u)
+    {
+        return false;
+    }
+    /* MOV SS,AX; MOV SP,imm16 */
+    if (a == 0x8Eu && b == 0xD0u && c == 0xBCu)
+    {
+        return false;
+    }
+    /* XOR AX,AX; MOV SS,AX */
+    if (a == 0x33u && b == 0xC0u && c == 0x8Eu && d == 0xD0u)
+    {
+        return false;
+    }
+    /* ModR/M + disp16 for SUB [0x0078], r8 (IVT 1Eh diskette params). */
+    if (a == 0x06u && b == 0x78u && c == 0x00u)
+    {
+        return false;
+    }
+    /* SP=7C00; PUSH SS; POP ES */
+    if (a == 0x00u && b == 0x7Cu && c == 0x16u && d == 0x07u)
+    {
+        return false;
+    }
+    /* CLI; XOR AX,AX */
+    if (a == 0xFAu && b == 0x33u && c == 0xC0u)
+    {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @brief Gate for signature 0x28 (see parse_ebpb Doxygen).
+ */
+bool ebpb28_is_confident(std::span<const uint8_t> boot, const bpb_info& bpb)
+{
+    const bool serial_ok = serial_field_plausible(boot);
+    const bool dos4 = jump_oem_looks_dos4(bpb);
+    const uint8_t drive = boot[0x24];
+    const bool prefix = (drive == 0x00u || drive == 0x80u) && boot[0x25] == 0u;
+    const fat_kind kind = fat_kind_from_bpb(bpb);
+    const bool fat12_like =
+        kind == fat_kind::fat12 || kind == fat_kind::unknown;
+    return serial_ok && (dos4 || (prefix && !fat12_like));
 }
 
 } /* namespace */
@@ -90,7 +199,6 @@ bpb_info parse_bpb(std::span<const uint8_t> boot)
 ebpb_info parse_ebpb(std::span<const uint8_t> boot, const bpb_info& bpb)
 {
     ebpb_info e{};
-    (void)bpb;
     if (boot.size() < 0x3Eu)
     {
         return e;
@@ -99,6 +207,12 @@ ebpb_info parse_ebpb(std::span<const uint8_t> boot, const bpb_info& bpb)
     const uint8_t sig = boot[0x26];
     if (sig != k_ebpb_sig_28 && sig != k_ebpb_sig_29)
     {
+        return e;
+    }
+
+    if (sig == k_ebpb_sig_28 && !ebpb28_is_confident(boot, bpb))
+    {
+        /* 0x28 collided with DOS 3.x `SUB r/m8,r8` — no invented serial. */
         return e;
     }
 
@@ -135,7 +249,7 @@ ebpb_info parse_ebpb(std::span<const uint8_t> boot, const bpb_info& bpb)
     }
     else
     {
-        e.confident = true; /* 0x28 is serial-only; still a real EBPB. */
+        e.confident = true;
     }
     return e;
 }

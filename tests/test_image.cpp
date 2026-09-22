@@ -12,6 +12,7 @@
 #include <tui/ansi.h>
 
 #include <catch2/catch_test_macros.hpp>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -47,6 +48,10 @@ TEST_CASE("FAT12 sample exposes serial, both labels, and deleted file", "[image]
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
     REQUIRE(a.bpb.looks_valid);
     REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
+    REQUIRE(a.ebpb.present);
+    REQUIRE(a.ebpb.confident);
+    REQUIRE(a.ebpb.has_serial);
+    REQUIRE(a.ebpb.boot_signature == dumpfloppy::k_ebpb_sig_29);
     REQUIRE(a.volume.serial_text == "1234-ABCD");
     REQUIRE(a.volume.label_ebpb == "TESTVOL");
     REQUIRE_FALSE(a.volume.label_root.empty());
@@ -83,8 +88,91 @@ TEST_CASE("DOS 3.3 BPB does not invent a volume serial", "[image]")
     REQUIRE(loaded);
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
     REQUIRE_FALSE(a.ebpb.present);
+    REQUIRE_FALSE(a.ebpb.has_serial);
+    REQUIRE_FALSE(a.ebpb.confident);
     REQUIRE(a.volume.serial_text.empty());
     REQUIRE(a.volume.label_root.find("TESTVOL") != std::string::npos);
+}
+
+TEST_CASE("DOS 3.3 boot opcode 0x28 is not an EBPB serial", "[image][ebpb]")
+{
+    /* Classic PC-DOS 3.3: JMP to 0x36, OEM MSDOS3.3, stub at 0x24.
+       0x28 is SUB r/m8,r8 (SUB [0x0078], AL) — not a signature. */
+    auto bytes = dumpfloppy_test::make_fat12_sample(0xDEADBEEFu, false);
+    bytes[0] = 0xEB;
+    bytes[1] = 0x34;
+    bytes[2] = 0x90;
+    std::memcpy(bytes.data() + 3, "MSDOS3.3", 8);
+    bytes[0x24] = 0xFA; /* CLI */
+    bytes[0x25] = 0x33; /* XOR … (modrm follows at 0x26 in some stubs) */
+    bytes[0x26] = 0x28; /* SUB r/m8, r8 */
+    bytes[0x27] = 0x06;
+    bytes[0x28] = 0x78;
+    bytes[0x29] = 0x00;
+    bytes[0x2A] = 0x8E;
+
+    const auto path = write_temp(bytes, "dos33-sub28.img");
+    auto loaded = dumpfloppy::load_image(path);
+    REQUIRE(loaded);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.bpb.looks_valid);
+    REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
+    REQUIRE_FALSE(a.ebpb.present);
+    REQUIRE_FALSE(a.ebpb.has_serial);
+    REQUIRE_FALSE(a.ebpb.confident);
+    REQUIRE(a.volume.serial_text.empty());
+    REQUIRE(a.volume.label_root.find("TESTVOL") != std::string::npos);
+}
+
+TEST_CASE("DOS 3.3 OEM with 0x28 in BPB padding is not a serial", "[image][ebpb]")
+{
+    /* Elvira-style: EB 34 / MSDOS3.3, zeros then a planted 0x28 + 1234-ABCD.
+       Drive/NT look like an EBPB prefix; OEM still says 3.3. */
+    auto bytes = dumpfloppy_test::make_fat12_sample(0x1234ABCDu, false);
+    bytes[0] = 0xEB;
+    bytes[1] = 0x34;
+    bytes[2] = 0x90;
+    std::memcpy(bytes.data() + 3, "MSDOS3.3", 8);
+    bytes[0x24] = 0x00;
+    bytes[0x25] = 0x00;
+    bytes[0x26] = 0x28;
+    bytes[0x27] = 0xCD;
+    bytes[0x28] = 0xAB;
+    bytes[0x29] = 0x34;
+    bytes[0x2A] = 0x12;
+
+    const auto path = write_temp(bytes, "dos33-pad28.img");
+    auto loaded = dumpfloppy::load_image(path);
+    REQUIRE(loaded);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE_FALSE(a.ebpb.present);
+    REQUIRE_FALSE(a.ebpb.has_serial);
+    REQUIRE_FALSE(a.ebpb.confident);
+    REQUIRE(a.volume.serial_text.empty());
+}
+
+TEST_CASE("DOS 4 serial-only EBPB 0x28 still yields a serial", "[image][ebpb]")
+{
+    auto bytes = dumpfloppy_test::make_fat12_sample(0x1234ABCDu, false);
+    std::memcpy(bytes.data() + 3, "MSDOS4.0", 8);
+    bytes[0x24] = 0x00;
+    bytes[0x25] = 0x00;
+    bytes[0x26] = 0x28;
+    bytes[0x27] = 0xCD;
+    bytes[0x28] = 0xAB;
+    bytes[0x29] = 0x34;
+    bytes[0x2A] = 0x12;
+
+    const auto path = write_temp(bytes, "dos4-ebpb28.img");
+    auto loaded = dumpfloppy::load_image(path);
+    REQUIRE(loaded);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.ebpb.present);
+    REQUIRE(a.ebpb.confident);
+    REQUIRE(a.ebpb.has_serial);
+    REQUIRE(a.ebpb.boot_signature == dumpfloppy::k_ebpb_sig_28);
+    REQUIRE(a.volume.serial_text == "1234-ABCD");
+    REQUIRE(a.volume.label_ebpb.empty());
 }
 
 TEST_CASE("custom booter is classified as a booter disk", "[image]")
