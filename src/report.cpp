@@ -139,7 +139,7 @@ std::string field(std::string_view s, size_t width)
 /*
  * Inner widths = max(header, content); each field then adds 2 spaces.
  * Name 12, Attributes 10, Size 7 (floppy files), Cluster 7, Modified 19,
- * Type 24 (libmagic MIME), Checksum 32 (MD5 hex).
+ * Type 4 (DATA/DIR/VOL stub), Checksum 32 (MD5 hex).
  */
 constexpr size_t k_w_mark = 1;
 constexpr size_t k_w_name = 12;
@@ -147,7 +147,7 @@ constexpr size_t k_w_attr = 10;
 constexpr size_t k_w_size = 7;
 constexpr size_t k_w_cluster = 7;
 constexpr size_t k_w_modified = 19;
-constexpr size_t k_w_type = 24;
+constexpr size_t k_w_type = 4;
 constexpr size_t k_w_sum = 32;
 
 std::string directory_header()
@@ -170,7 +170,7 @@ std::string entry_line(const dir_entry& e)
        << field(e.name_83, k_w_name) << field(format_attributes(e.attributes), k_w_attr)
        << field(std::to_string(e.size), k_w_size)
        << field(std::to_string(e.first_cluster), k_w_cluster)
-       << field(modified, k_w_modified) << field(e.mime, k_w_type)
+       << field(modified, k_w_modified) << field(e.type, k_w_type)
        << field(e.md5, k_w_sum);
     if (!e.notes.empty())
     {

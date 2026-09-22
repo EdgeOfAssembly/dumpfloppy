@@ -6,7 +6,6 @@
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat12_codec.h"
-#include "dumpfloppy/identify.hpp"
 #include "dumpfloppy/util.hpp"
 
 #include <algorithm>
@@ -98,18 +97,18 @@ analysis analyse(floppy_image image)
                 if (e.name_83 == "." || e.name_83 == ".." ||
                     (e.attributes & k_attr_directory) != 0u)
                 {
-                    e.mime = "inode/directory";
+                    e.type = "DIR";
                     continue;
                 }
                 if ((e.attributes & k_attr_volume) != 0u)
                 {
-                    e.mime = "volume";
+                    e.type = "VOL";
                     continue;
                 }
                 const std::vector<uint8_t> payload =
                     read_file_contents(bytes, a.bpb, e);
                 e.md5 = md5_hex(payload);
-                e.mime = mime_type(payload);
+                e.type = "DATA";
             }
 
             std::unordered_set<uint16_t> used;

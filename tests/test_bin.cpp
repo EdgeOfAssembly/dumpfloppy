@@ -49,13 +49,13 @@ const char* bin_or_skip()
 
 } /* namespace */
 
-TEST_CASE("binary -v prints dumpfloppy 0.3", "[cli][bin]")
+TEST_CASE("binary -v prints dumpfloppy 0.4", "[cli][bin]")
 {
     const char* bin = bin_or_skip();
     int rc = 0;
     const std::string out = slurp_popen(std::string(bin) + " -v", rc);
     REQUIRE(rc == 0);
-    REQUIRE(out.find("dumpfloppy 0.3") != std::string::npos);
+    REQUIRE(out.find("dumpfloppy 0.4") != std::string::npos);
 }
 
 TEST_CASE("binary --version matches -v", "[cli][bin]")

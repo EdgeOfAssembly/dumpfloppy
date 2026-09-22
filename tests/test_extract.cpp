@@ -1,6 +1,6 @@
 /**
  * @file test_extract.cpp
- * @brief Glob matching, cluster-walk extract, MD5 / MIME identity.
+ * @brief Glob matching, cluster-walk extract, MD5 identity.
  */
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/extract.hpp"
@@ -105,7 +105,7 @@ TEST_CASE("extract glob selects a subset", "[extract]")
     REQUIRE_FALSE(std::filesystem::exists(dest / "?ONE.TXT"));
 }
 
-TEST_CASE("analysis fills MD5 and MIME for payloads", "[extract][identity]")
+TEST_CASE("analysis fills MD5 and Type DATA for payloads", "[extract][identity]")
 {
     const auto bytes = dumpfloppy_test::make_fat12_sample();
     const auto img = write_temp(bytes, "ident.ima");
@@ -119,7 +119,11 @@ TEST_CASE("analysis fills MD5 and MIME for payloads", "[extract][identity]")
         {
             saw = true;
             REQUIRE(e.md5 == "ec252e95cb88a8cb5c9682cd892a0ccf");
-            REQUIRE(e.mime == "text/plain");
+            REQUIRE(e.type == "DATA");
+        }
+        if (e.name_83 == "TESTVOL")
+        {
+            REQUIRE(e.type == "VOL");
         }
     }
     REQUIRE(saw);
