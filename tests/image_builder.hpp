@@ -26,6 +26,8 @@ inline constexpr uint8_t k_media = 0xF8;
 inline constexpr uint16_t k_spf = 1;
 inline constexpr uint16_t k_spt = 8;
 inline constexpr uint16_t k_heads = 1;
+/** Inclusive last data cluster on the 64-sector geometry (clusters 2..61). */
+inline constexpr uint32_t k_last_cluster = 61;
 
 inline void poke_le16(uint8_t* p, uint16_t v)
 {
@@ -46,6 +48,90 @@ inline void put_name11(uint8_t* e, const char* name11)
     std::memset(e, ' ', 11);
     const size_t n = std::strlen(name11);
     std::memcpy(e, name11, n > 11u ? 11u : n);
+}
+
+inline void write_min_fat12_boot(uint8_t* b)
+{
+    b[0] = 0xEB;
+    b[1] = 0x3C;
+    b[2] = 0x90;
+    std::memcpy(b + 3, "DUMPFLPY", 8);
+    poke_le16(b + 11, k_bps);
+    b[13] = k_spc;
+    poke_le16(b + 14, k_reserved);
+    b[16] = k_fats;
+    poke_le16(b + 17, k_root_ent);
+    poke_le16(b + 19, k_total_sec);
+    b[21] = k_media;
+    poke_le16(b + 22, k_spf);
+    poke_le16(b + 24, k_spt);
+    poke_le16(b + 26, k_heads);
+    b[510] = 0x55;
+    b[511] = 0xAA;
+}
+
+inline size_t fat12_fat_len()
+{
+    return static_cast<size_t>(k_spf) * k_bps;
+}
+
+inline uint8_t* fat12_fat0(std::vector<uint8_t>& img)
+{
+    return img.data() + static_cast<size_t>(k_reserved) * k_bps;
+}
+
+inline uint8_t* fat12_root(std::vector<uint8_t>& img)
+{
+    return fat12_fat0(img) + static_cast<size_t>(k_fats) * fat12_fat_len();
+}
+
+inline size_t fat12_data_off()
+{
+    return static_cast<size_t>(k_reserved + k_fats * k_spf + 1u) * k_bps;
+}
+
+inline void fat12_init_media(uint8_t* fat0, size_t fat_len)
+{
+    fat12_entry_set(fat0, fat_len, 0, static_cast<uint16_t>(0xF00u | k_media));
+    fat12_entry_set(fat0, fat_len, 1, 0xFFF);
+}
+
+inline void fat12_chain(uint8_t* fat0, size_t fat_len, uint32_t first, uint32_t last)
+{
+    for (uint32_t c = first; c < last; ++c)
+    {
+        fat12_entry_set(fat0, fat_len, c, static_cast<uint16_t>(c + 1u));
+    }
+    fat12_entry_set(fat0, fat_len, last, 0xFFF);
+}
+
+inline void fat12_mirror_fat1(std::vector<uint8_t>& img)
+{
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t n = fat12_fat_len();
+    std::memcpy(fat0 + n, fat0, n);
+}
+
+inline void put_file_dirent(uint8_t* e, const char* name11, uint16_t first, uint32_t size,
+                            bool deleted = false)
+{
+    put_name11(e, name11);
+    e[11] = 0x20;
+    poke_le16(e + 26, first);
+    poke_le32(e + 28, size);
+    if (deleted)
+    {
+        e[0] = 0xE5;
+    }
+}
+
+/** @brief Distinctive 600-byte live TACTICS.PKG payload for reuse fixtures. */
+inline std::vector<uint8_t> tactics_live_bytes()
+{
+    std::vector<uint8_t> p(600, static_cast<uint8_t>('T'));
+    const char tag[] = "TACTICS-LIVE";
+    std::memcpy(p.data(), tag, sizeof(tag) - 1u);
+    return p;
 }
 
 /**
@@ -213,6 +299,90 @@ inline std::vector<uint8_t> make_fat12_full()
     poke_le16(hello + 26, 2);
     poke_le32(hello + 28, 60u * k_bps);
     std::memset(root + 64, 0, 32); /* erase deleted GONE.TXT */
+    return img;
+}
+
+/**
+ * @brief Live TACTICS.PKG + deleted dirent sharing `first_cluster` (Star Control).
+ *
+ * Clusters 2–3 hold the live 600-byte package. Deleted `?ACTICS.PKG` names
+ * cluster 2 as well, so a naive FAT walk of the deleted slot follows the live
+ * chain. HELLO.TXT occupies the last cluster (61). FILLER.BIN takes 4–60.
+ * There are no free clusters: growing HELLO must go through reclaim and must
+ * not `fat_set(0)` on TACTICS's clusters.
+ */
+inline std::vector<uint8_t> make_fat12_tactics_reuse()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+    write_min_fat12_boot(img.data());
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_init_media(fat0, fat_len);
+    fat12_chain(fat0, fat_len, 2, 3);                 /* TACTICS.PKG */
+    fat12_chain(fat0, fat_len, 4, 60);                /* FILLER.BIN */
+    fat12_entry_set(fat0, fat_len, 61, 0xFFF);        /* HELLO.TXT */
+    fat12_mirror_fat1(img);
+
+    uint8_t* root = fat12_root(img);
+    const std::vector<uint8_t> tactics = tactics_live_bytes();
+    put_file_dirent(root, "TACTICS PKG", 2, static_cast<uint32_t>(tactics.size()));
+    put_file_dirent(root + 32, "TACTICS PKG", 2, 400, true);
+    put_file_dirent(root + 64, "HELLO   TXT", 61, 14);
+    put_file_dirent(root + 96, "FILLER  BIN", 4, 57u * k_bps);
+
+    const size_t data = fat12_data_off();
+    std::memcpy(img.data() + data, tactics.data(), tactics.size());
+    std::memcpy(img.data() + data + static_cast<size_t>(61u - 2u) * k_bps, "Hello, floppy\n",
+                14);
+    return img;
+}
+
+/**
+ * @brief Deleted GONE.TXT still owns cluster 3; the rest of the disk is full.
+ *
+ * Growing HELLO.TXT needs that orphan cluster. Reclaim must free it (it is
+ * not live-owned) so the grow can succeed.
+ */
+inline std::vector<uint8_t> make_fat12_orphan_tight()
+{
+    std::vector<uint8_t> img = make_fat12_sample();
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_chain(fat0, fat_len, 4, k_last_cluster);
+    fat12_mirror_fat1(img);
+    uint8_t* root = fat12_root(img);
+    put_file_dirent(root + 96, "FILLER  BIN", 4,
+                    (k_last_cluster - 4u + 1u) * k_bps);
+    return img;
+}
+
+/**
+ * @brief FILEA (cluster 2) blocked by a 10-cluster FILEB with only 5 free.
+ *
+ * Growing FILEA wants cluster 3. Relocating FILEB needs 10 free clusters and
+ * only 5 exist, so relocate must fail and the grow must abort.
+ */
+inline std::vector<uint8_t> make_fat12_relocate_tight()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+    write_min_fat12_boot(img.data());
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_init_media(fat0, fat_len);
+    fat12_entry_set(fat0, fat_len, 2, 0xFFF);         /* FILEA.TXT */
+    fat12_chain(fat0, fat_len, 3, 12);                /* FILEB.TXT */
+    fat12_chain(fat0, fat_len, 13, 56);               /* FILLER.BIN */
+    /* 57–61 left free (5 clusters). */
+    fat12_mirror_fat1(img);
+
+    uint8_t* root = fat12_root(img);
+    put_file_dirent(root, "FILEA   TXT", 2, 10);
+    put_file_dirent(root + 32, "FILEB   TXT", 3, 10);
+    put_file_dirent(root + 64, "FILLER  BIN", 13, 44u * k_bps);
+
+    const size_t data = fat12_data_off();
+    std::memcpy(img.data() + data, "FILEA-DATA", 10);
+    std::memcpy(img.data() + data + k_bps, "FILEB-DATA", 10);
     return img;
 }
 

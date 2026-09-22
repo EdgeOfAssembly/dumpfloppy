@@ -16,6 +16,7 @@
 #include <fstream>
 #include <ostream>
 #include <span>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -57,6 +58,40 @@ void poke_le32(uint8_t* p, uint32_t v)
         return fat12_is_free(v) != 0;
     }
     return v == 0u;
+}
+
+/**
+ * @brief True when FAT marks @p cluster in-use (next/EOC), not free/bad/reserved.
+ *
+ * @param[in] fat     FAT0 bytes.
+ * @param[in] kind    FAT12 or FAT16.
+ * @param[in] cluster Cluster index.
+ *
+ * @retval true  Allocated to a chain (including EOC).
+ * @retval false Free, bad, reserved, or unreadable.
+ */
+[[nodiscard]] bool cluster_is_allocated(std::span<const uint8_t> fat, fat_kind kind,
+                                        uint32_t cluster)
+{
+    uint16_t v = 0;
+    if (!fat_get(fat, kind, cluster, v))
+    {
+        return false;
+    }
+    if (kind == fat_kind::fat12)
+    {
+        return fat12_is_free(v) == 0 && fat12_is_bad(v) == 0 &&
+               fat12_is_reserved(v) == 0;
+    }
+    if (v == 0u || v == 0xFFF7u)
+    {
+        return false;
+    }
+    if (v >= 0xFFF0u && v <= 0xFFF6u)
+    {
+        return false;
+    }
+    return true;
 }
 
 void free_chain(std::span<uint8_t> fat, fat_kind kind, const std::vector<uint16_t>& chain)
@@ -210,6 +245,25 @@ std::vector<uint16_t> collect_free(std::span<const uint8_t> fat, fat_kind kind,
     return out;
 }
 
+/**
+ * @brief Move a live file onto free clusters so a neighbour can grow sequentially.
+ *
+ * Order is copy payload → link dest FAT → write dirent → free the old chain.
+ * Dest clusters were free; if link or dirent fails they are returned to free
+ * and the old chain is left allocated so the neighbour is not left with a
+ * stale first_cluster pointing at freed FAT.
+ *
+ * @param[in,out] volume      FAT volume bytes.
+ * @param[in]     bpb         Valid BPB.
+ * @param[in]     kind        FAT12 or FAT16.
+ * @param[in,out] fat         FAT0 (mutable).
+ * @param[in,out] e           Live file to move (chain and first_cluster updated).
+ * @param[in]     max_cluster Inclusive last data cluster.
+ * @param[in]     forbidden   Clusters the grower wants; dest must not use them.
+ *
+ * @retval true  File now occupies @c dest; old clusters are free.
+ * @retval false No dest run, copy range error, or FAT/dirent write failed.
+ */
 bool relocate_payload(std::vector<uint8_t>& volume, const bpb_info& bpb, fat_kind kind,
                       std::span<uint8_t> fat, dir_entry& e, uint32_t max_cluster,
                       const std::unordered_set<uint16_t>& forbidden)
@@ -274,29 +328,65 @@ bool relocate_payload(std::vector<uint8_t>& volume, const bpb_info& bpb, fat_kin
                                       volume.size() - dst});
         std::memmove(volume.data() + dst, volume.data() + src, room);
     }
-    free_chain(fat, kind, e.cluster_chain);
     if (!link_chain(fat, kind, dest))
     {
+        free_chain(fat, kind, dest);
         return false;
     }
+    if (!write_dir_slot(volume, e.dir_slot_off, dest.front(), e.size))
+    {
+        free_chain(fat, kind, dest);
+        return false;
+    }
+    free_chain(fat, kind, e.cluster_chain);
     e.cluster_chain = dest;
     e.first_cluster = dest.front();
-    if (!write_dir_slot(volume, e.dir_slot_off, e.first_cluster, e.size))
-    {
-        return false;
-    }
     return true;
 }
 
-void reclaim_deleted(std::span<uint8_t> fat, fat_kind kind, std::vector<dir_entry>& entries)
+/**
+ * @brief Free deleted-file clusters that are still allocated and not live-owned.
+ *
+ * Star Control TACTICS.PKG: a deleted dirent may carry the live file's
+ * `cluster_chain` after `first_cluster` reuse. Those FAT slots stay allocated.
+ *
+ * @param[in,out] fat         FAT0.
+ * @param[in]     kind        FAT12 or FAT16.
+ * @param[in,out] entries     Directory listing; deleted chains are cleared.
+ * @param[in]     max_cluster Inclusive last data cluster.
+ */
+void reclaim_deleted(std::span<uint8_t> fat, fat_kind kind, std::vector<dir_entry>& entries,
+                     uint32_t max_cluster)
 {
+    const std::vector<int> owners = cluster_owners(entries, max_cluster, /*skip=*/-1);
     for (dir_entry& e : entries)
     {
         if (!e.deleted || !is_payload_file(e) || e.cluster_chain.empty())
         {
             continue;
         }
-        free_chain(fat, kind, e.cluster_chain);
+        std::vector<uint16_t> orphan;
+        orphan.reserve(e.cluster_chain.size());
+        for (uint16_t c : e.cluster_chain)
+        {
+            if (c > max_cluster)
+            {
+                continue;
+            }
+            if (owners[static_cast<size_t>(c)] >= 0)
+            {
+                continue;
+            }
+            if (!cluster_is_allocated(fat, kind, c))
+            {
+                continue;
+            }
+            orphan.push_back(c);
+        }
+        if (!orphan.empty())
+        {
+            free_chain(fat, kind, orphan);
+        }
         e.cluster_chain.clear();
     }
 }
@@ -420,8 +510,12 @@ bool replace_one(std::vector<uint8_t>& volume, const bpb_info& bpb, fat_kind kin
         }
         for (int o : move_idx)
         {
-            (void)relocate_payload(volume, bpb, kind, fat, entries[static_cast<size_t>(o)],
-                                   max_cluster, forbidden);
+            dir_entry& other = entries[static_cast<size_t>(o)];
+            if (!relocate_payload(volume, bpb, kind, fat, other, max_cluster, forbidden))
+            {
+                err = "could not relocate '" + other.name_83 + "' to grow the file";
+                return false;
+            }
         }
     }
 
@@ -472,7 +566,7 @@ bool replace_one(std::vector<uint8_t>& volume, const bpb_info& bpb, fat_kind kin
     take_free();
     if (add.size() < extra)
     {
-        reclaim_deleted(fat, kind, entries);
+        reclaim_deleted(fat, kind, entries, max_cluster);
         take_free();
     }
     if (add.size() < extra)

@@ -28,7 +28,12 @@ struct update_options
  * Same size: payload is written onto the existing cluster chain. Smaller:
  * the tail of the chain is freed. Larger: free clusters are allocated
  * (fragmented if needed). When the next sequential clusters belong to
- * another live file, that file is relocated so this one can grow.
+ * another live file, that file is relocated so this one can grow. A failed
+ * relocate aborts the replace so @ref update_files can restore the volume
+ * snapshot — the neighbour is never left with a freed chain and a stale
+ * dirent. Deleted dirents are reclaimed only when their clusters are still
+ * FAT-allocated and not present in any live file or directory chain (a
+ * deleted TACTICS.PKG must not zero the live package's FAT).
  *
  * Mutates the FAT volume in @p a (`assembled_chs` when present, otherwise
  * @a image.bytes). Directory size / first-cluster and both FAT copies are

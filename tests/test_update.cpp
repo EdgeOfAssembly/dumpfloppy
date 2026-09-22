@@ -1,11 +1,12 @@
 /**
  * @file test_update.cpp
- * @brief FAT replace: same size, shrink, grow, relocate, disk-full, MFM DAM.
+ * @brief FAT replace: same size, shrink, grow, relocate, reclaim, disk-full, MFM DAM.
  */
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat.hpp"
+#include "dumpfloppy/fat12_codec.h"
 #include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/update.hpp"
@@ -245,6 +246,128 @@ TEST_CASE("update fails when the volume has no free clusters", "[update]")
     std::ostringstream err;
     REQUIRE(dumpfloppy::update_files(a, opt, err) == -1);
     REQUIRE(err.str().find("not enough free") != std::string::npos);
+}
+
+TEST_CASE("update reclaim does not steal a live TACTICS chain", "[update][reclaim]")
+{
+    const auto bytes = dumpfloppy_test::make_fat12_tactics_reuse();
+    const auto img = write_temp(bytes, "upd-tactics.ima");
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    const auto* tactics = find_name(a, "TACTICS.PKG");
+    REQUIRE(tactics != nullptr);
+    REQUIRE(tactics->first_cluster == 2);
+    REQUIRE(tactics->cluster_chain.size() == 2);
+    const std::vector<uint8_t> live = dumpfloppy_test::tactics_live_bytes();
+    REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *tactics) == live);
+
+    bool saw_deleted_reuse = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.deleted && e.first_cluster == 2)
+        {
+            saw_deleted_reuse = true;
+            REQUIRE_FALSE(e.cluster_chain.empty());
+        }
+    }
+    REQUIRE(saw_deleted_reuse);
+
+    std::vector<uint8_t> big(600, static_cast<uint8_t>('G'));
+    const auto host = write_temp(big, "HELLO.TXT");
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back(host);
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == -1);
+    REQUIRE(err.str().find("not enough free") != std::string::npos);
+
+    tactics = find_name(a, "TACTICS.PKG");
+    REQUIRE(tactics != nullptr);
+    REQUIRE(tactics->first_cluster == 2);
+    REQUIRE(tactics->cluster_chain.size() == 2);
+    REQUIRE(tactics->cluster_chain[0] == 2);
+    REQUIRE(tactics->cluster_chain[1] == 3);
+    REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *tactics) == live);
+
+    uint8_t* fat0 = a.image.bytes.data() + dumpfloppy_test::k_bps;
+    uint16_t v2 = 0;
+    uint16_t v3 = 0;
+    REQUIRE(fat12_entry_get(fat0, dumpfloppy_test::k_bps, 2, &v2) == 0);
+    REQUIRE(fat12_entry_get(fat0, dumpfloppy_test::k_bps, 3, &v3) == 0);
+    REQUIRE(v2 == 3);
+    REQUIRE(fat12_is_eof(v3) != 0);
+
+    const auto* hello = find_name(a, "HELLO.TXT");
+    REQUIRE(hello != nullptr);
+    REQUIRE(hello->first_cluster == 61);
+    REQUIRE(hello->size == 14);
+}
+
+TEST_CASE("update reclaim frees a deleted chain that is not live-owned", "[update][reclaim]")
+{
+    const auto bytes = dumpfloppy_test::make_fat12_orphan_tight();
+    const auto img = write_temp(bytes, "upd-orphan.ima");
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+
+    std::vector<uint8_t> big(600, static_cast<uint8_t>('G'));
+    const auto host = write_temp(big, "HELLO.TXT");
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back(host);
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == 1);
+    REQUIRE(err.str().empty());
+
+    const auto* hello = find_name(a, "HELLO.TXT");
+    REQUIRE(hello != nullptr);
+    REQUIRE(hello->size == 600);
+    REQUIRE(hello->cluster_chain.size() == 2);
+    REQUIRE(hello->cluster_chain[0] == 2);
+    REQUIRE(hello->cluster_chain[1] == 3);
+    REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *hello) == big);
+
+    const dumpfloppy::fat_summary fat =
+        dumpfloppy::summarise_fat(a.image.bytes, a.bpb, a.kind);
+    REQUIRE(fat.copies_match);
+}
+
+TEST_CASE("update aborts when a neighbour cannot be relocated", "[update][relocate]")
+{
+    const auto bytes = dumpfloppy_test::make_fat12_relocate_tight();
+    const auto img = write_temp(bytes, "upd-reloc-fail.ima");
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    const auto* fileb = find_name(a, "FILEB.TXT");
+    REQUIRE(fileb != nullptr);
+    REQUIRE(fileb->first_cluster == 3);
+    REQUIRE(fileb->cluster_chain.size() == 10);
+
+    std::vector<uint8_t> big(600, static_cast<uint8_t>('Z'));
+    const auto host = write_temp(big, "FILEA.TXT");
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back(host);
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == -1);
+    REQUIRE(err.str().find("relocate") != std::string::npos);
+
+    const auto* filea = find_name(a, "FILEA.TXT");
+    REQUIRE(filea != nullptr);
+    REQUIRE(filea->first_cluster == 2);
+    REQUIRE(filea->size == 10);
+    REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *filea) ==
+            (std::vector<uint8_t>{'F', 'I', 'L', 'E', 'A', '-', 'D', 'A', 'T', 'A'}));
+
+    fileb = find_name(a, "FILEB.TXT");
+    REQUIRE(fileb != nullptr);
+    REQUIRE(fileb->first_cluster == 3);
+    REQUIRE(fileb->cluster_chain.size() == 10);
+    REQUIRE(dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *fileb) ==
+            (std::vector<uint8_t>{'F', 'I', 'L', 'E', 'B', '-', 'D', 'A', 'T', 'A'}));
 }
 
 TEST_CASE("update missing name restores the volume", "[update]")
