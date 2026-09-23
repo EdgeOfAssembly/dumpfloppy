@@ -224,7 +224,8 @@ std::string cbm_host_filename(const cbm_file& file)
     std::string name = file.name;
     for (char& c : name)
     {
-        if (c == '/' || c == '\\')
+        if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' ||
+            c == '<' || c == '>' || c == '|')
         {
             c = '_';
         }

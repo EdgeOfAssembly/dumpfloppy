@@ -268,9 +268,7 @@ void write_cbm_sections(const analysis& a, std::ostream& out, const report_optio
             }
         }
         const std::vector<uint8_t> payload = read_cbm_file(a.image.bytes, e);
-        const uint32_t size =
-            payload.empty() ? static_cast<uint32_t>(e.size_sectors) * 254u
-                            : static_cast<uint32_t>(payload.size());
+        const uint32_t size = static_cast<uint32_t>(payload.size());
         const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
         const std::string line = cbm_entry_line(e, size, sum);
         if (e.deleted)
