@@ -50,7 +50,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.17`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.18`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64`.
 
@@ -68,12 +68,14 @@ dumpfloppy ./floppies -o ./reports/
 dumpfloppy disk.ima -u HELLO.TXT
 dumpfloppy disk.mfm -u PENGUIN.EXE
 dumpfloppy disk.mfm -uPENGUIN.EXE
+dumpfloppy game.d64 -u HELLO.prg
+dumpfloppy work.adf -u README
 ```
 
 `-x` on D64/D71/D81/G64 writes PETSCII names plus `.prg` / `.seq` / `.usr` /
 `.rel` / `.del` (deleted files included). `-x` on ADF writes OFS/FFS files
-(directories skipped; `/` in Amiga paths becomes `_`). `-u` refuses CBMFS and
-ADF in this version.
+(directories skipped; `/` in Amiga paths becomes `_`). `-u` on D64/D71/D81 and
+ADF is same-size in-place replace; G64 GCR and REL are refused.
 
 | Default | Switch |
 |---------|--------|

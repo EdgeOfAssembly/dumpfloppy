@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string>
 #include <unordered_set>
@@ -21,6 +22,7 @@ constexpr uint32_t k_off_type = 0u;
 constexpr uint32_t k_off_high_seq = 8u;
 constexpr uint32_t k_off_ht_size = 12u;
 constexpr uint32_t k_off_data_size = 12u;
+constexpr uint32_t k_off_checksum = 20u;
 constexpr uint32_t k_off_table = 24u;
 constexpr uint32_t k_off_byte_size = 0x144u;
 constexpr uint32_t k_off_name = 0x1B0u;
@@ -51,6 +53,44 @@ constexpr unsigned k_name_chars = 30u;
 [[nodiscard]] int32_t read_be32s(std::span<const uint8_t> data, std::size_t off) noexcept
 {
     return static_cast<int32_t>(read_be32(data, off));
+}
+
+void poke_be32(uint8_t* p, uint32_t v) noexcept
+{
+    p[0] = static_cast<uint8_t>(v >> 24);
+    p[1] = static_cast<uint8_t>(v >> 16);
+    p[2] = static_cast<uint8_t>(v >> 8);
+    p[3] = static_cast<uint8_t>(v);
+}
+
+void ofs_checksum_block(uint8_t* blk) noexcept
+{
+    poke_be32(blk + k_off_checksum, 0u);
+    uint32_t sum = 0;
+    for (unsigned i = 0; i < k_adf_sector_bytes; i += 4u)
+    {
+        sum += (static_cast<uint32_t>(blk[i]) << 24) |
+               (static_cast<uint32_t>(blk[i + 1u]) << 16) |
+               (static_cast<uint32_t>(blk[i + 2u]) << 8) |
+               static_cast<uint32_t>(blk[i + 3u]);
+    }
+    poke_be32(blk + k_off_checksum, static_cast<uint32_t>(0u - sum));
+}
+
+[[nodiscard]] uint8_t* block_mut(std::vector<uint8_t>& image, uint32_t block,
+                                 uint32_t sector_count) noexcept
+{
+    if (block >= sector_count)
+    {
+        return nullptr;
+    }
+    const std::size_t off = static_cast<std::size_t>(block) *
+                            static_cast<std::size_t>(k_adf_sector_bytes);
+    if (off + static_cast<std::size_t>(k_adf_sector_bytes) > image.size())
+    {
+        return nullptr;
+    }
+    return image.data() + off;
 }
 
 [[nodiscard]] std::span<const uint8_t> block_bytes(std::span<const uint8_t> image,
@@ -406,6 +446,126 @@ std::vector<uint8_t> read_amiga_file(std::span<const uint8_t> image,
         payload.resize(want);
     }
     return payload;
+}
+
+bool write_amiga_file_same_size(std::vector<uint8_t>& image, const amiga_disk& disk,
+                                const amiga_file& file, std::span<const uint8_t> payload,
+                                std::string& err)
+{
+    if (file.is_dir || file.header_block == 0u)
+    {
+        err = "cannot update an Amiga directory";
+        return false;
+    }
+    if (payload.size() != static_cast<std::size_t>(file.byte_size))
+    {
+        err = "host file size " + std::to_string(payload.size()) +
+              " does not match on-disk " + std::to_string(file.byte_size) +
+              " (same-size replace only for ADF)";
+        return false;
+    }
+
+    uint32_t sectors = disk.sector_count;
+    if (sectors == 0u)
+    {
+        sectors = adf_sector_count_for_size(image.size());
+    }
+    if (sectors == 0u)
+    {
+        err = "ADF geometry is unknown";
+        return false;
+    }
+
+    const bool ffs = disk.ffs;
+    std::unordered_set<uint32_t> meta_seen;
+    std::unordered_set<uint32_t> data_seen;
+    meta_seen.reserve(8);
+    data_seen.reserve(16);
+
+    uint32_t blk = file.header_block;
+    std::size_t pos = 0;
+    const std::size_t want = payload.size();
+    for (int step = 0; step < k_max_visits && pos < want; ++step)
+    {
+        if (blk == 0u || !meta_seen.insert(blk).second)
+        {
+            break;
+        }
+        uint8_t* hdr = block_mut(image, blk, sectors);
+        if (hdr == nullptr)
+        {
+            err = "ADF file header block is unreadable";
+            return false;
+        }
+        const std::span<const uint8_t> hdrs(hdr, k_adf_sector_bytes);
+        const int32_t typ = read_be32s(hdrs, k_off_type);
+        if (typ != k_t_header && typ != k_t_list)
+        {
+            err = "ADF file meta block has a bad type";
+            return false;
+        }
+
+        uint32_t high = read_be32(hdrs, k_off_high_seq);
+        if (high > k_adf_ht_size)
+        {
+            high = k_adf_ht_size;
+        }
+        for (uint32_t i = 0; i < high && pos < want; ++i)
+        {
+            const uint32_t key = data_key(hdrs, i);
+            if (key == 0u || !data_seen.insert(key).second)
+            {
+                continue;
+            }
+            uint8_t* data = block_mut(image, key, sectors);
+            if (data == nullptr)
+            {
+                err = "ADF data block is unreadable";
+                return false;
+            }
+            if (ffs)
+            {
+                const std::size_t n = (want - pos) < k_adf_sector_bytes
+                                          ? (want - pos)
+                                          : static_cast<std::size_t>(k_adf_sector_bytes);
+                std::memcpy(data, payload.data() + pos, n);
+                pos += n;
+            }
+            else
+            {
+                const std::span<const uint8_t> datas(data, k_adf_sector_bytes);
+                if (read_be32s(datas, k_off_type) != k_t_data)
+                {
+                    err = "OFS data block has a bad type";
+                    return false;
+                }
+                uint32_t n = read_be32(datas, k_off_data_size);
+                if (n > k_ofs_data_payload)
+                {
+                    n = k_ofs_data_payload;
+                }
+                const std::size_t remain = want - pos;
+                if (static_cast<std::size_t>(n) > remain)
+                {
+                    n = static_cast<uint32_t>(remain);
+                }
+                if (n != 0u)
+                {
+                    std::memcpy(data + 24, payload.data() + pos, n);
+                }
+                pos += n;
+                ofs_checksum_block(data);
+            }
+        }
+        blk = read_be32(hdrs, k_off_extension);
+    }
+
+    if (pos != want)
+    {
+        err = "ADF file chain shorter than payload";
+        return false;
+    }
+    return true;
 }
 
 } /* namespace dumpfloppy */

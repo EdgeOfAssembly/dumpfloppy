@@ -7,6 +7,8 @@
  */
 #include "dumpfloppy/cbm.hpp"
 
+#include <cstring>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -491,6 +493,95 @@ std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, cbm_media med
 std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, const cbm_file& file)
 {
     return read_cbm_file(image, media_or_d64(image.size()), file);
+}
+
+bool write_cbm_file_same_size(std::vector<uint8_t>& image, cbm_media media,
+                              const cbm_file& file, std::span<const uint8_t> payload,
+                              std::string& err)
+{
+    const std::vector<uint8_t> have =
+        read_cbm_file(image, media, file.first_track, file.first_sector);
+    if (have.size() != payload.size())
+    {
+        err = "host file size " + std::to_string(payload.size()) +
+              " does not match on-disk " + std::to_string(have.size()) +
+              " (same-size replace only for CBMFS)";
+        return false;
+    }
+
+    uint8_t track = file.first_track;
+    uint8_t sector = file.first_sector;
+    if (track == 0u)
+    {
+        return payload.empty();
+    }
+
+    std::unordered_set<uint16_t> seen;
+    seen.reserve(64);
+    std::size_t pos = 0;
+    const std::span<const uint8_t> img = image;
+    for (int step = 0; step < k_cbm_max_chain; ++step)
+    {
+        if (!cbm_ts_valid(media, track, sector))
+        {
+            err = "CBM file chain hit an invalid T/S";
+            return false;
+        }
+        const uint16_t key = pack_ts(track, sector);
+        if (!seen.insert(key).second)
+        {
+            err = "CBM file chain cycle";
+            return false;
+        }
+        const std::size_t off = cbm_offset(media, track, sector);
+        if (!sector_in_image(img, off))
+        {
+            err = "CBM file chain truncated";
+            return false;
+        }
+        uint8_t* sec = image.data() + off;
+        const uint8_t next_t = sec[0];
+        const uint8_t next_s = sec[1];
+        if (next_t == 0u)
+        {
+            const std::size_t remain = payload.size() - pos;
+            if (next_s >= 2u)
+            {
+                const std::size_t last =
+                    (next_s < k_d64_sector_bytes)
+                        ? static_cast<std::size_t>(next_s)
+                        : (static_cast<std::size_t>(k_d64_sector_bytes) - 1u);
+                const std::size_t n = last - 1u;
+                if (n != remain)
+                {
+                    err = "CBM last-sector length mismatch";
+                    return false;
+                }
+                if (n != 0u)
+                {
+                    std::memcpy(sec + 2, payload.data() + pos, n);
+                }
+            }
+            else if (remain != 0u)
+            {
+                err = "CBM last-sector length mismatch";
+                return false;
+            }
+            return true;
+        }
+        const std::size_t n = static_cast<std::size_t>(k_d64_sector_bytes) - 2u;
+        if (pos + n > payload.size())
+        {
+            err = "CBM file chain longer than payload";
+            return false;
+        }
+        std::memcpy(sec + 2, payload.data() + pos, n);
+        pos += n;
+        track = next_t;
+        sector = next_s;
+    }
+    err = "CBM file chain exceeded visit cap";
+    return false;
 }
 
 } /* namespace dumpfloppy */

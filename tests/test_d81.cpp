@@ -14,6 +14,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -98,15 +99,28 @@ TEST_CASE("extract writes D81 PRG payload", "[d81][extract]")
     REQUIRE(body == dumpfloppy_test::sample_d81_prg_bytes());
 }
 
-TEST_CASE("update refuses D81/CBMFS", "[d81][update]")
+TEST_CASE("update same-size D81 PRG in place", "[d81][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_d81_image());
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    std::filesystem::create_directories(dir);
+    const auto host = dir / "HELLO81.prg";
+    std::vector<uint8_t> neu = dumpfloppy_test::sample_d81_prg_bytes();
+    std::fill(neu.begin(), neu.end(), static_cast<uint8_t>(0x81));
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(neu.data()),
+                  static_cast<std::streamsize>(neu.size()));
+    }
     dumpfloppy::update_options opt{};
     opt.enabled = true;
-    opt.hosts.emplace_back("HELLO81.prg");
+    opt.hosts.push_back(host);
     std::ostringstream err;
-    REQUIRE(dumpfloppy::update_files(a, opt, err) == -1);
-    REQUIRE(err.str().find("cannot update CBMFS") != std::string::npos);
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == 1);
+    REQUIRE(err.str().empty());
+    REQUIRE(dumpfloppy::read_cbm_file(a.image.bytes, a.cbm.media, a.cbm.entries[0]) ==
+            neu);
 }
 
 TEST_CASE("load_image .d81 is container d81_c64", "[d81][image]")

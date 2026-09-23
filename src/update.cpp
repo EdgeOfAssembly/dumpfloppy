@@ -1,6 +1,6 @@
 /**
  * @file update.cpp
- * @brief FAT12/16 in-place replace, shrink, grow, and live-file relocate.
+ * @brief FAT replace (grow/shrink) and CBM/ADF same-size in-place replace.
  */
 #include "dumpfloppy/update.hpp"
 #include "dumpfloppy/analyze.hpp"
@@ -639,6 +639,171 @@ std::vector<uint8_t> read_host(const std::filesystem::path& path, std::string& e
     return bytes;
 }
 
+int find_live_cbm(const std::vector<cbm_file>& entries, const std::string& want_lower,
+                  std::string& err)
+{
+    int found = -1;
+    int hits = 0;
+    for (size_t i = 0; i < entries.size(); ++i)
+    {
+        const cbm_file& f = entries[i];
+        if (f.deleted)
+        {
+            continue;
+        }
+        const std::string host = ascii_lower(cbm_host_filename(f));
+        const std::string listing = ascii_lower(f.name);
+        if (host != want_lower && listing != want_lower)
+        {
+            continue;
+        }
+        ++hits;
+        found = static_cast<int>(i);
+    }
+    if (hits == 0)
+    {
+        err = "no live CBM file named '" + want_lower + "' in the image";
+        return -1;
+    }
+    if (hits > 1)
+    {
+        err = "multiple live CBM files named '" + want_lower + "'";
+        return -1;
+    }
+    return found;
+}
+
+int find_live_amiga(const std::vector<amiga_file>& entries, const std::string& want_lower,
+                    std::string& err)
+{
+    int found = -1;
+    int hits = 0;
+    for (size_t i = 0; i < entries.size(); ++i)
+    {
+        const amiga_file& f = entries[i];
+        if (f.is_dir)
+        {
+            continue;
+        }
+        const std::string host = ascii_lower(amiga_host_filename(f));
+        const std::string name = ascii_lower(f.name);
+        const std::string path = ascii_lower(f.path);
+        if (host != want_lower && name != want_lower && path != want_lower)
+        {
+            continue;
+        }
+        ++hits;
+        found = static_cast<int>(i);
+    }
+    if (hits == 0)
+    {
+        err = "no live ADF file named '" + want_lower + "' in the image";
+        return -1;
+    }
+    if (hits > 1)
+    {
+        err = "multiple live ADF files named '" + want_lower + "'";
+        return -1;
+    }
+    return found;
+}
+
+int update_cbm_files(analysis& a, const update_options& opt, std::ostream& err)
+{
+    if (a.cbm.media == cbm_media::g64)
+    {
+        err << "dumpfloppy: cannot update G64 GCR images in this version\n";
+        return -1;
+    }
+    if (opt.hosts.empty())
+    {
+        err << "dumpfloppy: --update requires a host file\n";
+        return -1;
+    }
+
+    const std::vector<uint8_t> snapshot = a.image.bytes;
+    int replaced = 0;
+    for (const std::filesystem::path& host : opt.hosts)
+    {
+        std::string io_err;
+        const std::vector<uint8_t> payload = read_host(host, io_err);
+        if (!io_err.empty())
+        {
+            a.image.bytes = snapshot;
+            err << "dumpfloppy: " << io_err << '\n';
+            return -1;
+        }
+        const std::string want = ascii_lower(host.filename().string());
+        std::string find_err;
+        const int idx = find_live_cbm(a.cbm.entries, want, find_err);
+        if (idx < 0)
+        {
+            a.image.bytes = snapshot;
+            err << "dumpfloppy: " << find_err << '\n';
+            return -1;
+        }
+        const cbm_file& file = a.cbm.entries[static_cast<size_t>(idx)];
+        if (file.kind == cbm_file_kind::rel)
+        {
+            a.image.bytes = snapshot;
+            err << "dumpfloppy: cannot update REL files in this version\n";
+            return -1;
+        }
+        std::string wr_err;
+        if (!write_cbm_file_same_size(a.image.bytes, a.cbm.media, file, payload,
+                                      wr_err))
+        {
+            a.image.bytes = snapshot;
+            err << "dumpfloppy: " << wr_err << '\n';
+            return -1;
+        }
+        ++replaced;
+    }
+    return replaced;
+}
+
+int update_amiga_files(analysis& a, const update_options& opt, std::ostream& err)
+{
+    if (opt.hosts.empty())
+    {
+        err << "dumpfloppy: --update requires a host file\n";
+        return -1;
+    }
+
+    const std::vector<uint8_t> snapshot = a.image.bytes;
+    int replaced = 0;
+    for (const std::filesystem::path& host : opt.hosts)
+    {
+        std::string io_err;
+        const std::vector<uint8_t> payload = read_host(host, io_err);
+        if (!io_err.empty())
+        {
+            a.image.bytes = snapshot;
+            err << "dumpfloppy: " << io_err << '\n';
+            return -1;
+        }
+        const std::string want = ascii_lower(host.filename().string());
+        std::string find_err;
+        const int idx = find_live_amiga(a.amiga.entries, want, find_err);
+        if (idx < 0)
+        {
+            a.image.bytes = snapshot;
+            err << "dumpfloppy: " << find_err << '\n';
+            return -1;
+        }
+        const amiga_file& file = a.amiga.entries[static_cast<size_t>(idx)];
+        std::string wr_err;
+        if (!write_amiga_file_same_size(a.image.bytes, a.amiga, file, payload, wr_err))
+        {
+            a.image.bytes = snapshot;
+            err << "dumpfloppy: " << wr_err << '\n';
+            return -1;
+        }
+        ++replaced;
+    }
+    return replaced;
+}
+
 int find_live(const std::vector<dir_entry>& entries, const std::string& want_lower,
               std::string& err)
 {
@@ -681,13 +846,11 @@ int update_files(analysis& a, const update_options& opt, std::ostream& err)
     }
     if (a.cbm.present)
     {
-        err << "dumpfloppy: cannot update CBMFS (D64/D71/D81/G64) in this version\n";
-        return -1;
+        return update_cbm_files(a, opt, err);
     }
     if (a.amiga.present)
     {
-        err << "dumpfloppy: cannot update ADF in this version\n";
-        return -1;
+        return update_amiga_files(a, opt, err);
     }
     if (a.flux.present && a.flux.format_name == "86BOX 86F")
     {

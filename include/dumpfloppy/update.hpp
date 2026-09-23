@@ -1,6 +1,6 @@
 /**
  * @file update.hpp
- * @brief Replace a named FAT file inside a floppy volume (`-u` / `--update`).
+ * @brief Replace a named file inside a floppy volume (`-u` / `--update`).
  */
 #ifndef DUMPFLOPPY_UPDATE_HPP
 #define DUMPFLOPPY_UPDATE_HPP
@@ -38,7 +38,8 @@ struct update_options
  * Mutates the FAT volume in @p a via @ref volume_bytes_mut (`assembled_chs`
  * when present, otherwise @a image.bytes). Directory size / first-cluster
  * and both FAT copies are kept in sync. Deleted names are never chosen.
- * D64/D71/D81/G64 CBMFS and Amiga ADF images are refused in this version.
+ * D64/D71/D81 CBMFS and Amiga ADF accept same-size in-place replace (REL
+ * and G64 GCR are refused). Grow/shrink on CBM/ADF is refused.
  *
  * @param[in,out] a   Analysis (volume bytes and directory entries).
  * @param[in]     opt Host files to write in.

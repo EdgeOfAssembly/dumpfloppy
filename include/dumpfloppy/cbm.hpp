@@ -558,6 +558,26 @@ read_cbm_file(std::span<const uint8_t> image, uint8_t track, uint8_t sector);
                                                  cbm_media media,
                                                  const cbm_file& file);
 
+/**
+ * @brief Overwrite a CBM file chain in place when @p payload matches on-disk size.
+ *
+ * Leaves T/S links and the last-sector used-byte index unchanged. REL files
+ * and G64 (no sector image in @p image) are rejected by the caller.
+ *
+ * @param[in,out] image   D64/D71/D81 bytes.
+ * @param[in]     media   Geometry.
+ * @param[in]     file    Live directory slot.
+ * @param[in]     payload Host bytes; length must equal @ref read_cbm_file.
+ * @param[out]    err     Reason on failure.
+ *
+ * @retval true  Payload written.
+ * @retval false Size mismatch, bad T/S, or truncated sector; @p err set.
+ */
+[[nodiscard]] bool write_cbm_file_same_size(std::vector<uint8_t>& image,
+                                            cbm_media media, const cbm_file& file,
+                                            std::span<const uint8_t> payload,
+                                            std::string& err);
+
 } /* namespace dumpfloppy */
 
 #endif /* DUMPFLOPPY_CBM_HPP */

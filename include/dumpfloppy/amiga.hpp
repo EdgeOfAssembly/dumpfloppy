@@ -197,6 +197,27 @@ struct amiga_disk
                                                    const amiga_disk& disk,
                                                    const amiga_file& file);
 
+/**
+ * @brief Overwrite OFS/FFS data blocks in place when @p payload matches @a byte_size.
+ *
+ * OFS data-block checksums at offset 20 are recomputed. Header size and
+ * block pointers are left unchanged. Directories are rejected.
+ *
+ * @param[in,out] image   DD/HD ADF bytes.
+ * @param[in]     disk    Parsed disk (`ffs` / `sector_count`).
+ * @param[in]     file    File header from @ref parse_adf.
+ * @param[in]     payload Host bytes; length must equal @a file.byte_size.
+ * @param[out]    err     Reason on failure.
+ *
+ * @retval true  Payload written.
+ * @retval false Size mismatch, missing block, or directory; @p err set.
+ */
+[[nodiscard]] bool write_amiga_file_same_size(std::vector<uint8_t>& image,
+                                              const amiga_disk& disk,
+                                              const amiga_file& file,
+                                              std::span<const uint8_t> payload,
+                                              std::string& err);
+
 } /* namespace dumpfloppy */
 
 #endif /* DUMPFLOPPY_AMIGA_HPP */

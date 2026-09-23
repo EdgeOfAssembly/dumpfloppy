@@ -15,6 +15,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -195,15 +197,62 @@ TEST_CASE("extract glob matches CBM name and type", "[d64][extract]")
     REQUIRE(std::filesystem::exists(dest2 / "OLDSEQ.seq"));
 }
 
-TEST_CASE("update refuses D64/CBMFS", "[d64][update]")
+TEST_CASE("update same-size D64 PRG in place", "[d64][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_d64_image());
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    std::filesystem::create_directories(dir);
+    const auto host = dir / "HELLO.prg";
+    std::vector<uint8_t> neu = dumpfloppy_test::sample_prg_bytes();
+    REQUIRE(neu.size() == 300u);
+    std::fill(neu.begin(), neu.end(), static_cast<uint8_t>(0x5A));
+    const char tag[] = "UPDATED-PRG";
+    std::memcpy(neu.data(), tag, sizeof(tag) - 1u);
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(neu.data()),
+                  static_cast<std::streamsize>(neu.size()));
+    }
     dumpfloppy::update_options opt{};
     opt.enabled = true;
-    opt.hosts.emplace_back("HELLO.prg");
+    opt.hosts.push_back(host);
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == 1);
+    REQUIRE(err.str().empty());
+    const std::vector<uint8_t> got =
+        dumpfloppy::read_cbm_file(a.image.bytes, a.cbm.media, a.cbm.entries[0]);
+    REQUIRE(got == neu);
+}
+
+TEST_CASE("update D64 refuses size mismatch and deleted names", "[d64][update]")
+{
+    dumpfloppy::analysis a = dumpfloppy::analyse(make_d64_image());
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    std::filesystem::create_directories(dir);
+    const auto host = dir / "HELLO.prg";
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out << "too-short";
+    }
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back(host);
     std::ostringstream err;
     REQUIRE(dumpfloppy::update_files(a, opt, err) == -1);
-    REQUIRE(err.str().find("cannot update CBMFS") != std::string::npos);
+    REQUIRE(err.str().find("same-size") != std::string::npos);
+
+    dumpfloppy::analysis b = dumpfloppy::analyse(make_d64_image());
+    opt.hosts = {dir / "OLDSEQ.seq"};
+    {
+        std::ofstream out(opt.hosts[0], std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out << "SEQ-DATA";
+    }
+    std::ostringstream err2;
+    REQUIRE(dumpfloppy::update_files(b, opt, err2) == -1);
+    REQUIRE(err2.str().find("no live CBM file") != std::string::npos);
 }
 
 TEST_CASE("load_image .d64 is container d64_c64", "[d64][image]")

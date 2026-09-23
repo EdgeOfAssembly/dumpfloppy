@@ -13,6 +13,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -214,15 +216,88 @@ TEST_CASE("extract FFS payload matches raw 512-byte blocks", "[adf][extract][ffs
     REQUIRE(body[512] == 0xBBu);
 }
 
-TEST_CASE("update refuses ADF", "[adf][update]")
+TEST_CASE("update same-size OFS README in place", "[adf][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_ofs_image());
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    std::filesystem::create_directories(dir);
+    const auto host = dir / "README";
+    std::vector<uint8_t> neu = dumpfloppy_test::sample_ofs_payload();
+    std::fill(neu.begin(), neu.end(), static_cast<uint8_t>(0x11));
+    const char tag[] = "OFS-UPDATED";
+    std::memcpy(neu.data(), tag, sizeof(tag) - 1u);
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(neu.data()),
+                  static_cast<std::streamsize>(neu.size()));
+    }
     dumpfloppy::update_options opt{};
     opt.enabled = true;
-    opt.hosts.emplace_back("README");
+    opt.hosts.push_back(host);
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == 1);
+    REQUIRE(err.str().empty());
+    dumpfloppy::amiga_file file{};
+    for (const dumpfloppy::amiga_file& e : a.amiga.entries)
+    {
+        if (e.name == "README")
+        {
+            file = e;
+        }
+    }
+    REQUIRE(dumpfloppy::read_amiga_file(a.image.bytes, a.amiga, file) == neu);
+}
+
+TEST_CASE("update same-size FFS file in place", "[adf][update]")
+{
+    dumpfloppy::analysis a = dumpfloppy::analyse(make_ffs_image());
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    std::filesystem::create_directories(dir);
+    const auto host = dir / "RAWFILE";
+    std::vector<uint8_t> neu = dumpfloppy_test::sample_ffs_payload();
+    std::fill(neu.begin(), neu.end(), static_cast<uint8_t>(0x22));
+    neu[512] = 0xDDu;
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out.write(reinterpret_cast<const char*>(neu.data()),
+                  static_cast<std::streamsize>(neu.size()));
+    }
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back(host);
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) == 1);
+    REQUIRE(err.str().empty());
+    dumpfloppy::amiga_file file{};
+    for (const dumpfloppy::amiga_file& e : a.amiga.entries)
+    {
+        if (e.name == "RAWFILE")
+        {
+            file = e;
+        }
+    }
+    REQUIRE(dumpfloppy::read_amiga_file(a.image.bytes, a.amiga, file) == neu);
+}
+
+TEST_CASE("update ADF refuses size mismatch", "[adf][update]")
+{
+    dumpfloppy::analysis a = dumpfloppy::analyse(make_ofs_image());
+    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    std::filesystem::create_directories(dir);
+    const auto host = dir / "README";
+    {
+        std::ofstream out(host, std::ios::binary | std::ios::trunc);
+        REQUIRE(out);
+        out << "short";
+    }
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back(host);
     std::ostringstream err;
     REQUIRE(dumpfloppy::update_files(a, opt, err) == -1);
-    REQUIRE(err.str().find("cannot update ADF") != std::string::npos);
+    REQUIRE(err.str().find("same-size") != std::string::npos);
 }
 
 TEST_CASE("load_image .adf is container adf_amiga", "[adf][image]")

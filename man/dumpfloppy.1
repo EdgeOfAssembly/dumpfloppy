@@ -105,7 +105,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.17
+.B dumpfloppy 0.18
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -181,17 +181,19 @@ A following
 path is the floppy image, not a glob.
 .TP
 .BI \-u ", " \-\-update " FILE"
-Overwrite the live 8.3 file in the image whose name matches
+Overwrite the live file in the image whose name matches
 .IR FILE 's
 basename (case-insensitive).
 Repeatable.
 No listing is printed.
-Same size writes the payload onto the existing cluster chain.
+On FAT, same size writes the payload onto the existing cluster chain.
 A smaller host file frees the unused tail clusters.
 A larger host file allocates free clusters, and relocates later live
 files when sequential growth needs their clusters.
 Both FAT copies and the directory size / first-cluster fields are
 updated.
+On D64/D71/D81 CBMFS and ADF, only same-size in-place replace is
+supported (PRG/SEQ/USR and OFS/FFS files).
 Raw
 .I .img
 /
@@ -202,17 +204,9 @@ HxC
 images patch changed 512-byte DAM payloads (extra HLS IDs are left
 untouched).
 .I .86f
-flux images are refused.
-.I .d64
-/
-.I .d71
-/
-.I .d81
-/
+flux images,
 .I .g64
-CBMFS and
-.I .adf
-images cannot be updated in this version.
+GCR images, and CBM REL files are refused.
 Glued
 .B \-uFILE
 is accepted (same as

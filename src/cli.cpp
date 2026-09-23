@@ -72,13 +72,13 @@ std::string usage_text()
        << "  -x, --extract [GLOB] Extract files to the current directory (no listing).\n"
        << "                       Default: all payloads, deleted included.\n"
        << "                       Quote globs: -x '*.PKD' -x '5??.PKD'\n"
-       << "  -u, --update FILE    Overwrite the same-named 8.3 file in the image.\n"
-       << "                       Repeatable. Silent (no listing). Same size: in-place;\n"
+       << "  -u, --update FILE    Overwrite the same-named file in the image.\n"
+       << "                       Repeatable. Silent (no listing). FAT: same size in-place;\n"
        << "                       grow/shrink allocates or frees clusters and relocates\n"
        << "                       later live files when sequential growth needs them.\n"
+       << "                       D64/D71/D81 CBMFS and ADF: same-size in-place only.\n"
        << "                       Accepts -u FILE, -uFILE, and --update=FILE.\n"
-       << "                       D64/D71/D81/G64 CBMFS and ADF images cannot be updated\n"
-       << "                       in this version.\n"
+       << "                       G64 GCR, REL, and .86f cannot be updated in this version.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
