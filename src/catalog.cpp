@@ -23,7 +23,7 @@ struct row
 };
 
 /* Hashes are of the entire container file (seed-0 XXH64). */
-constexpr std::array<row, 22> k_disks{{
+constexpr std::array<row, 24> k_disks{{
     /* IBM PC flux / IMA */
     {"93a5a1a9002057dd",
      "Commando (Data East USA, 1986) 180K 5.25\" SS/DD booter",
@@ -98,6 +98,12 @@ constexpr std::array<row, 22> k_disks{{
     {"0f4c8a1defd7770e",
      "Lemmings demo (Skid Row, 1990) ADF",
      "none (Skid Row 1990 demo; OFS)"},
+    {"f7f7c9d577fd9aa2",
+     "Shadow of the Beast (Psygnosis, 1989) Disk 1 IPF",
+     "SPS IPF #1357; Psygnosis / Rob Northen Copylock (82 cyl × 2 heads)"},
+    {"fcad06bacfaba8d4",
+     "Shadow of the Beast (Psygnosis, 1989) Disk 2 IPF",
+     "SPS IPF; Psygnosis / Rob Northen Copylock (flux, not ADF)"},
 }};
 
 } /* namespace */

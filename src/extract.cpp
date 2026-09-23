@@ -494,6 +494,12 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     {
         return extract_trd_files(a, opt, err);
     }
+    if (a.foreign.present)
+    {
+        err << "dumpfloppy: cannot extract " << a.foreign.format
+            << " flux/nibble images in this version\n";
+        return -1;
+    }
     if (a.flux.format_name == "86BOX 86F")
     {
         err << "dumpfloppy: cannot extract .86f flux images; sector map needs "

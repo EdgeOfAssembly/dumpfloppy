@@ -19,6 +19,9 @@
 #ifdef DUMPFLOPPY_TRD_HPP
 #error "analyze.hpp must not include trd.hpp"
 #endif
+#ifdef DUMPFLOPPY_FOREIGN_HPP
+#error "analyze.hpp must not include foreign.hpp"
+#endif
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -29,6 +32,7 @@ TEST_CASE("analyze.hpp exposes fs views without parser headers", "[analyze][hygi
     REQUIRE_FALSE(a.amiga.present);
     REQUIRE_FALSE(a.flux.present);
     REQUIRE_FALSE(a.trd.present);
+    REQUIRE_FALSE(a.foreign.present);
     REQUIRE(a.fat.kind == dumpfloppy::fat_kind::unknown);
 #ifndef DUMPFLOPPY_CBM_VIEW_HPP
     FAIL("cbm_view.hpp should be visible via analyze.hpp");
@@ -44,5 +48,8 @@ TEST_CASE("analyze.hpp exposes fs views without parser headers", "[analyze][hygi
 #endif
 #ifndef DUMPFLOPPY_TRD_VIEW_HPP
     FAIL("trd_view.hpp should be visible via analyze.hpp");
+#endif
+#ifndef DUMPFLOPPY_FOREIGN_VIEW_HPP
+    FAIL("foreign_view.hpp should be visible via analyze.hpp");
 #endif
 }

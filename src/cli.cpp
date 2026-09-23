@@ -21,7 +21,8 @@ bool is_floppy_ext(const std::filesystem::path& p)
     const std::string ext = ascii_lower(p.extension().string());
     return ext == ".img" || ext == ".ima" || ext == ".mfm" || ext == ".86f" ||
            ext == ".d64" || ext == ".d71" || ext == ".d81" || ext == ".adf" ||
-           ext == ".g64" || ext == ".trd";
+           ext == ".g64" || ext == ".trd" || ext == ".ipf" || ext == ".woz" ||
+           ext == ".stx" || ext == ".2mg";
 }
 
 bool looks_like_image_operand(const std::string& tok)
@@ -52,13 +53,15 @@ std::string usage_text()
     os << "Usage: " << k_program << " [options] [images…]\n"
        << "\n"
        << "  images    Floppy images (.img / .ima / .mfm / .86f / .d64 / .d71 /\n"
-       << "            .d81 / .adf / .g64 / .trd) and/or directories.\n"
+       << "            .d81 / .adf / .g64 / .trd / .ipf / .woz / .stx / .2mg)\n"
+       << "            and/or directories.\n"
        << "            Directories expand to those extensions (batch; no --batch).\n"
        << "            Options and inputs may be interleaved.\n"
        << "\n"
        << "Dump BIOS boot sector, FAT12/16 BPB, volume serial and label,\n"
        << "directory (including deleted entries), Commodore D64/D71/D81/G64 CBMFS,\n"
-       << "Amiga OFS/FFS ADF, ZX Spectrum TR-DOS TRD, HxC/86F flux metadata,\n"
+       << "Amiga OFS/FFS ADF, ZX Spectrum TR-DOS TRD, SPS IPF / Apple WOZ /\n"
+       << "Atari STX / Apple 2IMG containers, HxC/86F flux metadata,\n"
        << "copy-protection schemes,\n"
        << "and a whole-image XXH64 catalog lookup.\n"
        << "\n"
@@ -248,7 +251,7 @@ expand_inputs(const std::vector<std::filesystem::path>& inputs, std::string& err
     }
     if (out.empty() && !inputs.empty())
     {
-        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd files found in the given directories";
+        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd/.ipf/.woz/.stx/.2mg files found in the given directories";
     }
     return out;
 }

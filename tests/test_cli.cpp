@@ -50,6 +50,8 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find(".adf") != std::string::npos);
     REQUIRE(u.find(".g64") != std::string::npos);
     REQUIRE(u.find(".trd") != std::string::npos);
+    REQUIRE(u.find(".ipf") != std::string::npos);
+    REQUIRE(u.find(".woz") != std::string::npos);
     REQUIRE(u.find(dumpfloppy::k_version) != std::string::npos);
 }
 
@@ -215,6 +217,7 @@ TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g6
     REQUIRE(err.find(".adf") != std::string::npos);
     REQUIRE(err.find(".g64") != std::string::npos);
     REQUIRE(err.find(".trd") != std::string::npos);
+    REQUIRE(err.find(".ipf") != std::string::npos);
 }
 
 TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf .g64 .trd",

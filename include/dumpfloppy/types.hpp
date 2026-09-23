@@ -27,6 +27,10 @@ enum class container_kind
     adf_amiga,   /**< Amiga OFS/FFS `.adf` (DD 80×2×11 or HD 80×2×22). */
     g64_c64,     /**< Commodore 1541 `.g64` (GCR-1541 track container). */
     trd_spectrum,/**< ZX Spectrum TR-DOS `.trd` (256-byte sectors). */
+    ipf_sps,     /**< SPS CAPS `.ipf`. */
+    woz_apple,   /**< Apple II `.woz`. */
+    stx_atari,   /**< Atari ST Pasti `.stx`. */
+    img2mg_apple,/**< Apple `.2mg` / 2IMG. */
     unknown_raw  /**< Explicit path with another extension. */
 };
 

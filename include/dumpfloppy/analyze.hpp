@@ -15,6 +15,7 @@
 #include "dumpfloppy/cbm_view.hpp"
 #include "dumpfloppy/fat_view.hpp"
 #include "dumpfloppy/flux_view.hpp"
+#include "dumpfloppy/foreign_view.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/trd_view.hpp"
 #include "dumpfloppy/types.hpp"
@@ -32,7 +33,8 @@ namespace dumpfloppy
  *
  * Logical FAT bytes are @ref volume_bytes / @ref make_sector_store
  * (assembled IBM CHS when present, else raw @a image.bytes).
- * When @a cbm.present, @a amiga.present, or @a trd.present, FAT/HxC are not walked.
+ * When @a cbm.present, @a amiga.present, @a trd.present, or @a foreign.present,
+ * FAT/HxC are not walked.
  */
 struct analysis
 {
@@ -54,6 +56,7 @@ struct analysis
     cbm_disk cbm{};     /**< D64/D71/D81/G64 CBMFS; @a present is false on PC FAT / ADF. */
     amiga_disk amiga{}; /**< OFS/FFS ADF; @a present is false on PC FAT / CBM. */
     trd_disk trd{};     /**< TR-DOS TRD; @a present is false on PC FAT / CBM / ADF. */
+    foreign_disk foreign{}; /**< IPF/WOZ/STX/2IMG; skips FAT when present. */
 };
 
 /**
@@ -95,8 +98,9 @@ struct analysis
  *
  * A D64/D71/D81 with a valid CBMFS BAM/header, a G64 with a valid
  * GCR-1541 header, a DD/HD ADF with a valid OFS/FFS root, or a TRD with
- * a TR-DOS disk-info stamp, is parsed as that filesystem; FAT/BPB and
- * HxC flux decode are skipped so those bytes are not treated as DOS.
+ * a TR-DOS disk-info stamp, or an IPF/WOZ/STX/2IMG container, is parsed
+ * as that format; FAT/BPB and HxC flux decode are skipped so those
+ * bytes are not treated as DOS.
  * Catalog lookup still runs.
  *
  * @param[in] image Raw image from @ref load_image.

@@ -221,6 +221,22 @@ container_kind container_from_path(const std::string& path)
     {
         return container_kind::trd_spectrum;
     }
+    if (lower.size() >= 4 && lower.ends_with(".ipf"))
+    {
+        return container_kind::ipf_sps;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".woz"))
+    {
+        return container_kind::woz_apple;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".stx"))
+    {
+        return container_kind::stx_atari;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".2mg"))
+    {
+        return container_kind::img2mg_apple;
+    }
     return container_kind::unknown_raw;
 }
 

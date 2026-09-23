@@ -859,6 +859,12 @@ int update_files(analysis& a, const update_options& opt, std::ostream& err)
         err << "dumpfloppy: cannot update TRD images in this version\n";
         return -1;
     }
+    if (a.foreign.present)
+    {
+        err << "dumpfloppy: cannot update " << a.foreign.format
+            << " images in this version\n";
+        return -1;
+    }
     if (a.flux.present && a.flux.format_name == "86BOX 86F")
     {
         err << "dumpfloppy: cannot update .86f flux images in this version\n";

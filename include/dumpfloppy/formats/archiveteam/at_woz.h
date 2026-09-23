@@ -33,8 +33,20 @@ public:
 
     [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
     {
-        (void)data;
-        return false;
+        if (data.size() < 8u)
+        {
+            return false;
+        }
+        const bool woz1 = data[0] == 'W' && data[1] == 'O' && data[2] == 'Z' &&
+                          data[3] == '1';
+        const bool woz2 = data[0] == 'W' && data[1] == 'O' && data[2] == 'Z' &&
+                          data[3] == '2';
+        if (!woz1 && !woz2)
+        {
+            return false;
+        }
+        return data[4] == 0xFFu && data[5] == 0x0Au && data[6] == 0x0Du &&
+               data[7] == 0x0Au;
     }
 };
 

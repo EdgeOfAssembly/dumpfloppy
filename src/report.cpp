@@ -12,6 +12,7 @@
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/geometry.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
+#include "dumpfloppy/foreign.hpp"
 #include "dumpfloppy/trd.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/version.hpp"
@@ -78,8 +79,16 @@ const char* container_name(container_kind k)
             return "G64 (Commodore 1541 GCR-1541)";
         case container_kind::trd_spectrum:
             return "TRD (ZX Spectrum TR-DOS)";
+        case container_kind::ipf_sps:
+            return "IPF (SPS CAPS flux)";
+        case container_kind::woz_apple:
+            return "WOZ (Apple II Applesauce)";
+        case container_kind::stx_atari:
+            return "STX (Atari ST Pasti)";
+        case container_kind::img2mg_apple:
+            return "2IMG (Apple II prefix)";
         default:
-            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd)";
+            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd/.ipf/.woz/.stx/.2mg)";
     }
 }
 
@@ -463,6 +472,48 @@ void write_trd_sections(const analysis& a, std::ostream& out, const report_optio
     out << '\n';
 }
 
+void write_foreign_sections(const analysis& a, std::ostream& out,
+                            const report_options& opt)
+{
+    const bool color = opt.color;
+    section(out, color, "CONTAINER");
+    kv(out, "Format", a.foreign.format);
+    kv(out, "Platform", a.foreign.platform.empty() ? "(none)" : a.foreign.platform);
+    if (!a.foreign.creator.empty())
+    {
+        kv(out, "Creator", a.foreign.creator);
+    }
+    if (a.foreign.file_id != 0u)
+    {
+        kv(out, "SPS id", std::to_string(a.foreign.file_id));
+    }
+    if (a.foreign.track_count != 0u)
+    {
+        kv(out, "Track images", std::to_string(a.foreign.track_count));
+    }
+    if (a.foreign.max_cylinder != 0u || a.foreign.max_head != 0u)
+    {
+        std::ostringstream os;
+        os << a.foreign.min_cylinder << "–" << a.foreign.max_cylinder << " cyl, heads "
+           << a.foreign.min_head << "–" << a.foreign.max_head;
+        kv(out, "Geometry", os.str());
+    }
+    if (a.foreign.write_protected)
+    {
+        kv(out, "Write protect", "yes");
+    }
+    if (a.foreign.data_length != 0u)
+    {
+        kv(out, "Payload", std::to_string(a.foreign.data_length) + " bytes @ " +
+                               std::to_string(a.foreign.data_offset));
+    }
+    if (!a.foreign.note.empty())
+    {
+        kv(out, "Note", a.foreign.note);
+    }
+    out << '\n';
+}
+
 } /* namespace */
 
 void write_report(const analysis& a, std::ostream& out, const report_options& opt)
@@ -500,6 +551,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         {
             fmt = "ZX TRD / TR-DOS";
         }
+        else if (a.foreign.present)
+        {
+            fmt = a.foreign.format;
+        }
         else
         {
             fmt = identify_type(a.image.bytes, format_kind::disk_image);
@@ -531,6 +586,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.trd.present)
     {
         kv(out, "Filesystem", "TR-DOS");
+    }
+    else if (a.foreign.present)
+    {
+        kv(out, "Filesystem", a.foreign.platform.empty() ? "(flux)" : a.foreign.platform);
     }
     if (a.image.size_geometry.cylinders != 0u)
     {
@@ -639,6 +698,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.trd.present)
     {
         write_trd_sections(a, out, opt);
+    }
+    else if (a.foreign.present)
+    {
+        write_foreign_sections(a, out, opt);
     }
     else
     {
@@ -837,7 +900,8 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         out << '\n';
     }
 
-    if (opt.hex_boot && !a.cbm.present && !a.amiga.present && !a.trd.present)
+    if (opt.hex_boot && !a.cbm.present && !a.amiga.present && !a.trd.present &&
+        !a.foreign.present)
     {
         section(out, color, "BOOT SECTOR HEX");
         std::span<const uint8_t> boot =

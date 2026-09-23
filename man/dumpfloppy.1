@@ -56,6 +56,16 @@ A
 with a TR-DOS disk-info stamp at logical sector 8 is listed as Spectrum
 (disk label, BASIC/CODE directory) instead of inventing a FAT BPB from
 160K/320K IBM-sized bytes.
+An
+.I .ipf
+/
+.I .woz
+/
+.I .stx
+/
+.I .2mg
+container is identified (SPS INFO, WOZ INFO, Pasti header, 2IMG prefix)
+instead of inventing a FAT BPB from flux bytes.
 .PP
 .B \-x
 /
@@ -112,7 +122,12 @@ A directory operand expands to
 and
 .I *.g64 ,
 and
-.I *.trd
+.I *.trd ,
+.I *.ipf ,
+.I *.woz ,
+.I *.stx ,
+and
+.I *.2mg
 in that directory (non-recursive).
 .SH OPTIONS
 .TP
@@ -121,7 +136,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.23
+.B dumpfloppy 0.24
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
