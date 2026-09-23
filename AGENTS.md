@@ -29,3 +29,9 @@ Deleted entries: `TUI_BG_BRIGHT_RED` + `TUI_WHITE` + `TUI_BOLD` (no blink).
 
 `formal/harness_fat12.c` proves FAT12 even/odd packed-entry round-trip.
 Keep `fat12_entry_get` / `fat12_entry_set` in C23 (no C++ in that TU).
+
+## Continue tomorrow
+
+Read **`TODO.md`** (next slices, fixture paths, do-not-push games).
+Durable trees: `/mnt/dumpfloppy`, GitHub `EdgeOfAssembly/dumpfloppy`.
+`/tmp` is tmpfs. Unpacked TOSEC fixtures: `/mnt/dumpfloppy-fixtures/` (local only).

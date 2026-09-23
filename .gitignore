@@ -10,5 +10,16 @@ profile.txt
 /build/
 *.img
 *.ima
+*.mfm
+*.86f
+*.d64
+*.d71
+*.d81
+*.adf
+*.g64
+*.ipf
+*.woz
+*.exe
+*.prg
 .cache/
 compile_commands.json
