@@ -107,6 +107,8 @@ TEST_CASE("write_report lists OFS ADF not FAT", "[adf][report]")
     dumpfloppy::write_report(a, plain, opt);
     const std::string s = plain.str();
     REQUIRE(s.find("AMIGA ADF / OFS") != std::string::npos);
+    REQUIRE(s.find("OFS (Amiga)") != std::string::npos);
+    REQUIRE(s.find("; not FAT") == std::string::npos);
     REQUIRE(s.find("TESTADF") != std::string::npos);
     REQUIRE(s.find("README") != std::string::npos);
     REQUIRE(s.find("AMIGA VOLUME") != std::string::npos);
@@ -127,6 +129,8 @@ TEST_CASE("write_report lists FFS ADF", "[adf][report][ffs]")
     dumpfloppy::write_report(a, plain, opt);
     const std::string s = plain.str();
     REQUIRE(s.find("AMIGA ADF / FFS") != std::string::npos);
+    REQUIRE(s.find("FFS (Amiga)") != std::string::npos);
+    REQUIRE(s.find("; not FAT") == std::string::npos);
     REQUIRE(s.find("FFSVOL") != std::string::npos);
     REQUIRE(s.find("RAWFILE") != std::string::npos);
     REQUIRE(s.find("BIOS PARAMETER BLOCK") == std::string::npos);

@@ -110,6 +110,8 @@ TEST_CASE("write_report lists CBM disk name and PRG", "[d64][report]")
     dumpfloppy::write_report(a, plain, opt);
     const std::string s = plain.str();
     REQUIRE(s.find("C64 D64 / CBMFS") != std::string::npos);
+    REQUIRE(s.find("CBMFS (Commodore 1541 D64)") != std::string::npos);
+    REQUIRE(s.find("; not FAT") == std::string::npos);
     REQUIRE(s.find("CBMFS") != std::string::npos);
     REQUIRE(s.find("TEST DISK") != std::string::npos);
     REQUIRE(s.find("HELLO") != std::string::npos);

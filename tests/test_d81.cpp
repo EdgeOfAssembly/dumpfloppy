@@ -69,6 +69,8 @@ TEST_CASE("write_report lists D81 CBMFS not FAT", "[d81][report]")
     dumpfloppy::write_report(a, plain, opt);
     const std::string s = plain.str();
     REQUIRE(s.find("C64 D81 / CBMFS") != std::string::npos);
+    REQUIRE(s.find("CBMFS (Commodore 1581 D81)") != std::string::npos);
+    REQUIRE(s.find("; not FAT") == std::string::npos);
     REQUIRE(s.find("TEST 1581") != std::string::npos);
     REQUIRE(s.find("HELLO81") != std::string::npos);
     REQUIRE(s.find("PRG") != std::string::npos);

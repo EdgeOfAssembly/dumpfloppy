@@ -431,12 +431,11 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         {
             drive = "1541 G64";
         }
-        kv(out, "Filesystem", std::string("CBMFS (Commodore ") + drive + "; not FAT)");
+        kv(out, "Filesystem", std::string("CBMFS (Commodore ") + drive + ")");
     }
     else if (a.amiga.present)
     {
-        kv(out, "Filesystem",
-           std::string(amiga_fs_name(a.amiga.ffs)) + " (Amiga; not FAT)");
+        kv(out, "Filesystem", std::string(amiga_fs_name(a.amiga.ffs)) + " (Amiga)");
     }
     if (a.image.size_geometry.cylinders != 0u)
     {
