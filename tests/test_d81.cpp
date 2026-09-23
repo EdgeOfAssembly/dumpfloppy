@@ -104,7 +104,7 @@ TEST_CASE("update refuses D81/CBMFS", "[d81][update]")
     opt.hosts.emplace_back("HELLO81.prg");
     std::ostringstream err;
     REQUIRE(dumpfloppy::update_files(a, opt, err) == -1);
-    REQUIRE(err.str().find("cannot update D64/CBMFS") != std::string::npos);
+    REQUIRE(err.str().find("cannot update CBMFS") != std::string::npos);
 }
 
 TEST_CASE("load_image .d81 is container d81_c64", "[d81][image]")
