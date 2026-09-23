@@ -40,6 +40,7 @@ struct amiga_disk
     uint32_t root_block = 0;
     uint32_t sector_count = 0;
     std::vector<amiga_file> entries{};
+    std::vector<uint8_t> decoded{}; /**< Assembled ADF from IPF; empty on raw ADF. */
 };
 
 } /* namespace dumpfloppy */

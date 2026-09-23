@@ -47,6 +47,17 @@ namespace dumpfloppy
  */
 [[nodiscard]] std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data);
 
+/**
+ * @brief Decode standard AmigaDOS sectors from an SPS IPF into a DD/HD ADF.
+ *
+ * IMGE/DATA tracks are expanded to MFM cells (CAPS encoder types 1–2, gap
+ * type 0). `4489` syncs are Amiga even/odd decoded. Copy-protected tracks
+ * that do not yield `0xFF` sectors are skipped. Empty if no sector decoded.
+ *
+ * @param[in] data Whole IPF file.
+ */
+[[nodiscard]] std::vector<uint8_t> assemble_ipf(std::span<const uint8_t> data);
+
 } /* namespace dumpfloppy */
 
 #endif /* DUMPFLOPPY_FOREIGN_HPP */

@@ -220,6 +220,27 @@ analysis analyse(floppy_image image)
             }
         }
     }
+    if (a.foreign.kind == foreign_kind::ipf)
+    {
+        std::vector<uint8_t> adf = assemble_ipf(bytes);
+        if (!adf.empty())
+        {
+            a.amiga = parse_adf(adf);
+            if (a.amiga.present)
+            {
+                a.amiga.decoded = std::move(adf);
+                a.foreign.note =
+                    "standard AmigaDOS sectors assembled for OFS/FFS";
+                a.image.size_geometry.cylinders = 80;
+                a.image.size_geometry.heads = 2;
+                a.image.size_geometry.bytes_per_sector = k_adf_sector_bytes;
+                a.image.size_geometry.sectors_per_track = 11;
+                a.image.size_geometry.expected_bytes = k_adf_dd_bytes;
+                a.image.size_geometry.media_name = "Amiga DD ADF (IPF AmigaDOS)";
+                return a;
+            }
+        }
+    }
     if (a.foreign.kind == foreign_kind::stx)
     {
         a.flux = assemble_stx(bytes);

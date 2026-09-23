@@ -342,8 +342,8 @@ int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostr
                 return -1;
             }
         }
-        const std::vector<uint8_t> bytes =
-            read_amiga_file(a.image.bytes, a.amiga, file);
+        const std::vector<uint8_t> bytes = read_amiga_file(
+            amiga_volume_bytes(a.image.bytes, a.amiga), a.amiga, file);
         std::ofstream out(dest, std::ios::binary | std::ios::trunc);
         if (!out)
         {

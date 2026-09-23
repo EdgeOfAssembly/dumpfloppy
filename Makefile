@@ -74,7 +74,7 @@ SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/format_container.cpp src/format_filesystem.cpp \
            src/ibm_mfm.cpp src/catalog.cpp \
            src/cbm.cpp src/amiga.cpp src/g64.cpp src/trd.cpp \
-           src/foreign.cpp src/apple.cpp
+           src/foreign.cpp src/apple.cpp src/ipf.cpp
 SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \

@@ -6,7 +6,8 @@ HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), Commodore 1541/1571/1581
 and extract), Amiga `.adf` images (OFS/FFS listing and extract), ZX
 Spectrum TR-DOS `.trd` images (directory listing and extract),
 `.ipf` / `.woz` / `.stx` / `.2mg` flux containers (metadata; no FAT;
-WOZ 5.25 6-and-2 tracks are decoded to DOS 3.3 / ProDOS),
+WOZ 5.25 6-and-2 tracks are decoded to DOS 3.3 / ProDOS; IPF standard
+AmigaDOS tracks are assembled to OFS/FFS ADF),
 and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 
 `.ima` is WinImage’s raw dump; the sector layout is the same as `.img`.
@@ -29,7 +30,9 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 - **IPF / WOZ / STX / 2IMG**: container metadata (SPS id, tracks, platform); FAT is
   not invented from flux bytes. STX standard 512-byte sectors are assembled into
   a GEMDOS/FAT12 volume (listing + extract). WOZ 5.25 tracks are 6-and-2 decoded
-  into a DOS-order volume and listed as DOS 3.3 or ProDOS. `-u` still refused.
+  into a DOS-order volume and listed as DOS 3.3 or ProDOS. IPF tracks with
+  standard AmigaDOS (`4489`) sectors are assembled into a DD ADF (OFS/FFS
+  listing + extract). `-u` still refused.
 - Apple **DOS 3.3 / ProDOS**: catalog listing and extract from raw 140K, 2IMG
   payload, or decoded WOZ (VTOC T17/S0 vs ProDOS volume header in block 2)
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
@@ -65,7 +68,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.27`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.28`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` / `*.dsk` /
 `*.po`.
@@ -85,6 +88,8 @@ dumpfloppy disk.2mg
 dumpfloppy disk.dsk -x
 dumpfloppy disk.woz
 dumpfloppy disk.woz -x
+dumpfloppy game.ipf
+dumpfloppy game.ipf -x
 dumpfloppy game.stx
 dumpfloppy game.stx -x
 dumpfloppy --no-color --no-hex disk.ima -o report.txt

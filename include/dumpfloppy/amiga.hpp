@@ -153,6 +153,24 @@ inline constexpr int32_t k_amiga_st_root = 1;
 [[nodiscard]] amiga_disk parse_adf(std::span<const uint8_t> image);
 
 /**
+ * @brief ADF bytes used to walk OFS/FFS chains.
+ *
+ * IPF-assembled volumes live in @a disk.decoded. Raw `.adf` uses @p raw.
+ *
+ * @param[in] raw  Original image bytes.
+ * @param[in] disk Parsed Amiga disk (may hold @a decoded).
+ */
+[[nodiscard]] inline std::span<const uint8_t>
+amiga_volume_bytes(std::span<const uint8_t> raw, const amiga_disk& disk) noexcept
+{
+    if (!disk.decoded.empty())
+    {
+        return std::span<const uint8_t>(disk.decoded);
+    }
+    return raw;
+}
+
+/**
  * @brief Read a file payload from OFS (24-byte data headers) or FFS (raw 512).
  *
  * Data keys live at `24 + (72-1-i)*4` for `i` in `0 .. high_seq-1`. Further

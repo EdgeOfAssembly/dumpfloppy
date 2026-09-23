@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** (see `git log -1`) · **version 0.27** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** (see `git log -1`) · **version 0.28** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -12,7 +12,7 @@ After reboot, clone or `rsync -a /mnt/dumpfloppy/ /tmp/dumpfloppy/` (or work in 
 
 Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers common floppy extensions. Fixtures live **locally** under `/mnt/dumpfloppy-fixtures/` and `/mnt/PC_games/` (zips).
 
-## Done in 0.13–0.27 (do not redo)
+## Done in 0.13–0.28 (do not redo)
 
 - FAT12 `-u` (atomic rename, reclaim-before-relocate, deleted occupancy / Star Control TACTICS)
 - HxC CHS from BPB/modal SPT; HLS vs that SPT; extra-head DAM skip
@@ -34,12 +34,13 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 - Apple DOS 3.3 / ProDOS catalog + extract (raw 140K or 2IMG); `-u` refused
 - STX Pasti: assemble standard 512-byte sectors → GEMDOS/FAT12 listing + extract; `-u` refused
 - WOZ 5.25 6-and-2 GCR → DOS-order 140K, then DOS 3.3 / ProDOS catalog + extract; `-u` refused
+- IPF standard AmigaDOS (`4489`) sectors → DD ADF OFS/FFS listing + extract; `-u` refused
 
-**Verify last green:** `make -s test` 206 cases / 4836 assertions (7 skipped /tmp PC copies); `make -s verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2).
+**Verify last green:** `make -s test` 209 cases / 4850 assertions (7 skipped /tmp PC copies); `make -s verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2).
 
 ## Next (pick one slice)
 
-1. **Decode next:** IPF→ADF when tracks are standard. G71 if a fixture appears.
+1. **Decode next:** G71 if a fixture appears. IPF copy-protected tracks stay metadata-only.
 
 ## Local fixtures (never GitHub)
 

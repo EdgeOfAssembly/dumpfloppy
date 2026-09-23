@@ -373,8 +373,8 @@ void write_amiga_sections(const analysis& a, std::ostream& out, const report_opt
             ++shown;
             continue;
         }
-        const std::vector<uint8_t> payload =
-            read_amiga_file(a.image.bytes, a.amiga, e);
+        const std::vector<uint8_t> payload = read_amiga_file(
+            amiga_volume_bytes(a.image.bytes, a.amiga), a.amiga, e);
         const uint32_t size = static_cast<uint32_t>(payload.size());
         const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
         out << amiga_entry_line(e, size, sum) << '\n';
@@ -629,7 +629,14 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         }
         else if (a.amiga.present)
         {
-            fmt = std::string("AMIGA ADF / ") + amiga_fs_name(a.amiga.ffs);
+            if (a.foreign.kind == foreign_kind::ipf)
+            {
+                fmt = a.foreign.format + " / " + amiga_fs_name(a.amiga.ffs);
+            }
+            else
+            {
+                fmt = std::string("AMIGA ADF / ") + amiga_fs_name(a.amiga.ffs);
+            }
         }
         else if (a.trd.present)
         {
@@ -804,6 +811,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
     else if (a.amiga.present)
     {
+        if (a.foreign.present)
+        {
+            write_foreign_sections(a, out, opt);
+        }
         write_amiga_sections(a, out, opt);
     }
     else if (a.trd.present)

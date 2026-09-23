@@ -11,7 +11,9 @@
 #include "dumpfloppy/formats/archiveteam/at_woz.h"
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/update.hpp"
+#include "adf_builder.hpp"
 #include "image_builder.hpp"
+#include "ipf_builder.hpp"
 #include "woz_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -444,6 +446,68 @@ TEST_CASE("WOZ 6-and-2 ProDOS lists seedling HELLO", "[foreign][woz][prodos]")
     std::ostringstream plain;
     dumpfloppy::write_report(a, plain, opt);
     REQUIRE(plain.str().find("ProDOS") != std::string::npos);
+}
+
+TEST_CASE("IPF standard AmigaDOS lists OFS file", "[foreign][ipf][amiga]")
+{
+    const auto adf = dumpfloppy_test::make_ofs_root_file_adf();
+    const auto ipf = dumpfloppy_test::adf_to_ipf(adf);
+    REQUIRE_FALSE(ipf.empty());
+    const auto assembled = dumpfloppy::assemble_ipf(ipf);
+    REQUIRE(assembled.size() == dumpfloppy::k_adf_dd_bytes);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(ipf, "t.ipf"));
+    REQUIRE(a.foreign.present);
+    REQUIRE(a.foreign.kind == dumpfloppy::foreign_kind::ipf);
+    REQUIRE(a.amiga.present);
+    REQUIRE_FALSE(a.amiga.decoded.empty());
+    REQUIRE_FALSE(a.bpb.looks_valid);
+    bool hello = false;
+    for (const dumpfloppy::amiga_file& e : a.amiga.entries)
+    {
+        if (e.name == "README" || e.path.find("README") != std::string::npos)
+        {
+            hello = true;
+        }
+    }
+    REQUIRE(hello);
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    opt.hex_boot = true;
+    std::ostringstream plain;
+    dumpfloppy::write_report(a, plain, opt);
+    const std::string s = plain.str();
+    REQUIRE(s.find("SPS IPF / OFS") != std::string::npos);
+    REQUIRE(s.find("CONTAINER") != std::string::npos);
+    REQUIRE(s.find("BIOS PARAMETER BLOCK") == std::string::npos);
+}
+
+TEST_CASE("extract README from assembled IPF", "[foreign][ipf][extract]")
+{
+    const dumpfloppy::analysis a = dumpfloppy::analyse(
+        wrap(dumpfloppy_test::adf_to_ipf(dumpfloppy_test::make_ofs_root_file_adf()),
+             "t.ipf"));
+    const auto dest =
+        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "ipf-out";
+    std::filesystem::remove_all(dest);
+    std::filesystem::create_directories(dest);
+    dumpfloppy::extract_options opt{};
+    opt.enabled = true;
+    opt.dest_dir = dest;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::extract_files(a, opt, err) >= 1);
+}
+
+TEST_CASE("update refuses assembled IPF", "[foreign][ipf][update]")
+{
+    dumpfloppy::analysis a = dumpfloppy::analyse(
+        wrap(dumpfloppy_test::adf_to_ipf(dumpfloppy_test::make_ofs_root_file_adf()),
+             "t.ipf"));
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back("README");
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) != 0);
+    REQUIRE(err.str().find("IPF") != std::string::npos);
 }
 
 TEST_CASE("optional SOTB Disk 1 IPF catalogues Copylock", "[foreign][optional]")

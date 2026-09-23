@@ -852,6 +852,11 @@ int update_files(analysis& a, const update_options& opt, std::ostream& err)
     }
     if (a.amiga.present)
     {
+        if (!a.amiga.decoded.empty())
+        {
+            err << "dumpfloppy: cannot update SPS IPF images in this version\n";
+            return -1;
+        }
         return update_amiga_files(a, opt, err);
     }
     if (a.trd.present)

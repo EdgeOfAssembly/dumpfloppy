@@ -74,6 +74,10 @@ Apple II
 .I .woz
 5.25-inch tracks are 6-and-2 GCR-decoded into a DOS-order volume and listed
 as DOS 3.3 or ProDOS when the catalog is readable.
+SPS
+.I .ipf
+tracks with standard AmigaDOS sectors are assembled into a DD ADF and listed
+as OFS/FFS.
 A DOS 3.3 VTOC (track 17 sector 0) or ProDOS volume header (block 2)
 is listed as Apple (catalog names) from a raw 140K image, a 2IMG payload,
 or a decoded WOZ.
@@ -150,7 +154,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.27
+.B dumpfloppy 0.28
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
