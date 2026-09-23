@@ -31,6 +31,11 @@ public:
         return format_kind::disk_image;
     }
 
+    [[nodiscard]] format_registry_id registry() const override
+    {
+        return format_registry_id::filesystem;
+    }
+
     [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
     {
         /* Wiki: BAM at 18/0; DOS version $41 ('A') or $00; DOS type usually "2A".

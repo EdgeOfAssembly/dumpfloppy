@@ -15,4 +15,10 @@ Each header is one `file_format` subclass. Unknown payloads stay **DATA**.
 | `shikadi/` | https://moddingwiki.shikadi.net/wiki/Category:File_Formats | 439 |
 
 `type()` is uppercase, at most 24 characters (directory Type column).
-`generated_formats.h` is produced by `scripts/gen_format_registry.py`.
+Generated catalogs (`scripts/gen_format_registry.py`):
+
+| Header | Registry |
+|--------|----------|
+| `generated_payload.h` | in-volume files (Shikadi) |
+| `generated_container.h` | disk image containers |
+| `generated_filesystem.h` | FAT / CBMFS / OFS / … |

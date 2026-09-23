@@ -31,6 +31,11 @@ public:
         return format_kind::disk_image;
     }
 
+    [[nodiscard]] format_registry_id registry() const override
+    {
+        return format_registry_id::filesystem;
+    }
+
     [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
     {
         /* Wiki boot record: byte 0 = 0, byte 1 = 1, byte 6 = 0x4B (JMP). */

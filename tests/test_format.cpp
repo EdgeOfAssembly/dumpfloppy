@@ -42,9 +42,61 @@ TEST_CASE("FAT12 detector matches a synthetic 32K volume", "[format]")
     dumpfloppy::formats::fat12 fmt{};
     REQUIRE(fmt.type() == "FAT12");
     REQUIRE(fmt.kind() == dumpfloppy::format_kind::disk_image);
+    REQUIRE(fmt.registry() == dumpfloppy::format_registry_id::filesystem);
     REQUIRE(fmt.detect(bytes));
     REQUIRE(dumpfloppy::identify_type(bytes, dumpfloppy::format_kind::disk_image) ==
             "FAT12");
+}
+
+TEST_CASE("format catalogs split payload container filesystem", "[format][registry]")
+{
+    const auto& pay = dumpfloppy::payload_formats();
+    const auto& cont = dumpfloppy::container_formats();
+    const auto& fs = dumpfloppy::filesystem_formats();
+    const auto all = dumpfloppy::all_formats();
+    REQUIRE(pay.size() >= 4u);
+    REQUIRE(cont.size() >= 2u);
+    REQUIRE(fs.size() >= 1u);
+    REQUIRE(all.size() == pay.size() + cont.size() + fs.size());
+    REQUIRE(fs.front()->type() == "FAT12");
+    REQUIRE(fs.front()->registry() == dumpfloppy::format_registry_id::filesystem);
+
+    bool saw_g64 = false;
+    bool saw_cbmfs = false;
+    bool saw_pkd = false;
+    for (const dumpfloppy::file_format* f : pay)
+    {
+        REQUIRE(f != nullptr);
+        REQUIRE(f->kind() == dumpfloppy::format_kind::file);
+        REQUIRE(f->registry() == dumpfloppy::format_registry_id::payload);
+        if (f->type() == "HS PACK ARC")
+        {
+            saw_pkd = true;
+        }
+    }
+    for (const dumpfloppy::file_format* f : cont)
+    {
+        REQUIRE(f != nullptr);
+        REQUIRE(f->kind() == dumpfloppy::format_kind::disk_image);
+        REQUIRE(f->registry() == dumpfloppy::format_registry_id::container);
+        if (f->type() == "C64 G64")
+        {
+            saw_g64 = true;
+        }
+    }
+    for (const dumpfloppy::file_format* f : fs)
+    {
+        REQUIRE(f != nullptr);
+        REQUIRE(f->kind() == dumpfloppy::format_kind::disk_image);
+        REQUIRE(f->registry() == dumpfloppy::format_registry_id::filesystem);
+        if (f->type() == "CBMFS")
+        {
+            saw_cbmfs = true;
+        }
+    }
+    REQUIRE(saw_g64);
+    REQUIRE(saw_cbmfs);
+    REQUIRE(saw_pkd);
 }
 
 TEST_CASE("xxh64_hex is 16 lowercase hex chars", "[format]")

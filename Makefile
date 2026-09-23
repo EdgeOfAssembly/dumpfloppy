@@ -70,7 +70,9 @@ SRC_C := src/fat12_codec.c src/gcr_codec.c
 SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/boot.cpp src/fat.cpp src/directory.cpp src/analyze.cpp \
            src/report.cpp src/cli.cpp src/extract.cpp src/update.cpp \
-           src/format_registry.cpp src/ibm_mfm.cpp src/catalog.cpp \
+           src/format_registry.cpp src/format_payload.cpp \
+           src/format_container.cpp src/format_filesystem.cpp \
+           src/ibm_mfm.cpp src/catalog.cpp \
            src/cbm.cpp src/amiga.cpp src/g64.cpp
 SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
@@ -85,14 +87,18 @@ OBJ_CXX := $(SRC_CXX:.cpp=.o)
 OBJ_MAIN := $(SRC_MAIN:.cpp=.o)
 DEP := $(OBJ_C:.o=.d) $(OBJ_CXX:.o=.d) $(OBJ_MAIN:.o=.d)
 
-GEN_FMT := include/dumpfloppy/formats/generated_formats.h
+GEN_FMT := include/dumpfloppy/formats/generated_payload.h \
+           include/dumpfloppy/formats/generated_container.h \
+           include/dumpfloppy/formats/generated_filesystem.h
 FMT_HDRS := $(wildcard include/dumpfloppy/formats/archiveteam/*.h) \
             $(wildcard include/dumpfloppy/formats/shikadi/*.h)
 
 $(GEN_FMT): scripts/gen_format_registry.py $(FMT_HDRS)
 	python3 scripts/gen_format_registry.py
 
-src/format_registry.o: $(GEN_FMT)
+src/format_payload.o: include/dumpfloppy/formats/generated_payload.h
+src/format_container.o: include/dumpfloppy/formats/generated_container.h
+src/format_filesystem.o: include/dumpfloppy/formats/generated_filesystem.h
 
 .PHONY: all clean test tests verify release profile install tags docs man-lint
 

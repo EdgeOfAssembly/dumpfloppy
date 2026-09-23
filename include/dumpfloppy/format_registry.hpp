@@ -16,7 +16,28 @@ namespace dumpfloppy
 {
 
 /**
- * @brief All compiled-in format objects (disk images and files).
+ * @brief In-volume file formats (PKD, COM, ARC, Shikadi catalog).
+ *
+ * @warning Pointers are to process-lifetime statics; do not free them.
+ */
+[[nodiscard]] const std::vector<const file_format*>& payload_formats();
+
+/**
+ * @brief Disk-image containers (HxC, 86F, D64, G64, IMA, …).
+ *
+ * @warning Pointers are to process-lifetime statics; do not free them.
+ */
+[[nodiscard]] const std::vector<const file_format*>& container_formats();
+
+/**
+ * @brief On-disk filesystems (FAT12, CBMFS, OFS, FFS, …).
+ *
+ * @warning Pointers are to process-lifetime statics; do not free them.
+ */
+[[nodiscard]] const std::vector<const file_format*>& filesystem_formats();
+
+/**
+ * @brief All compiled-in format objects (core detectors, then generated).
  *
  * @warning Pointers are to process-lifetime statics; do not free them.
  */

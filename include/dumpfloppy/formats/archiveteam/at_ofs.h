@@ -31,6 +31,11 @@ public:
         return format_kind::disk_image;
     }
 
+    [[nodiscard]] format_registry_id registry() const override
+    {
+        return format_registry_id::filesystem;
+    }
+
     [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
     {
         /* FFS article documents OFS bootblock IDs DOS\0, DOS\2, DOS\4. */

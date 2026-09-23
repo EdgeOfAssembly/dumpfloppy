@@ -28,6 +28,19 @@ enum class format_kind
 };
 
 /**
+ * @brief Which catalog table a format belongs to.
+ *
+ * @c kind() is disk-vs-file for sniffing; this is payload vs container vs
+ * filesystem so the generated catalog can live in three translation units.
+ */
+enum class format_registry_id
+{
+    payload,    /**< In-volume file (EXE, PKD, AIFF, …). */
+    container,  /**< Image container (D64, G64, MFM, IMA, …). */
+    filesystem  /**< On-disk filesystem (FAT12, CBMFS, OFS, …). */
+};
+
+/**
  * @brief One recognised format.
  *
  * @c type() defaults to `"DATA"` (same idea as file(1) for an unknown blob).
@@ -61,6 +74,15 @@ public:
     [[nodiscard]] virtual format_kind kind() const
     {
         return format_kind::file;
+    }
+
+    /**
+     * @brief Catalog table. Default: file → payload, disk_image → container.
+     */
+    [[nodiscard]] virtual format_registry_id registry() const
+    {
+        return kind() == format_kind::file ? format_registry_id::payload
+                                           : format_registry_id::container;
     }
 
     /**

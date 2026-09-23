@@ -31,6 +31,11 @@ public:
         return format_kind::disk_image;
     }
 
+    [[nodiscard]] format_registry_id registry() const override
+    {
+        return format_registry_id::filesystem;
+    }
+
     [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
     {
         /* Wiki: 80 tracks * 40 sectors; header 40/0; dir pointer 40/3;

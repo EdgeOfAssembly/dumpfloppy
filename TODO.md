@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** (see `git log -1`) · **version 0.18** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** (see `git log -1`) · **version 0.19** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -12,7 +12,7 @@ After reboot, clone or `rsync -a /mnt/dumpfloppy/ /tmp/dumpfloppy/` (or work in 
 
 Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers common floppy extensions. Fixtures live **locally** under `/mnt/dumpfloppy-fixtures/` and `/mnt/PC_games/` (zips).
 
-## Done in 0.13–0.18 (do not redo)
+## Done in 0.13–0.19 (do not redo)
 
 - FAT12 `-u` (atomic rename, reclaim-before-relocate, deleted occupancy / Star Control TACTICS)
 - HxC CHS from BPB/modal SPT; HLS vs that SPT; extra-head DAM skip
@@ -24,14 +24,14 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 - Schepers CBM format TXT notes in `docs/cbm/` (from RetroCodeMess; leave `.TXT` intact)
 - D81 vs IBM 800K: size stays 800K; CBMFS needs header 40/0 plus BAM 40/1 DOS/`~DOS`
 - CBM/ADF `-u` same-size in-place (D64/D71/D81 PRG/SEQ/USR, OFS/FFS); G64 and REL refused
+- Format catalog split: payload / container / filesystem TUs (`generated_{payload,container,filesystem}.h`)
 
-**Verify last green:** `make -s test` 167 cases / 1884 assertions (7 skipped fixtures); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
+**Verify last green:** `make -s test` 168 cases / 3442 assertions (7 skipped fixtures); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
 
 ## Next (pick one slice)
 
-1. **Split the 509-class format TU** — `all_formats()` is cached; still one generated mega-include. Payload vs container vs filesystem registries.
-2. **Narrow `analyze.hpp`** — still includes FAT + CBM + Amiga + MFM. Forward-declare fs views.
-3. **Other platforms:** Apple WOZ/2MG, Atari ST/STX, Spectrum TRD (parser, not size sniff), Amiga IPF. G71 (GCR-1571) if a fixture appears.
+1. **Narrow `analyze.hpp`** — still includes FAT + CBM + Amiga + MFM. Forward-declare fs views.
+2. **Other platforms:** Apple WOZ/2MG, Atari ST/STX, Spectrum TRD (parser, not size sniff), Amiga IPF. G71 (GCR-1571) if a fixture appears.
 
 ## Local fixtures (never GitHub)
 

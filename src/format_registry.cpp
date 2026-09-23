@@ -1,56 +1,53 @@
 /**
  * @file format_registry.cpp
- * @brief Format table (core + generated extras).
+ * @brief Sniff helpers over the payload / container / filesystem catalogs.
  */
 #include "dumpfloppy/format_registry.hpp"
-#include "dumpfloppy/formats/arc.h"
-#include "dumpfloppy/formats/box86f.h"
-#include "dumpfloppy/formats/com.h"
-#include "dumpfloppy/formats/fat12.h"
-#include "dumpfloppy/formats/hxc_mfm.h"
-#include "dumpfloppy/formats/pkd.h"
-#include "dumpfloppy/formats/pop_arc.h"
 
-#include <iterator>
 #include <vector>
-
-#if defined(__has_include)
-#  if __has_include("dumpfloppy/formats/generated_formats.h")
-#    include "dumpfloppy/formats/generated_formats.h"
-#    define DUMPFLOPPY_HAVE_GENERATED_FORMATS 1
-#  endif
-#endif
 
 namespace dumpfloppy
 {
-namespace
-{
-
-const formats::fat12 k_fat12{};
-const formats::pkd k_pkd{};
-const formats::com k_com{};
-const formats::hxc_mfm k_hxc_mfm{};
-const formats::box86f k_box86f{};
-const formats::sea_arc k_sea_arc{};
-const formats::pop_arc k_pop_arc{};
-
-} /* namespace */
 
 std::vector<const file_format*> all_formats()
 {
     static const std::vector<const file_format*> k_all = []()
     {
+        /* Core detectors first (FAT12, HxC, 86F, PKD, COM, ARC), then
+         * generated catalogs. identify_format still filters by kind(). */
         std::vector<const file_format*> out;
-        out.push_back(&k_fat12);
-        out.push_back(&k_hxc_mfm);
-        out.push_back(&k_box86f);
-        out.push_back(&k_pkd);
-        out.push_back(&k_com);
-        out.push_back(&k_sea_arc);
-        out.push_back(&k_pop_arc);
-#ifdef DUMPFLOPPY_HAVE_GENERATED_FORMATS
-        append_generated_formats(out);
-#endif
+        const auto& fs = filesystem_formats();
+        const auto& cont = container_formats();
+        const auto& pay = payload_formats();
+        out.reserve(fs.size() + cont.size() + pay.size());
+        if (!fs.empty())
+        {
+            out.push_back(fs.front()); /* fat12 */
+        }
+        if (cont.size() >= 2u)
+        {
+            out.push_back(cont[0]); /* hxc_mfm */
+            out.push_back(cont[1]); /* box86f */
+        }
+        if (pay.size() >= 4u)
+        {
+            out.push_back(pay[0]); /* pkd */
+            out.push_back(pay[1]); /* com */
+            out.push_back(pay[2]); /* sea_arc */
+            out.push_back(pay[3]); /* pop_arc */
+        }
+        if (cont.size() > 2u)
+        {
+            out.insert(out.end(), cont.begin() + 2, cont.end());
+        }
+        if (fs.size() > 1u)
+        {
+            out.insert(out.end(), fs.begin() + 1, fs.end());
+        }
+        if (pay.size() > 4u)
+        {
+            out.insert(out.end(), pay.begin() + 4, pay.end());
+        }
         return out;
     }();
     return k_all;
