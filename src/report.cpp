@@ -641,6 +641,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
             {
                 fmt = std::string("APPLE 2IMG / ") + a.apple.fs_name;
             }
+            else if (a.foreign.kind == foreign_kind::woz)
+            {
+                fmt = a.foreign.format + " / " + a.apple.fs_name;
+            }
             else
             {
                 fmt = std::string("APPLE ") + a.apple.fs_name;

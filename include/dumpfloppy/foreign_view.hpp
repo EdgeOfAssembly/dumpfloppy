@@ -39,6 +39,7 @@ struct foreign_disk
     uint32_t file_id = 0;     /**< SPS file id when IPF. */
     uint32_t data_offset = 0; /**< 2IMG payload offset. */
     uint32_t data_length = 0; /**< 2IMG payload length. */
+    uint8_t disk_type = 0;    /**< WOZ INFO: 1 = 5.25-inch, 2 = 3.5-inch. */
     bool write_protected = false;
     std::string note{};
 };

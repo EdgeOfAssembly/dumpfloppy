@@ -102,7 +102,9 @@ struct analysis
  * GCR-1541 header, a DD/HD ADF with a valid OFS/FFS root, or a TRD with
  * a TR-DOS disk-info stamp, or an IPF/WOZ/STX/2IMG container, is parsed
  * as that format; FAT/BPB and HxC flux decode are skipped so those
- * bytes are not treated as DOS.
+ * bytes are not treated as DOS. WOZ 5.25 tracks are 6-and-2 decoded
+ * into a DOS-order volume and listed as DOS 3.3 or ProDOS when the
+ * catalog is readable.
  * Catalog lookup still runs.
  *
  * @param[in] image Raw image from @ref load_image.

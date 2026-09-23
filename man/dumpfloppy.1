@@ -70,8 +70,13 @@ Pasti
 .I .stx
 images with standard 512-byte sectors are assembled into a GEMDOS/FAT12
 volume for directory listing and extract.
+Apple II
+.I .woz
+5.25-inch tracks are 6-and-2 GCR-decoded into a DOS-order volume and listed
+as DOS 3.3 or ProDOS when the catalog is readable.
 A DOS 3.3 VTOC (track 17 sector 0) or ProDOS volume header (block 2)
-is listed as Apple (catalog names) from a raw 140K image or a 2IMG payload.
+is listed as Apple (catalog names) from a raw 140K image, a 2IMG payload,
+or a decoded WOZ.
 .PP
 .B \-x
 /
@@ -145,7 +150,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.26
+.B dumpfloppy 0.27
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

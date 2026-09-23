@@ -3,6 +3,7 @@
  * @brief Identify SPS IPF, Apple WOZ, Pasti STX, and Apple 2IMG containers.
  */
 #include "dumpfloppy/foreign.hpp"
+#include "dumpfloppy/apple_gcr_codec.h"
 #include "dumpfloppy/image.hpp"
 
 #include <cstddef>
@@ -166,6 +167,7 @@ foreign_disk parse_woz(std::span<const uint8_t> data)
             {
                 out.creator.pop_back();
             }
+            out.disk_type = disk_type;
             if (disk_type == 1u)
             {
                 out.note = "5.25-inch Apple II WOZ; GCR not decoded in this version";
@@ -492,6 +494,294 @@ flux_disk assemble_stx(std::span<const uint8_t> data)
         }
     }
     return flux;
+}
+
+namespace
+{
+
+constexpr uint8_t k_woz_addr_pro[3] = {0xD5u, 0xAAu, 0x96u};
+constexpr uint8_t k_woz_data_pro[3] = {0xD5u, 0xAAu, 0xADu};
+constexpr uint8_t k_woz_max_track = 40u;
+constexpr uint8_t k_woz_spt = 16u;
+constexpr std::size_t k_woz1_track_bytes = 6656u;
+constexpr unsigned k_woz_data_search_bits = 4000u;
+
+[[nodiscard]] bool woz_track_bit(std::span<const uint8_t> bytes, std::size_t nbits,
+                                 std::size_t i) noexcept
+{
+    i %= nbits;
+    const std::size_t by = i / 8u;
+    const unsigned shift = 7u - static_cast<unsigned>(i % 8u);
+    return ((bytes[by] >> shift) & 1u) != 0u;
+}
+
+[[nodiscard]] uint8_t woz_take8(std::span<const uint8_t> bytes, std::size_t nbits,
+                                std::size_t& bit) noexcept
+{
+    uint8_t v = 0;
+    for (unsigned n = 0; n < 8u; ++n)
+    {
+        v = static_cast<uint8_t>(static_cast<uint8_t>(v << 1) |
+                                 (woz_track_bit(bytes, nbits, bit) ? 1u : 0u));
+        ++bit;
+    }
+    return v;
+}
+
+[[nodiscard]] bool woz_match3(std::span<const uint8_t> bytes, std::size_t nbits,
+                              std::size_t bit, const uint8_t* seq) noexcept
+{
+    for (unsigned i = 0; i < 3u; ++i)
+    {
+        if (woz_take8(bytes, nbits, bit) != seq[i])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void decode_woz_gcr_track(std::span<const uint8_t> bits, std::size_t nbits,
+                          std::vector<uint8_t>& image, std::vector<uint8_t>& have_ok)
+{
+    if (bits.empty() || nbits < 48u)
+    {
+        return;
+    }
+    const std::size_t nbytes = (nbits + 7u) / 8u;
+    const std::size_t use = nbytes > bits.size() ? bits.size() : nbytes;
+    const std::span<const uint8_t> sp = bits.subspan(0, use);
+    const std::size_t scan_end = nbits * 2u;
+    std::size_t i = 0;
+    while (i + 48u < scan_end)
+    {
+        std::size_t addr_bit = i;
+        bool found_addr = false;
+        for (; addr_bit + 48u < scan_end; ++addr_bit)
+        {
+            if (woz_match3(sp, nbits, addr_bit, k_woz_addr_pro))
+            {
+                found_addr = true;
+                break;
+            }
+        }
+        if (!found_addr)
+        {
+            break;
+        }
+
+        std::size_t bit = addr_bit + 24u;
+        uint8_t odd = 0;
+        uint8_t even = 0;
+        uint8_t vol = 0;
+        uint8_t trk = 0;
+        uint8_t sec = 0;
+        uint8_t csum = 0;
+        odd = woz_take8(sp, nbits, bit);
+        even = woz_take8(sp, nbits, bit);
+        (void)apple_gcr_decode_4n4(odd, even, &vol);
+        odd = woz_take8(sp, nbits, bit);
+        even = woz_take8(sp, nbits, bit);
+        (void)apple_gcr_decode_4n4(odd, even, &trk);
+        odd = woz_take8(sp, nbits, bit);
+        even = woz_take8(sp, nbits, bit);
+        (void)apple_gcr_decode_4n4(odd, even, &sec);
+        odd = woz_take8(sp, nbits, bit);
+        even = woz_take8(sp, nbits, bit);
+        (void)apple_gcr_decode_4n4(odd, even, &csum);
+        if (static_cast<uint8_t>(vol ^ trk ^ sec) != csum)
+        {
+            i = addr_bit + 8u;
+            continue;
+        }
+
+        const std::size_t data_limit = bit + k_woz_data_search_bits;
+        const std::size_t data_end = data_limit < scan_end ? data_limit : scan_end;
+        bool found_data = false;
+        std::size_t data_bit = bit;
+        for (; data_bit + 24u + APPLE_GCR_NIBBLE_BYTES * 8u < data_end + 24u; ++data_bit)
+        {
+            if (woz_match3(sp, nbits, data_bit, k_woz_data_pro))
+            {
+                found_data = true;
+                bit = data_bit + 24u;
+                break;
+            }
+        }
+        if (!found_data)
+        {
+            i = addr_bit + 8u;
+            continue;
+        }
+
+        uint8_t nib[APPLE_GCR_NIBBLE_BYTES] = {};
+        for (std::size_t n = 0; n < APPLE_GCR_NIBBLE_BYTES; ++n)
+        {
+            nib[n] = woz_take8(sp, nbits, bit);
+        }
+        uint8_t sector[APPLE_GCR_SECTOR_BYTES] = {};
+        if (apple_gcr_decode_sector(nib, sector) != 0)
+        {
+            i = addr_bit + 8u;
+            continue;
+        }
+        if (trk >= k_woz_max_track || sec >= k_woz_spt)
+        {
+            i = bit;
+            continue;
+        }
+        const std::size_t idx =
+            static_cast<std::size_t>(trk) * k_woz_spt + static_cast<std::size_t>(sec);
+        const std::size_t off = idx * APPLE_GCR_SECTOR_BYTES;
+        if (off + APPLE_GCR_SECTOR_BYTES > image.size() || have_ok[idx] != 0u)
+        {
+            i = bit;
+            continue;
+        }
+        std::memcpy(image.data() + off, sector, APPLE_GCR_SECTOR_BYTES);
+        have_ok[idx] = 1u;
+        i = bit;
+    }
+}
+
+} /* namespace */
+
+std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data)
+{
+    if (data.size() < 16u)
+    {
+        return {};
+    }
+    const bool woz1 = std::memcmp(data.data(), "WOZ1", 4) == 0;
+    const bool woz2 = std::memcmp(data.data(), "WOZ2", 4) == 0;
+    if (!woz1 && !woz2)
+    {
+        return {};
+    }
+    static constexpr uint8_t k_lf[4] = {0xFFu, 0x0Au, 0x0Du, 0x0Au};
+    if (std::memcmp(data.data() + 4, k_lf, 4) != 0)
+    {
+        return {};
+    }
+
+    uint8_t disk_type = 1;
+    const uint8_t* tmap = nullptr;
+    std::size_t tmap_size = 0;
+    const uint8_t* trks = nullptr;
+    std::size_t trks_size = 0;
+
+    std::size_t off = 12;
+    while (off + 8u <= data.size())
+    {
+        const uint32_t size = le32(data, off + 4u);
+        if (off + 8u + size > data.size())
+        {
+            break;
+        }
+        if (std::memcmp(data.data() + off, "INFO", 4) == 0 && size >= 2u)
+        {
+            disk_type = data[off + 8u + 1u];
+        }
+        else if (std::memcmp(data.data() + off, "TMAP", 4) == 0 && size >= 160u)
+        {
+            tmap = data.data() + off + 8u;
+            tmap_size = size;
+        }
+        else if (std::memcmp(data.data() + off, "TRKS", 4) == 0 && size > 0u)
+        {
+            trks = data.data() + off + 8u;
+            trks_size = size;
+        }
+        off += 8u + size;
+    }
+    if (disk_type == 2u || tmap == nullptr || trks == nullptr)
+    {
+        return {};
+    }
+    (void)tmap_size;
+
+    constexpr std::size_t k_img =
+        static_cast<std::size_t>(k_woz_max_track) * k_woz_spt * APPLE_GCR_SECTOR_BYTES;
+    std::vector<uint8_t> image(k_img, 0);
+    std::vector<uint8_t> have_ok(static_cast<std::size_t>(k_woz_max_track) * k_woz_spt, 0);
+
+    for (uint8_t t = 0; t < k_woz_max_track; ++t)
+    {
+        const uint8_t idx = tmap[static_cast<std::size_t>(t) * 4u];
+        if (idx == 0xFFu)
+        {
+            continue;
+        }
+        std::span<const uint8_t> bits{};
+        std::size_t nbits = 0;
+        if (woz2)
+        {
+            const std::size_t e = static_cast<std::size_t>(idx) * 8u;
+            if (e + 8u > trks_size)
+            {
+                continue;
+            }
+            const uint16_t start_block = static_cast<uint16_t>(
+                static_cast<unsigned>(trks[e]) | (static_cast<unsigned>(trks[e + 1u]) << 8));
+            const uint32_t bit_count =
+                static_cast<uint32_t>(trks[e + 4u]) |
+                (static_cast<uint32_t>(trks[e + 5u]) << 8) |
+                (static_cast<uint32_t>(trks[e + 6u]) << 16) |
+                (static_cast<uint32_t>(trks[e + 7u]) << 24);
+            const std::size_t bit_off = static_cast<std::size_t>(start_block) * 512u;
+            const std::size_t need = (static_cast<std::size_t>(bit_count) + 7u) / 8u;
+            if (bit_count == 0u || bit_off >= data.size() || bit_off + need > data.size())
+            {
+                continue;
+            }
+            bits = data.subspan(bit_off, need);
+            nbits = bit_count;
+        }
+        else
+        {
+            const std::size_t slot = static_cast<std::size_t>(idx) * k_woz1_track_bytes;
+            if (slot + k_woz1_track_bytes > trks_size)
+            {
+                continue;
+            }
+            const uint8_t* rec = trks + slot;
+            nbits = static_cast<std::size_t>(
+                static_cast<unsigned>(rec[6648]) | (static_cast<unsigned>(rec[6649]) << 8));
+            const std::size_t need = (nbits + 7u) / 8u;
+            if (nbits == 0u || need > 6646u)
+            {
+                continue;
+            }
+            bits = std::span<const uint8_t>(rec, need);
+        }
+        decode_woz_gcr_track(bits, nbits, image, have_ok);
+    }
+
+    uint32_t found = 0;
+    uint8_t max_t = 0;
+    for (uint8_t t = 0; t < k_woz_max_track; ++t)
+    {
+        for (uint8_t s = 0; s < k_woz_spt; ++s)
+        {
+            const std::size_t idx =
+                static_cast<std::size_t>(t) * k_woz_spt + static_cast<std::size_t>(s);
+            if (have_ok[idx] != 0u)
+            {
+                ++found;
+                if (t > max_t)
+                {
+                    max_t = t;
+                }
+            }
+        }
+    }
+    if (found == 0u)
+    {
+        return {};
+    }
+    const uint8_t tracks = (max_t < 35u) ? 35u : k_woz_max_track;
+    image.resize(static_cast<std::size_t>(tracks) * k_woz_spt * APPLE_GCR_SECTOR_BYTES);
+    return image;
 }
 
 } /* namespace dumpfloppy */

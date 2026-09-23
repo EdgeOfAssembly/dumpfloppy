@@ -8,7 +8,7 @@ C++23 CLI (`gnu++23`, **g++** only). Quality: `modern-c-cpp-quality`,
 ```bash
 make -s V=0 -j"$(nproc)"
 make -s test          # alias: make tests
-make -s verify        # test + CBMC on src/fat12_codec.c and src/gcr_codec.c
+make -s verify        # test + CBMC on fat12 / Commodore GCR / Apple 6-and-2
 ```
 
 Debug is the default (ASan+UBSan). `make release` adds `-DNDEBUG`.
@@ -29,7 +29,9 @@ Deleted entries: `TUI_BG_BRIGHT_RED` + `TUI_WHITE` + `TUI_BOLD` (no blink).
 
 `formal/harness_fat12.c` proves FAT12 even/odd packed-entry round-trip.
 `formal/harness_gcr.c` proves Commodore 4-to-5 GCR nibble/byte round-trip.
-Keep `fat12_entry_get` / `fat12_entry_set` and `gcr_*` in C23 (no C++ in those TUs).
+`formal/harness_apple_gcr.c` proves Apple 6-and-2 map and 4-and-4 round-trip.
+Keep `fat12_entry_get` / `fat12_entry_set`, `gcr_*`, and `apple_gcr_*` in C23
+(no C++ in those TUs).
 
 ## Continue tomorrow
 

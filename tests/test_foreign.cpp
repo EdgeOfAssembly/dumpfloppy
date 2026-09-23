@@ -3,6 +3,7 @@
  * @brief IPF / WOZ / STX / 2IMG skip FAT and report container metadata.
  */
 #include "dumpfloppy/analyze.hpp"
+#include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/catalog.hpp"
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/foreign.hpp"
@@ -11,12 +12,15 @@
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/update.hpp"
 #include "image_builder.hpp"
+#include "woz_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -154,6 +158,90 @@ dumpfloppy::floppy_image wrap(std::vector<uint8_t> bytes, const char* path)
     return img;
 }
 
+std::vector<uint8_t> make_dos33_140k()
+{
+    std::vector<uint8_t> img(dumpfloppy::k_apple_dos33_140k, 0);
+    constexpr std::size_t vtoc = 17u * 16u * 256u;
+    img[vtoc + 1u] = 17;
+    img[vtoc + 2u] = 15;
+    img[vtoc + 6u] = 1;
+    img[vtoc + 0x34u] = 35;
+    img[vtoc + 0x35u] = 16;
+    img[vtoc + 0x36u] = 0x00;
+    img[vtoc + 0x37u] = 0x01;
+
+    constexpr std::size_t cat = 17u * 16u * 256u + 15u * 256u;
+    img[cat + 0x0Bu] = 18;
+    img[cat + 0x0Cu] = 0;
+    img[cat + 0x0Du] = 0x04;
+    const char* name = "HELLO";
+    for (int i = 0; i < 30; ++i)
+    {
+        const char c = (i < 5) ? name[i] : ' ';
+        img[cat + 0x0Eu + static_cast<std::size_t>(i)] =
+            static_cast<uint8_t>(static_cast<unsigned char>(c) | 0x80u);
+    }
+    img[cat + 0x0Bu + 33u] = 2;
+    img[cat + 0x0Bu + 34u] = 0;
+
+    constexpr std::size_t ts = 18u * 16u * 256u;
+    img[ts + 0x0Cu] = 18;
+    img[ts + 0x0Du] = 1;
+    constexpr std::size_t data = 18u * 16u * 256u + 256u;
+    img[data] = 'H';
+    img[data + 1u] = 'I';
+    img[data + 2u] = '!';
+    return img;
+}
+
+std::vector<uint8_t> prodos_to_dos_order(const std::vector<uint8_t>& po)
+{
+    constexpr std::size_t k_track = 16u * 256u;
+    static constexpr uint8_t k_prodos_from_dos[16] = {
+        0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+    std::vector<uint8_t> dos(po.size(), 0);
+    const std::size_t tracks = po.size() / k_track;
+    for (std::size_t t = 0; t < tracks; ++t)
+    {
+        const std::size_t base = t * k_track;
+        for (unsigned s = 0; s < 16u; ++s)
+        {
+            const std::size_t src = base + static_cast<std::size_t>(s) * 256u;
+            const std::size_t dst =
+                base + static_cast<std::size_t>(k_prodos_from_dos[s]) * 256u;
+            std::memcpy(dos.data() + dst, po.data() + src, 256u);
+        }
+    }
+    return dos;
+}
+
+std::vector<uint8_t> make_prodos_140k()
+{
+    std::vector<uint8_t> img(dumpfloppy::k_apple_dos33_140k, 0);
+    constexpr std::size_t b2 = 2u * 512u;
+    img[b2 + 4u] = 0xF5;
+    std::memcpy(img.data() + b2 + 5u, "APPLE", 5);
+    img[b2 + 0x23u] = 0x27;
+    img[b2 + 0x24u] = 0x0D;
+    img[b2 + 0x25u] = 1;
+    img[b2 + 0x26u] = 0;
+    img[b2 + 0x29u] = 0x18;
+    img[b2 + 0x2Au] = 0x01;
+
+    constexpr std::size_t e = b2 + 4u + 0x27u;
+    img[e] = 0x15;
+    std::memcpy(img.data() + e + 1u, "HELLO", 5);
+    img[e + 0x10u] = 0x06;
+    img[e + 0x11u] = 8;
+    img[e + 0x12u] = 0;
+    img[e + 0x15u] = 3;
+    constexpr std::size_t data = 8u * 512u;
+    img[data] = 'H';
+    img[data + 1u] = 'I';
+    img[data + 2u] = '!';
+    return img;
+}
+
 } /* namespace */
 
 TEST_CASE("WOZ magic is APPLE WOZ", "[foreign][woz]")
@@ -274,6 +362,88 @@ TEST_CASE("catalog names Shadow of the Beast IPF Copylock", "[foreign][catalog]"
     REQUIRE(d1.protection.find("Copylock") != std::string::npos);
     const auto d2 = dumpfloppy::catalog_lookup("fcad06bacfaba8d4");
     REQUIRE(d2.found);
+}
+
+TEST_CASE("assemble_woz empty INFO-only image yields no volume", "[foreign][woz]")
+{
+    REQUIRE(dumpfloppy::assemble_woz(make_woz()).empty());
+}
+
+TEST_CASE("WOZ 6-and-2 DOS 3.3 lists BIN HELLO", "[foreign][woz][apple]")
+{
+    const auto woz = dumpfloppy_test::dos_to_woz2(make_dos33_140k());
+    REQUIRE_FALSE(woz.empty());
+    const auto decoded = dumpfloppy::assemble_woz(woz);
+    REQUIRE(decoded.size() == dumpfloppy::k_apple_dos33_140k);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(woz, "t.woz"));
+    REQUIRE(a.foreign.present);
+    REQUIRE(a.foreign.kind == dumpfloppy::foreign_kind::woz);
+    REQUIRE(a.apple.present);
+    REQUIRE(a.apple.fs == dumpfloppy::apple_fs::dos33);
+    REQUIRE(a.apple.entries.size() == 1u);
+    REQUIRE(a.apple.entries[0].name == "HELLO");
+    REQUIRE_FALSE(a.bpb.looks_valid);
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    opt.hex_boot = true;
+    std::ostringstream plain;
+    dumpfloppy::write_report(a, plain, opt);
+    const std::string s = plain.str();
+    REQUIRE(s.find("APPLE WOZ2 / DOS 3.3") != std::string::npos);
+    REQUIRE(s.find("HELLO") != std::string::npos);
+    REQUIRE(s.find("CONTAINER") != std::string::npos);
+    REQUIRE(s.find("BIOS PARAMETER BLOCK") == std::string::npos);
+}
+
+TEST_CASE("extract HELLO from WOZ DOS 3.3", "[foreign][woz][extract]")
+{
+    const dumpfloppy::analysis a =
+        dumpfloppy::analyse(wrap(dumpfloppy_test::dos_to_woz2(make_dos33_140k()), "t.woz"));
+    const auto dest =
+        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "woz-out";
+    std::filesystem::remove_all(dest);
+    std::filesystem::create_directories(dest);
+    dumpfloppy::extract_options opt{};
+    opt.enabled = true;
+    opt.dest_dir = dest;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::extract_files(a, opt, err) == 1);
+    std::ifstream in(dest / "HELLO", std::ios::binary);
+    std::string body((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+    REQUIRE(body.size() >= 3u);
+    REQUIRE(body[0] == 'H');
+    REQUIRE(body[2] == '!');
+}
+
+TEST_CASE("update refuses WOZ Apple volumes", "[foreign][woz][update]")
+{
+    dumpfloppy::analysis a =
+        dumpfloppy::analyse(wrap(dumpfloppy_test::dos_to_woz2(make_dos33_140k()), "t.woz"));
+    dumpfloppy::update_options opt{};
+    opt.enabled = true;
+    opt.hosts.push_back("HELLO");
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::update_files(a, opt, err) != 0);
+    REQUIRE(err.str().find("Apple") != std::string::npos);
+}
+
+TEST_CASE("WOZ 6-and-2 ProDOS lists seedling HELLO", "[foreign][woz][prodos]")
+{
+    const auto po = make_prodos_140k();
+    const auto dos = prodos_to_dos_order(po);
+    const auto woz = dumpfloppy_test::dos_to_woz2(dos);
+    const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(woz, "t.woz"));
+    REQUIRE(a.apple.present);
+    REQUIRE(a.apple.fs == dumpfloppy::apple_fs::prodos);
+    REQUIRE(a.apple.volume_name == "APPLE");
+    REQUIRE(a.apple.entries.size() == 1u);
+    REQUIRE(a.apple.entries[0].name == "HELLO");
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    std::ostringstream plain;
+    dumpfloppy::write_report(a, plain, opt);
+    REQUIRE(plain.str().find("ProDOS") != std::string::npos);
 }
 
 TEST_CASE("optional SOTB Disk 1 IPF catalogues Copylock", "[foreign][optional]")

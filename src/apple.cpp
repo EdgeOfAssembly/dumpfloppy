@@ -419,6 +419,32 @@ apple_disk parse_apple(std::span<const uint8_t> data)
     return parse_prodos(data);
 }
 
+std::vector<uint8_t> apple_dos_order_to_prodos(std::span<const uint8_t> dos_order)
+{
+    constexpr std::size_t k_track = 16u * k_apple_dos_sector;
+    /* ProDOS block 0 is DOS S0+S2; even DOS sectors then odds. */
+    static constexpr uint8_t k_prodos_from_dos[16] = {
+        0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+    if (dos_order.size() < k_track || (dos_order.size() % k_track) != 0u)
+    {
+        return {};
+    }
+    std::vector<uint8_t> po(dos_order.size(), 0);
+    const std::size_t tracks = dos_order.size() / k_track;
+    for (std::size_t t = 0; t < tracks; ++t)
+    {
+        const std::size_t base = t * k_track;
+        for (unsigned s = 0; s < 16u; ++s)
+        {
+            const std::size_t src = base + static_cast<std::size_t>(k_prodos_from_dos[s]) *
+                                               k_apple_dos_sector;
+            const std::size_t dst = base + static_cast<std::size_t>(s) * k_apple_dos_sector;
+            std::memcpy(po.data() + dst, dos_order.data() + src, k_apple_dos_sector);
+        }
+    }
+    return po;
+}
+
 std::string apple_host_filename(const apple_file& file)
 {
     std::string stem = file.name.empty() ? std::string("FILE") : file.name;

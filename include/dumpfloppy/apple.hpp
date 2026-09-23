@@ -37,6 +37,20 @@ inline constexpr std::size_t k_apple_dos33_140k = 143360u;
 [[nodiscard]] apple_disk parse_apple(std::span<const uint8_t> data);
 
 /**
+ * @brief Rearrange a 16-sector DOS-order 5.25 image into ProDOS block order.
+ *
+ * Each track's 16×256-byte DOS sectors become ProDOS pairs (block 0 is
+ * DOS S0+S2). Used after WOZ 6-and-2 decode, which stores address-field
+ * T/S as DOS order.
+ *
+ * @param[in] dos_order Image whose size is a multiple of 16×256.
+ *
+ * @return ProDOS-order copy, or empty when the size is not a 16-sector track map.
+ */
+[[nodiscard]] std::vector<uint8_t> apple_dos_order_to_prodos(
+    std::span<const uint8_t> dos_order);
+
+/**
  * @brief Host extract name (spaces stripped; `/` flattened).
  *
  * @param[in] file Directory slot.

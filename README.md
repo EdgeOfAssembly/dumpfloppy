@@ -5,7 +5,8 @@ HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), Commodore 1541/1571/1581
 `.d64` / `.d71` / `.d81` images and 1541 `.g64` GCR containers (CBMFS listing
 and extract), Amiga `.adf` images (OFS/FFS listing and extract), ZX
 Spectrum TR-DOS `.trd` images (directory listing and extract),
-`.ipf` / `.woz` / `.stx` / `.2mg` flux containers (metadata; no FAT),
+`.ipf` / `.woz` / `.stx` / `.2mg` flux containers (metadata; no FAT;
+WOZ 5.25 6-and-2 tracks are decoded to DOS 3.3 / ProDOS),
 and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 
 `.ima` is WinImage’s raw dump; the sector layout is the same as `.img`.
@@ -27,9 +28,10 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
   (160K IBM is not TRD — disk-info sector 8 is required)
 - **IPF / WOZ / STX / 2IMG**: container metadata (SPS id, tracks, platform); FAT is
   not invented from flux bytes. STX standard 512-byte sectors are assembled into
-  a GEMDOS/FAT12 volume (listing + extract). `-u` still refused.
-- Apple **DOS 3.3 / ProDOS**: catalog listing and extract from raw 140K or 2IMG
-  payload (VTOC T17/S0 vs ProDOS volume header in block 2)
+  a GEMDOS/FAT12 volume (listing + extract). WOZ 5.25 tracks are 6-and-2 decoded
+  into a DOS-order volume and listed as DOS 3.3 or ProDOS. `-u` still refused.
+- Apple **DOS 3.3 / ProDOS**: catalog listing and extract from raw 140K, 2IMG
+  payload, or decoded WOZ (VTOC T17/S0 vs ProDOS volume header in block 2)
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
 - Whole-image **XXH64 catalog**: known dumps print a **CATALOG** section with
@@ -45,6 +47,7 @@ Commodore image notes (Schepers): `docs/cbm/` (`G64.TXT`, `D64.TXT`, …).
 make -s V=0 -j"$(nproc)"          # debug + ASan/UBSan
 make -s test                      # Catch2 + CLI contracts
 make -s verify                    # tests, then CBMC on FAT12 and GCR codecs
+                                  # (Commodore 4-to-5 and Apple 6-and-2)
 make -s release
 ```
 
@@ -62,7 +65,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.26`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.27`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` / `*.dsk` /
 `*.po`.
@@ -80,6 +83,8 @@ dumpfloppy game.trd
 dumpfloppy game.trd -x
 dumpfloppy disk.2mg
 dumpfloppy disk.dsk -x
+dumpfloppy disk.woz
+dumpfloppy disk.woz -x
 dumpfloppy game.stx
 dumpfloppy game.stx -x
 dumpfloppy --no-color --no-hex disk.ima -o report.txt

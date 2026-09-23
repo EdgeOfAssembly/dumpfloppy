@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <span>
+#include <vector>
 
 namespace dumpfloppy
 {
@@ -34,6 +35,17 @@ namespace dumpfloppy
  * @param[in] data Whole STX file (including the 16-byte Pasti header).
  */
 [[nodiscard]] flux_disk assemble_stx(std::span<const uint8_t> data);
+
+/**
+ * @brief Decode WOZ 5.25 6-and-2 tracks into a DOS-order 140K/160K image.
+ *
+ * Integer TMAP slots 0–39 are scanned for `D5 AA 96` / `D5 AA AD`. Address
+ * field T/S is stored as DOS 3.3 order (track×16+sector)×256. 3.5-inch WOZ
+ * and empty TMAP yield an empty vector.
+ *
+ * @param[in] data Whole WOZ1/WOZ2 file.
+ */
+[[nodiscard]] std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data);
 
 } /* namespace dumpfloppy */
 

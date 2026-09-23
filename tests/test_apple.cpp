@@ -217,3 +217,39 @@ TEST_CASE("IBM 160K is not Apple DOS", "[apple]")
     std::vector<uint8_t> ibm(163840u, 0);
     REQUIRE_FALSE(dumpfloppy::parse_apple(ibm).present);
 }
+
+TEST_CASE("DOS-order to ProDOS-order exposes block-2 header", "[apple][prodos]")
+{
+    std::vector<uint8_t> po(dumpfloppy::k_apple_dos33_140k, 0);
+    constexpr std::size_t b2 = 2u * 512u;
+    po[b2 + 4u] = 0xF5;
+    std::memcpy(po.data() + b2 + 5u, "APPLE", 5);
+    po[b2 + 0x23u] = 0x27;
+    po[b2 + 0x24u] = 0x0D;
+    put_le16(po, b2 + 0x25u, 1);
+    put_le16(po, b2 + 0x29u, 280);
+    REQUIRE(dumpfloppy::parse_apple(po).present);
+    REQUIRE(dumpfloppy::parse_apple(po).fs == dumpfloppy::apple_fs::prodos);
+
+    std::vector<uint8_t> dos(po.size(), 0);
+    static constexpr uint8_t k_map[16] = {
+        0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+    constexpr std::size_t k_track = 16u * 256u;
+    const std::size_t tracks = po.size() / k_track;
+    for (std::size_t t = 0; t < tracks; ++t)
+    {
+        const std::size_t base = t * k_track;
+        for (unsigned s = 0; s < 16u; ++s)
+        {
+            std::memcpy(dos.data() + base + static_cast<std::size_t>(k_map[s]) * 256u,
+                        po.data() + base + static_cast<std::size_t>(s) * 256u, 256u);
+        }
+    }
+    REQUIRE_FALSE(dumpfloppy::parse_apple(dos).present);
+    const auto back = dumpfloppy::apple_dos_order_to_prodos(dos);
+    REQUIRE(back.size() == po.size());
+    const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(back);
+    REQUIRE(d.present);
+    REQUIRE(d.fs == dumpfloppy::apple_fs::prodos);
+    REQUIRE(d.volume_name == "APPLE");
+}

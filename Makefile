@@ -66,7 +66,7 @@ BUILD_FLAGS := -s V=0 -j$(shell nproc 2>/dev/null || echo 1)
 TARGET := dumpfloppy
 TEST_BIN := tests/run_tests
 
-SRC_C := src/fat12_codec.c src/gcr_codec.c
+SRC_C := src/fat12_codec.c src/gcr_codec.c src/apple_gcr_codec.c
 SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/boot.cpp src/fat.cpp src/directory.cpp src/analyze.cpp \
            src/report.cpp src/cli.cpp src/extract.cpp src/update.cpp \
@@ -83,7 +83,7 @@ TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_amiga.cpp tests/test_d71.cpp tests/test_d81.cpp \
             tests/test_adf.cpp tests/test_gcr.cpp tests/test_g64.cpp \
             tests/test_trd.cpp tests/test_foreign.cpp tests/test_apple.cpp \
-            tests/test_analyze_hygiene.cpp
+            tests/test_apple_gcr.cpp tests/test_analyze_hygiene.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)
@@ -130,6 +130,9 @@ verify: test
 	  -I include --bounds-check --pointer-check --unwind 4 \
 	  --unwinding-assertions
 	$(HOME)/.local/bin/cbmc src/gcr_codec.c formal/harness_gcr.c \
+	  -I include --bounds-check --pointer-check --unwind 4 \
+	  --unwinding-assertions
+	$(HOME)/.local/bin/cbmc src/apple_gcr_codec.c formal/harness_apple_gcr.c \
 	  -I include --bounds-check --pointer-check --unwind 4 \
 	  --unwinding-assertions
 

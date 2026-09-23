@@ -185,6 +185,41 @@ analysis analyse(floppy_image image)
         }
         return a;
     }
+    if (a.foreign.kind == foreign_kind::woz)
+    {
+        const std::vector<uint8_t> vol = assemble_woz(bytes);
+        if (!vol.empty())
+        {
+            a.apple = parse_apple(vol);
+            if (!a.apple.present)
+            {
+                const std::vector<uint8_t> po = apple_dos_order_to_prodos(vol);
+                if (!po.empty())
+                {
+                    a.apple = parse_apple(po);
+                }
+            }
+            if (a.apple.present)
+            {
+                a.foreign.note =
+                    "5.25-inch Apple II WOZ; 6-and-2 GCR assembled for DOS 3.3/ProDOS";
+                if (a.apple.fs == apple_fs::dos33)
+                {
+                    a.image.size_geometry.cylinders = a.apple.tracks;
+                    a.image.size_geometry.heads = 1;
+                    a.image.size_geometry.sectors_per_track = a.apple.sectors_per_track;
+                    a.image.size_geometry.bytes_per_sector = k_apple_dos_sector;
+                    a.image.size_geometry.media_name = "Apple DOS 3.3 (WOZ GCR)";
+                }
+                else
+                {
+                    a.image.size_geometry.bytes_per_sector = k_apple_prodos_block;
+                    a.image.size_geometry.media_name = "Apple ProDOS (WOZ GCR)";
+                }
+                return a;
+            }
+        }
+    }
     if (a.foreign.kind == foreign_kind::stx)
     {
         a.flux = assemble_stx(bytes);
