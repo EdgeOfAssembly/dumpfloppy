@@ -2,8 +2,8 @@
 
 C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`),
 HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), Commodore 1541/1571/1581
-`.d64` / `.d71` / `.d81` images (CBMFS listing and extract), and Amiga
-`.adf` images (OFS/FFS listing and extract).
+`.d64` / `.d71` / `.d81` images and 1541 `.g64` GCR containers (CBMFS listing
+and extract), and Amiga `.adf` images (OFS/FFS listing and extract).
 
 `.ima` is WinImage’s raw dump; the sector layout is the same as `.img`.
 
@@ -16,21 +16,23 @@ HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), Commodore 1541/1571/1581
 - **Volume label** from EBPB *and* the root directory (they can differ)
 - FAT copies, free/bad/orphan clusters
 - Directory tree including **deleted** 8.3 names (`0xE5` → `?`)
-- Commodore **D64 / D71 / D81 CBMFS**: disk name, ID, DOS type, PRG/SEQ/… listing
-  (deleted rows use the same light-red + bold white as FAT)
+- Commodore **D64 / D71 / D81 / G64 CBMFS**: disk name, ID, DOS type, PRG/SEQ/…
+  listing (G64 is GCR-decoded to a 35-track D64 map; deleted rows use the same
+  light-red + bold white as FAT)
 - Amiga **ADF / OFS or FFS**: volume name, DOS type, directory (files + DIR), XXH64
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
 - Deleted rows: light-red background, white **bold** text (`tui/ansi.h`)
 - Boot-sector hex dump and printable strings
-- Format catalog: `include/dumpfloppy/formats/` (Archiveteam floppy images + Shikadi file formats)
+- Format catalog: `include/dumpfloppy/formats/` (Archiveteam floppy images + Shikadi file formats).
+Commodore image notes (Schepers): `docs/cbm/` (`G64.TXT`, `D64.TXT`, …).
 
 ## Build
 
 ```bash
 make -s V=0 -j"$(nproc)"          # debug + ASan/UBSan
 make -s test                      # Catch2 + CLI contracts
-make -s verify                    # tests, then CBMC on the FAT12 codec
+make -s verify                    # tests, then CBMC on FAT12 and GCR codecs
 make -s release
 ```
 
@@ -48,9 +50,9 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.15`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.16`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
-`*.adf`.
+`*.adf` / `*.g64`.
 
 ```bash
 dumpfloppy disk.ima
@@ -59,6 +61,8 @@ dumpfloppy game.d64 -x
 dumpfloppy disk.d71
 dumpfloppy disk.d81 -x
 dumpfloppy work.adf -x
+dumpfloppy game.g64
+dumpfloppy game.g64 -x
 dumpfloppy --no-color --no-hex disk.ima -o report.txt
 dumpfloppy ./floppies -o ./reports/
 dumpfloppy disk.ima -u HELLO.TXT
@@ -66,10 +70,10 @@ dumpfloppy disk.mfm -u PENGUIN.EXE
 dumpfloppy disk.mfm -uPENGUIN.EXE
 ```
 
-`-x` on D64/D71/D81 writes PETSCII names plus `.prg` / `.seq` / `.usr` / `.rel` /
-`.del` (deleted files included). `-x` on ADF writes OFS/FFS files (directories
-skipped; `/` in Amiga paths becomes `_`). `-u` refuses CBMFS and ADF in this
-version.
+`-x` on D64/D71/D81/G64 writes PETSCII names plus `.prg` / `.seq` / `.usr` /
+`.rel` / `.del` (deleted files included). `-x` on ADF writes OFS/FFS files
+(directories skipped; `/` in Amiga paths becomes `_`). `-u` refuses CBMFS and
+ADF in this version.
 
 | Default | Switch |
 |---------|--------|

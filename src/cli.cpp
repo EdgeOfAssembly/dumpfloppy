@@ -20,7 +20,8 @@ bool is_floppy_ext(const std::filesystem::path& p)
 {
     const std::string ext = ascii_lower(p.extension().string());
     return ext == ".img" || ext == ".ima" || ext == ".mfm" || ext == ".86f" ||
-           ext == ".d64" || ext == ".d71" || ext == ".d81" || ext == ".adf";
+           ext == ".d64" || ext == ".d71" || ext == ".d81" || ext == ".adf" ||
+           ext == ".g64";
 }
 
 bool looks_like_image_operand(const std::string& tok)
@@ -51,12 +52,12 @@ std::string usage_text()
     os << "Usage: " << k_program << " [options] [images…]\n"
        << "\n"
        << "  images    Floppy images (.img / .ima / .mfm / .86f / .d64 / .d71 /\n"
-       << "            .d81 / .adf) and/or directories.\n"
+       << "            .d81 / .adf / .g64) and/or directories.\n"
        << "            Directories expand to those extensions (batch; no --batch).\n"
        << "            Options and inputs may be interleaved.\n"
        << "\n"
        << "Dump BIOS boot sector, FAT12/16 BPB, volume serial and label,\n"
-       << "directory (including deleted entries), Commodore D64/D71/D81 CBMFS,\n"
+       << "directory (including deleted entries), Commodore D64/D71/D81/G64 CBMFS,\n"
        << "Amiga OFS/FFS ADF, HxC/86F flux metadata, copy-protection schemes,\n"
        << "and a whole-image XXH64 catalog lookup.\n"
        << "\n"
@@ -76,7 +77,7 @@ std::string usage_text()
        << "                       grow/shrink allocates or frees clusters and relocates\n"
        << "                       later live files when sequential growth needs them.\n"
        << "                       Accepts -u FILE, -uFILE, and --update=FILE.\n"
-       << "                       D64/D71/D81 CBMFS and ADF images cannot be updated\n"
+       << "                       D64/D71/D81/G64 CBMFS and ADF images cannot be updated\n"
        << "                       in this version.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
@@ -246,7 +247,7 @@ expand_inputs(const std::vector<std::filesystem::path>& inputs, std::string& err
     }
     if (out.empty() && !inputs.empty())
     {
-        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf files found in the given directories";
+        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64 files found in the given directories";
     }
     return out;
 }

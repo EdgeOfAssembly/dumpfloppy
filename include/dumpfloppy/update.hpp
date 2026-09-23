@@ -38,7 +38,7 @@ struct update_options
  * Mutates the FAT volume in @p a via @ref volume_bytes_mut (`assembled_chs`
  * when present, otherwise @a image.bytes). Directory size / first-cluster
  * and both FAT copies are kept in sync. Deleted names are never chosen.
- * D64/D71/D81 CBMFS and Amiga ADF images are refused in this version.
+ * D64/D71/D81/G64 CBMFS and Amiga ADF images are refused in this version.
  *
  * @param[in,out] a   Analysis (volume bytes and directory entries).
  * @param[in]     opt Host files to write in.

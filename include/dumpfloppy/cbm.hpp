@@ -1,11 +1,12 @@
 /**
  * @file cbm.hpp
- * @brief CBMFS geometry and parser for 1541 D64, 1571 D71, and 1581 D81.
+ * @brief CBMFS geometry and parser for 1541 D64, 1571 D71, 1581 D81, and G64.
  *
  * 256-byte sectors. D64/D71 use 1541 zone SPT 21/19/18/17 (D71 side 1 is
- * the same table on tracks 36–70). D81 is 80 tracks × 40 sectors.
- * BAM/header: D64/D71 at 18/0; D81 at 40/0. @ref analyse stores the result
- * in @c analysis::cbm and skips FAT when @a present is true.
+ * the same table on tracks 36–70). D81 is 80 tracks × 40 sectors. G64 is
+ * GCR-1541 decoded onto the 35-track D64 map (@ref cbm_disk::decoded).
+ * BAM/header: D64/D71/G64 at 18/0; D81 at 40/0. @ref analyse stores the
+ * result in @c analysis::cbm and skips FAT when @a present is true.
  */
 #ifndef DUMPFLOPPY_CBM_HPP
 #define DUMPFLOPPY_CBM_HPP
@@ -67,7 +68,8 @@ enum class cbm_media : uint8_t
     unknown = 0, /**< Size did not match D64/D71/D81, or parse failed. */
     d64 = 1,     /**< 1541 35-track. */
     d71 = 2,     /**< 1571 70-track. */
-    d81 = 3      /**< 1581 80×40. */
+    d81 = 3,     /**< 1581 80×40. */
+    g64 = 4      /**< GCR-1541 container decoded to a 35-track D64 map. */
 };
 
 /** @brief CBM DOS file type in bits 0–3 of the directory type byte. */
@@ -102,13 +104,14 @@ struct cbm_file
 /**
  * @brief Parsed CBMFS disk; @a present is false when size or BAM/header is unusable.
  *
- * @a media / @a media_name are set when @a present is true (`D64` / `D71` / `D81`).
+ * @a media / @a media_name are set when @a present is true (`D64` / `D71` /
+ * `D81` / `G64`).
  */
 struct cbm_disk
 {
     bool present = false;
     cbm_media media = cbm_media::unknown;
-    std::string media_name{}; /**< `D64`, `D71`, or `D81` when @a present. */
+    std::string media_name{}; /**< `D64`, `D71`, `D81`, or `G64` when @a present. */
     std::string disk_name{};
     std::string disk_id{};
     uint8_t dos_version = 0; /**< Header byte 2; D64/D71 @c 'A' or 0, D81 @c 'D' or 0. */
@@ -116,10 +119,15 @@ struct cbm_disk
     uint8_t dir_track = 0;   /**< Header[0]. */
     uint8_t dir_sector = 0;  /**< Header[1]. */
     std::vector<cbm_file> entries{};
+    /**
+     * G64: 174848-byte 1541 sector map after GCR decode. Empty for D64/D71/D81
+     * (payloads are read from the raw image).
+     */
+    std::vector<uint8_t> decoded{};
 };
 
 /**
- * @brief Listing label for @p media (`D64` / `D71` / `D81`; empty if unknown).
+ * @brief Listing label for @p media (`D64` / `D71` / `D81` / `G64`; empty if unknown).
  *
  * @param[in] media Image kind.
  */
@@ -133,6 +141,8 @@ struct cbm_disk
         return "D71";
     case cbm_media::d81:
         return "D81";
+    case cbm_media::g64:
+        return "G64";
     case cbm_media::unknown:
     default:
         return "";
@@ -247,6 +257,7 @@ struct cbm_disk
     switch (media)
     {
     case cbm_media::d64:
+    case cbm_media::g64:
         return d64_sectors_per_track(track);
     case cbm_media::d71:
         if (track >= 1u && track <= k_d64_track_count)
@@ -343,6 +354,24 @@ struct cbm_disk
                d64_offset(static_cast<uint8_t>(track - k_d64_track_count), sector);
     }
     return d64_offset(track, sector);
+}
+
+/**
+ * @brief Sector image used to walk CBM file chains.
+ *
+ * G64 payloads live in @a disk.decoded (D64 layout). D64/D71/D81 use @p raw.
+ *
+ * @param[in] raw  Original image bytes.
+ * @param[in] disk Parsed CBM disk (may hold @a decoded).
+ */
+[[nodiscard]] inline std::span<const uint8_t>
+cbm_sector_bytes(std::span<const uint8_t> raw, const cbm_disk& disk) noexcept
+{
+    if (!disk.decoded.empty())
+    {
+        return std::span<const uint8_t>(disk.decoded);
+    }
+    return raw;
 }
 
 /**

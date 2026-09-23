@@ -33,8 +33,13 @@ public:
 
     [[nodiscard]] bool detect(std::span<const uint8_t> data) const override
     {
-        (void)data;
-        return false;
+        if (data.size() < 8u)
+        {
+            return false;
+        }
+        return data[0] == 'G' && data[1] == 'C' && data[2] == 'R' &&
+               data[3] == '-' && data[4] == '1' && data[5] == '5' &&
+               data[6] == '4' && data[7] == '1';
     }
 };
 

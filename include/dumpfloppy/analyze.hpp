@@ -46,7 +46,7 @@ struct analysis
     bool truncated = false;
     flux_disk flux{};
     catalog_hit catalog{};
-    cbm_disk cbm{};     /**< D64/D71/D81 CBMFS; @a present is false on PC FAT / ADF. */
+    cbm_disk cbm{};     /**< D64/D71/D81/G64 CBMFS; @a present is false on PC FAT / ADF. */
     amiga_disk amiga{}; /**< OFS/FFS ADF; @a present is false on PC FAT / CBM. */
 };
 
@@ -87,10 +87,10 @@ struct analysis
 /**
  * @brief Analyse a loaded image.
  *
- * A D64/D71/D81 with a valid CBMFS BAM/header, or a DD/HD ADF with a
- * valid OFS/FFS root, is parsed as that filesystem; FAT/BPB and HxC flux
- * decode are skipped so those bytes are not treated as DOS. Catalog
- * lookup still runs.
+ * A D64/D71/D81 with a valid CBMFS BAM/header, a G64 with a valid
+ * GCR-1541 header, or a DD/HD ADF with a valid OFS/FFS root, is parsed
+ * as that filesystem; FAT/BPB and HxC flux decode are skipped so those
+ * bytes are not treated as DOS. Catalog lookup still runs.
  *
  * @param[in] image Raw image from @ref load_image.
  */

@@ -242,7 +242,8 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
                 return -1;
             }
         }
-        const std::vector<uint8_t> bytes = read_cbm_file(a.image.bytes, file);
+        const std::vector<uint8_t> bytes =
+            read_cbm_file(cbm_sector_bytes(a.image.bytes, a.cbm), file);
         std::ofstream out(dest, std::ios::binary | std::ios::trunc);
         if (!out)
         {

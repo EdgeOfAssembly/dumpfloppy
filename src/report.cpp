@@ -73,8 +73,10 @@ const char* container_name(container_kind k)
             return "D81 (Commodore 1581 CBMFS)";
         case container_kind::adf_amiga:
             return "ADF (Amiga OFS/FFS)";
+        case container_kind::g64_c64:
+            return "G64 (Commodore 1541 GCR-1541)";
         default:
-            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf)";
+            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64)";
     }
 }
 
@@ -276,7 +278,8 @@ void write_cbm_sections(const analysis& a, std::ostream& out, const report_optio
                 continue;
             }
         }
-        const std::vector<uint8_t> payload = read_cbm_file(a.image.bytes, e);
+        const std::vector<uint8_t> payload =
+            read_cbm_file(cbm_sector_bytes(a.image.bytes, a.cbm), e);
         const uint32_t size = static_cast<uint32_t>(payload.size());
         const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
         const std::string line = cbm_entry_line(e, size, sum);
@@ -423,6 +426,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         else if (a.cbm.media == cbm_media::d81)
         {
             drive = "1581 D81";
+        }
+        else if (a.cbm.media == cbm_media::g64)
+        {
+            drive = "1541 G64";
         }
         kv(out, "Filesystem", std::string("CBMFS (Commodore ") + drive + "; not FAT)");
     }

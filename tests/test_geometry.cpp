@@ -38,6 +38,8 @@ TEST_CASE("container_from_path treats .ima as WinImage", "[geometry]")
             dumpfloppy::container_kind::d81_c64);
     REQUIRE(dumpfloppy::container_from_path("work.ADF") ==
             dumpfloppy::container_kind::adf_amiga);
+    REQUIRE(dumpfloppy::container_from_path("disk.G64") ==
+            dumpfloppy::container_kind::g64_c64);
     REQUIRE(dumpfloppy::container_from_path("foo.bin") ==
             dumpfloppy::container_kind::unknown_raw);
 }

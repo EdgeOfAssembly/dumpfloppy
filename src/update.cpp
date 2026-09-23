@@ -681,7 +681,7 @@ int update_files(analysis& a, const update_options& opt, std::ostream& err)
     }
     if (a.cbm.present)
     {
-        err << "dumpfloppy: cannot update CBMFS (D64/D71/D81) in this version\n";
+        err << "dumpfloppy: cannot update CBMFS (D64/D71/D81/G64) in this version\n";
         return -1;
     }
     if (a.amiga.present)

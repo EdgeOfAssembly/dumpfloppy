@@ -213,6 +213,10 @@ container_kind container_from_path(const std::string& path)
     {
         return container_kind::adf_amiga;
     }
+    if (lower.size() >= 4 && lower.ends_with(".g64"))
+    {
+        return container_kind::g64_c64;
+    }
     return container_kind::unknown_raw;
 }
 

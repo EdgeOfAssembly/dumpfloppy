@@ -8,7 +8,7 @@ C++23 CLI (`gnu++23`, **g++** only). Quality: `modern-c-cpp-quality`,
 ```bash
 make -s V=0 -j"$(nproc)"
 make -s test          # alias: make tests
-make -s verify        # test + CBMC on src/fat12_codec.c
+make -s verify        # test + CBMC on src/fat12_codec.c and src/gcr_codec.c
 ```
 
 Debug is the default (ASan+UBSan). `make release` adds `-DNDEBUG`.
@@ -18,7 +18,7 @@ Debug is the default (ASan+UBSan). `make release` adds `-DNDEBUG`.
 - No-args → usage (exit 0), same as `-h` / `--help`
 - `-v` / `--version` from **0.1** (`-v` is never verbose)
 - Colour / hex / deleted listing default **on** → only `--no-*`
-- Operands and options interleaved; directories expand to `.img`/`.ima`/`.mfm`/`.86f`/`.d64`/`.d71`/`.d81`/`.adf`
+- Operands and options interleaved; directories expand to `.img`/`.ima`/`.mfm`/`.86f`/`.d64`/`.d71`/`.d81`/`.adf`/`.g64`
 
 ## Includes
 
@@ -28,7 +28,8 @@ Deleted entries: `TUI_BG_BRIGHT_RED` + `TUI_WHITE` + `TUI_BOLD` (no blink).
 ## Formal
 
 `formal/harness_fat12.c` proves FAT12 even/odd packed-entry round-trip.
-Keep `fat12_entry_get` / `fat12_entry_set` in C23 (no C++ in that TU).
+`formal/harness_gcr.c` proves Commodore 4-to-5 GCR nibble/byte round-trip.
+Keep `fat12_entry_get` / `fat12_entry_set` and `gcr_*` in C23 (no C++ in those TUs).
 
 ## Continue tomorrow
 

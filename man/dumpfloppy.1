@@ -21,7 +21,9 @@ flux image, a Commodore 1541/1571/1581
 .I .d71
 /
 .I .d81 ,
-or an Amiga
+a Commodore 1541
+.I .g64
+GCR container, or an Amiga
 .I .adf
 and prints everything it can prove from the bytes: BIOS boot signature,
 jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
@@ -35,8 +37,11 @@ A
 .I .d71
 /
 .I .d81
-with a valid CBMFS BAM/header is listed as Commodore (disk name, ID, DOS type,
+with a valid CBMFS BAM/header, or a
+.I .g64
+with a valid GCR-1541 header, is listed as Commodore (disk name, ID, DOS type,
 PRG/SEQ directory) instead of inventing a FAT BPB from C64 bytes.
+G64 tracks 1–35 are GCR-decoded onto a 35-track D64 sector map.
 A DD/HD
 .I .adf
 with a valid OFS/FFS root is listed as Amiga (volume name, DOS type, directory)
@@ -46,7 +51,7 @@ instead of inventing a FAT BPB from Amiga bytes.
 /
 .B \-\-extract
 writes recovered files (deleted included) into the current directory.
-On D64/D71/D81 the host names are the PETSCII listing name plus
+On D64/D71/D81/G64 the host names are the PETSCII listing name plus
 .BR .prg / .seq / .usr / .rel / .del .
 On ADF, OFS/FFS files are written (directories skipped) with
 .B /
@@ -89,8 +94,9 @@ A directory operand expands to
 .I *.d64 ,
 .I *.d71 ,
 .I *.d81 ,
+.I *.adf ,
 and
-.I *.adf
+.I *.g64
 in that directory (non-recursive).
 .SH OPTIONS
 .TP
@@ -99,7 +105,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.15
+.B dumpfloppy 0.16
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -170,6 +176,8 @@ A following
 .I .d81
 /
 .I .adf
+/
+.I .g64
 path is the floppy image, not a glob.
 .TP
 .BI \-u ", " \-\-update " FILE"
@@ -200,7 +208,9 @@ flux images are refused.
 .I .d71
 /
 .I .d81
-/ CBMFS and
+/
+.I .g64
+CBMFS and
 .I .adf
 images cannot be updated in this version.
 Glued
@@ -233,6 +243,14 @@ List and extract a Commodore 1541 D64:
 .RE
 .RS
 .B dumpfloppy game.d64 \-x
+.RE
+.PP
+List and extract a 1541 G64:
+.RS
+.B dumpfloppy game.g64
+.RE
+.RS
+.B dumpfloppy game.g64 \-x
 .RE
 .PP
 List a 1571 D71 or 1581 D81, or extract an Amiga ADF:

@@ -48,6 +48,7 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find(".d71") != std::string::npos);
     REQUIRE(u.find(".d81") != std::string::npos);
     REQUIRE(u.find(".adf") != std::string::npos);
+    REQUIRE(u.find(".g64") != std::string::npos);
     REQUIRE(u.find(dumpfloppy::k_version) != std::string::npos);
 }
 
@@ -139,6 +140,13 @@ TEST_CASE("parse_cli -x extract all vs glob vs --extract=", "[cli]")
     REQUIRE(adf.extract.patterns.empty());
     REQUIRE(adf.inputs[0] == "work.adf");
 
+    const auto g64 = parse({"-x", "game.g64"});
+    REQUIRE(g64.ok);
+    REQUIRE(g64.extract.enabled);
+    REQUIRE(g64.extract.patterns.empty());
+    REQUIRE(g64.inputs.size() == 1);
+    REQUIRE(g64.inputs[0] == "game.g64");
+
     const auto named = parse({"disk.ima", "-x", "591.PKD"});
     REQUIRE(named.extract.patterns[0] == "591.PKD");
 }
@@ -177,7 +185,7 @@ TEST_CASE("parse_cli glued -uFILE like -xGLOB", "[cli]")
     REQUIRE(u.find("-uFILE") != std::string::npos);
 }
 
-TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf",
+TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64",
           "[cli]")
 {
     const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
@@ -200,17 +208,18 @@ TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf",
     REQUIRE(err.find(".d71") != std::string::npos);
     REQUIRE(err.find(".d81") != std::string::npos);
     REQUIRE(err.find(".adf") != std::string::npos);
+    REQUIRE(err.find(".g64") != std::string::npos);
 }
 
-TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf",
+TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf .g64",
           "[cli]")
 {
     const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
                      "expand-exts";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
-    for (const char* name :
-         {"a.ima", "b.mfm", "c.86f", "d.txt", "e.d64", "f.d71", "g.d81", "h.adf"})
+    for (const char* name : {"a.ima", "b.mfm", "c.86f", "d.txt", "e.d64", "f.d71",
+                             "g.d81", "h.adf", "i.g64"})
     {
         std::ofstream out(dir / name);
         REQUIRE(out);
@@ -219,7 +228,7 @@ TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf"
     std::string err;
     const auto got = dumpfloppy::expand_inputs({dir}, err);
     REQUIRE(err.empty());
-    REQUIRE(got.size() == 7);
+    REQUIRE(got.size() == 8);
     REQUIRE(got[0].filename() == "a.ima");
     REQUIRE(got[1].filename() == "b.mfm");
     REQUIRE(got[2].filename() == "c.86f");
@@ -227,4 +236,5 @@ TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf"
     REQUIRE(got[4].filename() == "f.d71");
     REQUIRE(got[5].filename() == "g.d81");
     REQUIRE(got[6].filename() == "h.adf");
+    REQUIRE(got[7].filename() == "i.g64");
 }

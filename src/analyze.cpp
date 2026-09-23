@@ -8,6 +8,7 @@
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat12_codec.h"
 #include "dumpfloppy/format_registry.hpp"
+#include "dumpfloppy/g64.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/volume.hpp"
@@ -57,13 +58,24 @@ analysis analyse(floppy_image image)
         bytes.subspan(0, std::min<size_t>(512u, bytes.size()));
 
     a.catalog = catalog_lookup(a.image.xxh64);
-    a.cbm = parse_cbm_image(bytes);
+    a.cbm = parse_g64(bytes);
+    if (!a.cbm.present)
+    {
+        a.cbm = parse_cbm_image(bytes);
+    }
     if (a.cbm.present)
     {
-        /* CBMFS D64/D71/D81 is not an IBM BPB/FAT volume and not HxC flux. */
+        /* CBMFS D64/D71/D81/G64 is not an IBM BPB/FAT volume and not HxC flux. */
         a.image.size_geometry.bytes_per_sector = k_d64_sector_bytes;
         switch (a.cbm.media)
         {
+        case cbm_media::g64:
+            a.image.size_geometry.cylinders = 0;
+            a.image.size_geometry.heads = 0;
+            a.image.size_geometry.sectors_per_track = 0;
+            a.image.size_geometry.expected_bytes = k_d64_35_bytes;
+            a.image.size_geometry.media_name = "Commodore 1541 G64 (GCR-1541)";
+            break;
         case cbm_media::d71:
             a.image.size_geometry.cylinders = 0;
             a.image.size_geometry.heads = 0;
