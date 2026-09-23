@@ -40,7 +40,8 @@ struct extract_options
  * `.rel`/`.del` (deleted slots included). ADF images extract OFS/FFS files
  * (directories skipped) using @ref amiga_host_filename (`/` flattened to
  * `_`). TRD images extract TR-DOS files as `NAME.C` (deleted `?AME.C`).
- * FAT images walk cluster chains as before.
+ * Apple DOS 3.3 / ProDOS (raw or 2IMG) extract catalog names. FAT images
+ * walk cluster chains as before.
  *
  * Unsafe names (absolute paths, root names, empty components, `.`, `..`)
  * are skipped with a diagnostic — they must not escape @p opt.dest_dir.

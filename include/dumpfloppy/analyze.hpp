@@ -10,6 +10,7 @@
 #define DUMPFLOPPY_ANALYZE_HPP
 
 #include "dumpfloppy/amiga_view.hpp"
+#include "dumpfloppy/apple_view.hpp"
 #include "dumpfloppy/boot.hpp"
 #include "dumpfloppy/catalog.hpp"
 #include "dumpfloppy/cbm_view.hpp"
@@ -33,8 +34,8 @@ namespace dumpfloppy
  *
  * Logical FAT bytes are @ref volume_bytes / @ref make_sector_store
  * (assembled IBM CHS when present, else raw @a image.bytes).
- * When @a cbm.present, @a amiga.present, @a trd.present, or @a foreign.present,
- * FAT/HxC are not walked.
+ * When @a cbm.present, @a amiga.present, @a trd.present, @a apple.present,
+ * or @a foreign.present, FAT/HxC are not walked.
  */
 struct analysis
 {
@@ -57,6 +58,7 @@ struct analysis
     amiga_disk amiga{}; /**< OFS/FFS ADF; @a present is false on PC FAT / CBM. */
     trd_disk trd{};     /**< TR-DOS TRD; @a present is false on PC FAT / CBM / ADF. */
     foreign_disk foreign{}; /**< IPF/WOZ/STX/2IMG; skips FAT when present. */
+    apple_disk apple{};     /**< DOS 3.3 / ProDOS; 2IMG payload or raw .dsk/.po. */
 };
 
 /**

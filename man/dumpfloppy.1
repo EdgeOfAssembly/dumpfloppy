@@ -66,6 +66,8 @@ An
 .I .2mg
 container is identified (SPS INFO, WOZ INFO, Pasti header, 2IMG prefix)
 instead of inventing a FAT BPB from flux bytes.
+A DOS 3.3 VTOC (track 17 sector 0) or ProDOS volume header (block 2)
+is listed as Apple (catalog names) from a raw 140K image or a 2IMG payload.
 .PP
 .B \-x
 /
@@ -127,7 +129,10 @@ and
 .I *.woz ,
 .I *.stx ,
 and
-.I *.2mg
+.I *.2mg ,
+.I *.dsk ,
+and
+.I *.po
 in that directory (non-recursive).
 .SH OPTIONS
 .TP
@@ -136,7 +141,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.24
+.B dumpfloppy 0.25
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

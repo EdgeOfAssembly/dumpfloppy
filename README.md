@@ -4,8 +4,9 @@ C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`),
 HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), Commodore 1541/1571/1581
 `.d64` / `.d71` / `.d81` images and 1541 `.g64` GCR containers (CBMFS listing
 and extract), Amiga `.adf` images (OFS/FFS listing and extract), ZX
-Spectrum TR-DOS `.trd` images (directory listing and extract), and
-`.ipf` / `.woz` / `.stx` / `.2mg` flux containers (metadata; no FAT).
+Spectrum TR-DOS `.trd` images (directory listing and extract),
+`.ipf` / `.woz` / `.stx` / `.2mg` flux containers (metadata; no FAT),
+and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 
 `.ima` is WinImage’s raw dump; the sector layout is the same as `.img`.
 
@@ -26,6 +27,8 @@ Spectrum TR-DOS `.trd` images (directory listing and extract), and
   (160K IBM is not TRD — disk-info sector 8 is required)
 - **IPF / WOZ / STX / 2IMG**: container metadata (SPS id, tracks, platform); FAT is
   not invented from flux bytes. Extract/update refused until a decoder exists.
+- Apple **DOS 3.3 / ProDOS**: catalog listing and extract from raw 140K or 2IMG
+  payload (VTOC T17/S0 vs ProDOS volume header in block 2)
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
 - Whole-image **XXH64 catalog**: known dumps print a **CATALOG** section with
@@ -58,9 +61,10 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.24`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.25`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
-`*.adf` / `*.g64` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg`.
+`*.adf` / `*.g64` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` / `*.dsk` /
+`*.po`.
 
 ```bash
 dumpfloppy disk.ima
@@ -73,6 +77,8 @@ dumpfloppy game.g64
 dumpfloppy game.g64 -x
 dumpfloppy game.trd
 dumpfloppy game.trd -x
+dumpfloppy disk.2mg
+dumpfloppy disk.dsk -x
 dumpfloppy --no-color --no-hex disk.ima -o report.txt
 dumpfloppy ./floppies -o ./reports/
 dumpfloppy disk.ima -u HELLO.TXT

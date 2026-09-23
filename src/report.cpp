@@ -5,6 +5,7 @@
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/amiga.hpp"
 #include "dumpfloppy/analyze.hpp"
+#include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/directory.hpp"
@@ -514,6 +515,89 @@ void write_foreign_sections(const analysis& a, std::ostream& out,
     out << '\n';
 }
 
+constexpr size_t k_w_apple_name = 16;
+constexpr size_t k_w_apple_type = 4;
+
+std::string apple_directory_header()
+{
+    std::ostringstream os;
+    os << "  " << field(" ", k_w_mark) << field("Name", k_w_apple_name)
+       << field("Type", k_w_apple_type) << field("Size", k_w_size)
+       << field("XXH64 Checksum", k_w_sum);
+    return os.str();
+}
+
+std::string apple_entry_line(const apple_file& e, uint32_t size, std::string_view sum)
+{
+    const char mark = e.deleted ? 'D' : (e.locked ? '*' : ' ');
+    std::ostringstream os;
+    os << "  " << field(std::string_view(&mark, 1), k_w_mark)
+       << field(e.name, k_w_apple_name) << field(e.type_name, k_w_apple_type)
+       << field(std::to_string(size), k_w_size)
+       << field(size == 0u ? std::string_view{} : sum, k_w_sum);
+    return os.str();
+}
+
+void write_apple_sections(const analysis& a, std::ostream& out,
+                          const report_options& opt)
+{
+    const bool color = opt.color;
+    section(out, color, "APPLE VOLUME");
+    kv(out, "Filesystem", a.apple.fs_name);
+    kv(out, "Volume name",
+       a.apple.volume_name.empty() ? "(none)" : a.apple.volume_name);
+    if (a.apple.fs == apple_fs::dos33)
+    {
+        kv(out, "Volume #", std::to_string(a.apple.volume_number));
+        kv(out, "Tracks", std::to_string(a.apple.tracks));
+        kv(out, "Sectors/track", std::to_string(a.apple.sectors_per_track));
+    }
+    else if (a.apple.total_blocks != 0u)
+    {
+        kv(out, "Blocks", std::to_string(a.apple.total_blocks));
+    }
+    out << '\n';
+
+    section(out, color, "DIRECTORY");
+    put_style(out, color, TUI_BOLD);
+    put_style(out, color, TUI_WHITE);
+    out << apple_directory_header();
+    put_style(out, color, TUI_RESET);
+    out << '\n';
+    size_t shown = 0;
+    size_t deleted_n = 0;
+    for (const apple_file& e : a.apple.entries)
+    {
+        if (e.deleted)
+        {
+            ++deleted_n;
+            if (!opt.show_deleted)
+            {
+                continue;
+            }
+        }
+        const std::vector<uint8_t> payload = read_apple_file(a.apple, e);
+        const uint32_t size = static_cast<uint32_t>(payload.size());
+        const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
+        const std::string line = apple_entry_line(e, size, sum);
+        if (e.deleted)
+        {
+            emit_deleted_line(out, color, line);
+        }
+        else
+        {
+            out << line << '\n';
+        }
+        ++shown;
+    }
+    if (a.apple.entries.empty())
+    {
+        out << "  (no Apple directory entries)\n";
+    }
+    out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
+    out << '\n';
+}
+
 } /* namespace */
 
 void write_report(const analysis& a, std::ostream& out, const report_options& opt)
@@ -551,6 +635,17 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         {
             fmt = "ZX TRD / TR-DOS";
         }
+        else if (a.apple.present)
+        {
+            if (a.foreign.kind == foreign_kind::img2mg)
+            {
+                fmt = std::string("APPLE 2IMG / ") + a.apple.fs_name;
+            }
+            else
+            {
+                fmt = std::string("APPLE ") + a.apple.fs_name;
+            }
+        }
         else if (a.foreign.present)
         {
             fmt = a.foreign.format;
@@ -586,6 +681,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.trd.present)
     {
         kv(out, "Filesystem", "TR-DOS");
+    }
+    else if (a.apple.present)
+    {
+        kv(out, "Filesystem", a.apple.fs_name);
     }
     else if (a.foreign.present)
     {
@@ -698,6 +797,14 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.trd.present)
     {
         write_trd_sections(a, out, opt);
+    }
+    else if (a.apple.present)
+    {
+        if (a.foreign.present)
+        {
+            write_foreign_sections(a, out, opt);
+        }
+        write_apple_sections(a, out, opt);
     }
     else if (a.foreign.present)
     {
@@ -901,7 +1008,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
 
     if (opt.hex_boot && !a.cbm.present && !a.amiga.present && !a.trd.present &&
-        !a.foreign.present)
+        !a.apple.present && !a.foreign.present)
     {
         section(out, color, "BOOT SECTOR HEX");
         std::span<const uint8_t> boot =

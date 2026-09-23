@@ -52,6 +52,7 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find(".trd") != std::string::npos);
     REQUIRE(u.find(".ipf") != std::string::npos);
     REQUIRE(u.find(".woz") != std::string::npos);
+    REQUIRE(u.find(".dsk") != std::string::npos);
     REQUIRE(u.find(dumpfloppy::k_version) != std::string::npos);
 }
 

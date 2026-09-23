@@ -22,6 +22,8 @@ profile.txt
 *.woz
 *.stx
 *.2mg
+*.dsk
+*.po
 *.exe
 *.prg
 .cache/

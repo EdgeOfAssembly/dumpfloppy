@@ -4,6 +4,7 @@
  */
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/amiga.hpp"
+#include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/catalog.hpp"
 #include "dumpfloppy/cbm.hpp"
@@ -152,6 +153,38 @@ analysis analyse(floppy_image image)
     }
 
     a.foreign = parse_foreign(bytes);
+    if (a.foreign.kind == foreign_kind::img2mg &&
+        a.foreign.data_offset < bytes.size())
+    {
+        std::size_t len = a.foreign.data_length;
+        const std::size_t remain = bytes.size() - a.foreign.data_offset;
+        if (len == 0u || len > remain)
+        {
+            len = remain;
+        }
+        a.apple = parse_apple(bytes.subspan(a.foreign.data_offset, len));
+    }
+    if (!a.apple.present)
+    {
+        a.apple = parse_apple(bytes);
+    }
+    if (a.apple.present)
+    {
+        if (a.apple.fs == apple_fs::dos33)
+        {
+            a.image.size_geometry.cylinders = a.apple.tracks;
+            a.image.size_geometry.heads = 1;
+            a.image.size_geometry.sectors_per_track = a.apple.sectors_per_track;
+            a.image.size_geometry.bytes_per_sector = k_apple_dos_sector;
+            a.image.size_geometry.media_name = "Apple DOS 3.3";
+        }
+        else
+        {
+            a.image.size_geometry.bytes_per_sector = k_apple_prodos_block;
+            a.image.size_geometry.media_name = "Apple ProDOS";
+        }
+        return a;
+    }
     if (a.foreign.present)
     {
         a.image.size_geometry.cylinders = 0;

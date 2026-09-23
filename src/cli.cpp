@@ -22,7 +22,7 @@ bool is_floppy_ext(const std::filesystem::path& p)
     return ext == ".img" || ext == ".ima" || ext == ".mfm" || ext == ".86f" ||
            ext == ".d64" || ext == ".d71" || ext == ".d81" || ext == ".adf" ||
            ext == ".g64" || ext == ".trd" || ext == ".ipf" || ext == ".woz" ||
-           ext == ".stx" || ext == ".2mg";
+           ext == ".stx" || ext == ".2mg" || ext == ".dsk" || ext == ".po";
 }
 
 bool looks_like_image_operand(const std::string& tok)
@@ -53,8 +53,8 @@ std::string usage_text()
     os << "Usage: " << k_program << " [options] [images…]\n"
        << "\n"
        << "  images    Floppy images (.img / .ima / .mfm / .86f / .d64 / .d71 /\n"
-       << "            .d81 / .adf / .g64 / .trd / .ipf / .woz / .stx / .2mg)\n"
-       << "            and/or directories.\n"
+       << "            .d81 / .adf / .g64 / .trd / .ipf / .woz / .stx / .2mg /\n"
+       << "            .dsk / .po) and/or directories.\n"
        << "            Directories expand to those extensions (batch; no --batch).\n"
        << "            Options and inputs may be interleaved.\n"
        << "\n"
@@ -251,7 +251,7 @@ expand_inputs(const std::vector<std::filesystem::path>& inputs, std::string& err
     }
     if (out.empty() && !inputs.empty())
     {
-        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd/.ipf/.woz/.stx/.2mg files found in the given directories";
+        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd/.ipf/.woz/.stx/.2mg/.dsk/.po files found in the given directories";
     }
     return out;
 }

@@ -74,7 +74,7 @@ SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/format_container.cpp src/format_filesystem.cpp \
            src/ibm_mfm.cpp src/catalog.cpp \
            src/cbm.cpp src/amiga.cpp src/g64.cpp src/trd.cpp \
-           src/foreign.cpp
+           src/foreign.cpp src/apple.cpp
 SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \
@@ -82,7 +82,7 @@ TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_mfm.cpp tests/test_cbm.cpp tests/test_d64.cpp \
             tests/test_amiga.cpp tests/test_d71.cpp tests/test_d81.cpp \
             tests/test_adf.cpp tests/test_gcr.cpp tests/test_g64.cpp \
-            tests/test_trd.cpp tests/test_foreign.cpp \
+            tests/test_trd.cpp tests/test_foreign.cpp tests/test_apple.cpp \
             tests/test_analyze_hygiene.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
