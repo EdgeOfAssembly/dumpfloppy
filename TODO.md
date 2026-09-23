@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** (see `git log -1`) · **version 0.22** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** (see `git log -1`) · **version 0.23** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -12,7 +12,7 @@ After reboot, clone or `rsync -a /mnt/dumpfloppy/ /tmp/dumpfloppy/` (or work in 
 
 Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers common floppy extensions. Fixtures live **locally** under `/mnt/dumpfloppy-fixtures/` and `/mnt/PC_games/` (zips).
 
-## Done in 0.13–0.22 (do not redo)
+## Done in 0.13–0.23 (do not redo)
 
 - FAT12 `-u` (atomic rename, reclaim-before-relocate, deleted occupancy / Star Control TACTICS)
 - HxC CHS from BPB/modal SPT; HLS vs that SPT; extra-head DAM skip
@@ -29,12 +29,13 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 - Whole-image XXH64 catalog names copy-protection (Paranoid, EA half-track 34.5,
   Ocean track 36, Origin HLS, HLS/Commando CRC, plus cracked/unprotected hashes)
 - CBM/Amiga Filesystem line names the FS only (`CBMFS (Commodore 1541 G64)`), no `; not FAT`
+- ZX Spectrum TR-DOS TRD listing + extract (`NAME.C`); 160K IBM is not TRD; `-u` refused
 
-**Verify last green:** `make -s test` 173 cases / 3493 assertions (7 skipped /tmp PC copies); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
+**Verify last green:** `make -s test` 179 cases / 3542 assertions (7 skipped /tmp PC copies); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
 
 ## Next (pick one slice)
 
-1. **Other platforms:** Apple WOZ/2MG, Atari ST/STX, Spectrum TRD (parser, not size sniff), Amiga IPF. G71 (GCR-1571) if a fixture appears.
+1. **Other platforms:** Apple WOZ/2MG, Atari ST/STX, Amiga IPF (skip FAT, report container). G71 (GCR-1571) if a fixture appears.
 
 ## Local fixtures (never GitHub)
 

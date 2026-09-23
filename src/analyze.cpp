@@ -13,6 +13,7 @@
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/g64.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
+#include "dumpfloppy/trd.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/volume.hpp"
 
@@ -133,6 +134,19 @@ analysis analyse(floppy_image image)
             a.image.size_geometry.expected_bytes = k_adf_dd_bytes;
             a.image.size_geometry.media_name = "Amiga DD ADF (80×2×11×512)";
         }
+        return a;
+    }
+
+    a.trd = parse_trd(bytes);
+    if (a.trd.present)
+    {
+        a.image.size_geometry.cylinders = a.trd.cylinders;
+        a.image.size_geometry.heads = a.trd.sides;
+        a.image.size_geometry.sectors_per_track = k_trd_spt;
+        a.image.size_geometry.bytes_per_sector = k_trd_sector_bytes;
+        a.image.size_geometry.expected_bytes = bytes.size();
+        a.image.size_geometry.media_name =
+            std::string("ZX Spectrum TR-DOS TRD ") + a.trd.disk_type_name;
         return a;
     }
 

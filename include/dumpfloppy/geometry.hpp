@@ -30,7 +30,7 @@ namespace dumpfloppy
 
 /**
  * @brief Guess container from the path extension (`.img` / `.ima` / `.d64` /
- *        `.d71` / `.d81` / `.adf` / `.g64`).
+ *        `.d71` / `.d81` / `.adf` / `.g64` / `.trd`).
  */
 [[nodiscard]] container_kind container_from_path(const std::string& path);
 

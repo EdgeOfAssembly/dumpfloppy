@@ -217,6 +217,10 @@ container_kind container_from_path(const std::string& path)
     {
         return container_kind::g64_c64;
     }
+    if (lower.size() >= 4 && lower.ends_with(".trd"))
+    {
+        return container_kind::trd_spectrum;
+    }
     return container_kind::unknown_raw;
 }
 

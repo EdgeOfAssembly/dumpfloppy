@@ -26,6 +26,7 @@ enum class container_kind
     d81_c64,     /**< Commodore 1581 `.d81` (80×40 CBMFS). */
     adf_amiga,   /**< Amiga OFS/FFS `.adf` (DD 80×2×11 or HD 80×2×22). */
     g64_c64,     /**< Commodore 1541 `.g64` (GCR-1541 track container). */
+    trd_spectrum,/**< ZX Spectrum TR-DOS `.trd` (256-byte sectors). */
     unknown_raw  /**< Explicit path with another extension. */
 };
 

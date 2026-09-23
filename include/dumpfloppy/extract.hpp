@@ -39,7 +39,8 @@ struct extract_options
  * CBMFS D64/D71/D81/G64 images extract PETSCII names plus `.prg`/`.seq`/`.usr`/
  * `.rel`/`.del` (deleted slots included). ADF images extract OFS/FFS files
  * (directories skipped) using @ref amiga_host_filename (`/` flattened to
- * `_`). FAT images walk cluster chains as before.
+ * `_`). TRD images extract TR-DOS files as `NAME.C` (deleted `?AME.C`).
+ * FAT images walk cluster chains as before.
  *
  * Unsafe names (absolute paths, root names, empty components, `.`, `..`)
  * are skipped with a diagnostic — they must not escape @p opt.dest_dir.

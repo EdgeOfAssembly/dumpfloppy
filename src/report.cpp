@@ -12,6 +12,7 @@
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/geometry.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
+#include "dumpfloppy/trd.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/version.hpp"
 
@@ -75,8 +76,10 @@ const char* container_name(container_kind k)
             return "ADF (Amiga OFS/FFS)";
         case container_kind::g64_c64:
             return "G64 (Commodore 1541 GCR-1541)";
+        case container_kind::trd_spectrum:
+            return "TRD (ZX Spectrum TR-DOS)";
         default:
-            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64)";
+            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd)";
     }
 }
 
@@ -376,6 +379,90 @@ void write_amiga_sections(const analysis& a, std::ostream& out, const report_opt
     out << '\n';
 }
 
+constexpr size_t k_w_trd_name = 12;
+constexpr size_t k_w_trd_type = 5;
+constexpr size_t k_w_trd_ts = 7;
+
+std::string trd_directory_header()
+{
+    std::ostringstream os;
+    os << "  " << field(" ", k_w_mark) << field("Name", k_w_trd_name)
+       << field("Type", k_w_trd_type) << field("Size", k_w_size)
+       << field("T/S", k_w_trd_ts) << field("XXH64 Checksum", k_w_sum);
+    return os.str();
+}
+
+std::string trd_entry_line(const trd_file& e, uint32_t size, std::string_view sum)
+{
+    const char mark = e.deleted ? 'D' : ' ';
+    std::ostringstream ts;
+    ts << static_cast<unsigned>(e.start_track) << '/'
+       << static_cast<unsigned>(e.start_sector);
+    std::ostringstream os;
+    os << "  " << field(std::string_view(&mark, 1), k_w_mark)
+       << field(e.name, k_w_trd_name) << field(e.type_name, k_w_trd_type)
+       << field(std::to_string(size), k_w_size) << field(ts.str(), k_w_trd_ts)
+       << field(size == 0u ? std::string_view{} : sum, k_w_sum);
+    return os.str();
+}
+
+void write_trd_sections(const analysis& a, std::ostream& out, const report_options& opt)
+{
+    const bool color = opt.color;
+    section(out, color, "TR-DOS VOLUME");
+    kv(out, "Disk name", a.trd.label.empty() ? "(none)" : a.trd.label);
+    kv(out, "Disk type", a.trd.disk_type_name.empty() ? "(none)" : a.trd.disk_type_name);
+    kv(out, "Files", std::to_string(a.trd.file_count));
+    kv(out, "Deleted", std::to_string(a.trd.deleted_count));
+    kv(out, "Free sectors", std::to_string(a.trd.free_sectors));
+    {
+        std::ostringstream ts;
+        ts << static_cast<unsigned>(a.trd.first_free_track) << '/'
+           << static_cast<unsigned>(a.trd.first_free_sector);
+        kv(out, "First free T/S", ts.str());
+    }
+    out << '\n';
+
+    section(out, color, "DIRECTORY");
+    put_style(out, color, TUI_BOLD);
+    put_style(out, color, TUI_WHITE);
+    out << trd_directory_header();
+    put_style(out, color, TUI_RESET);
+    out << '\n';
+    size_t shown = 0;
+    size_t deleted_n = 0;
+    for (const trd_file& e : a.trd.entries)
+    {
+        if (e.deleted)
+        {
+            ++deleted_n;
+            if (!opt.show_deleted)
+            {
+                continue;
+            }
+        }
+        const std::vector<uint8_t> payload = read_trd_file(a.image.bytes, e);
+        const uint32_t size = static_cast<uint32_t>(payload.size());
+        const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
+        const std::string line = trd_entry_line(e, size, sum);
+        if (e.deleted)
+        {
+            emit_deleted_line(out, color, line);
+        }
+        else
+        {
+            out << line << '\n';
+        }
+        ++shown;
+    }
+    if (a.trd.entries.empty())
+    {
+        out << "  (no TR-DOS directory entries)\n";
+    }
+    out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
+    out << '\n';
+}
+
 } /* namespace */
 
 void write_report(const analysis& a, std::ostream& out, const report_options& opt)
@@ -409,6 +496,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         {
             fmt = std::string("AMIGA ADF / ") + amiga_fs_name(a.amiga.ffs);
         }
+        else if (a.trd.present)
+        {
+            fmt = "ZX TRD / TR-DOS";
+        }
         else
         {
             fmt = identify_type(a.image.bytes, format_kind::disk_image);
@@ -436,6 +527,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.amiga.present)
     {
         kv(out, "Filesystem", std::string(amiga_fs_name(a.amiga.ffs)) + " (Amiga)");
+    }
+    else if (a.trd.present)
+    {
+        kv(out, "Filesystem", "TR-DOS");
     }
     if (a.image.size_geometry.cylinders != 0u)
     {
@@ -540,6 +635,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.amiga.present)
     {
         write_amiga_sections(a, out, opt);
+    }
+    else if (a.trd.present)
+    {
+        write_trd_sections(a, out, opt);
     }
     else
     {
@@ -726,7 +825,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
     out << '\n';
     }
-    } /* !cbm.present && !amiga.present */
+    } /* !cbm.present && !amiga.present && !trd.present */
 
     if (!a.secrets.empty())
     {
@@ -738,7 +837,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         out << '\n';
     }
 
-    if (opt.hex_boot && !a.cbm.present && !a.amiga.present)
+    if (opt.hex_boot && !a.cbm.present && !a.amiga.present && !a.trd.present)
     {
         section(out, color, "BOOT SECTOR HEX");
         std::span<const uint8_t> boot =

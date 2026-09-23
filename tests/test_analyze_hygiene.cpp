@@ -16,6 +16,9 @@
 #ifdef DUMPFLOPPY_IBM_MFM_HPP
 #error "analyze.hpp must not include ibm_mfm.hpp"
 #endif
+#ifdef DUMPFLOPPY_TRD_HPP
+#error "analyze.hpp must not include trd.hpp"
+#endif
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -25,6 +28,7 @@ TEST_CASE("analyze.hpp exposes fs views without parser headers", "[analyze][hygi
     REQUIRE_FALSE(a.cbm.present);
     REQUIRE_FALSE(a.amiga.present);
     REQUIRE_FALSE(a.flux.present);
+    REQUIRE_FALSE(a.trd.present);
     REQUIRE(a.fat.kind == dumpfloppy::fat_kind::unknown);
 #ifndef DUMPFLOPPY_CBM_VIEW_HPP
     FAIL("cbm_view.hpp should be visible via analyze.hpp");
@@ -37,5 +41,8 @@ TEST_CASE("analyze.hpp exposes fs views without parser headers", "[analyze][hygi
 #endif
 #ifndef DUMPFLOPPY_FLUX_VIEW_HPP
     FAIL("flux_view.hpp should be visible via analyze.hpp");
+#endif
+#ifndef DUMPFLOPPY_TRD_VIEW_HPP
+    FAIL("trd_view.hpp should be visible via analyze.hpp");
 #endif
 }

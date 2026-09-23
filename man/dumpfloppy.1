@@ -23,8 +23,10 @@ flux image, a Commodore 1541/1571/1581
 .I .d81 ,
 a Commodore 1541
 .I .g64
-GCR container, or an Amiga
-.I .adf
+GCR container, an Amiga
+.I .adf ,
+or a ZX Spectrum TR-DOS
+.I .trd
 and prints everything it can prove from the bytes: BIOS boot signature,
 jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
 serial and volume label, the full directory (including deleted 8.3
@@ -49,6 +51,11 @@ A DD/HD
 .I .adf
 with a valid OFS/FFS root is listed as Amiga (volume name, DOS type, directory)
 instead of inventing a FAT BPB from Amiga bytes.
+A
+.I .trd
+with a TR-DOS disk-info stamp at logical sector 8 is listed as Spectrum
+(disk label, BASIC/CODE directory) instead of inventing a FAT BPB from
+160K/320K IBM-sized bytes.
 .PP
 .B \-x
 /
@@ -60,6 +67,10 @@ On ADF, OFS/FFS files are written (directories skipped) with
 .B /
 in Amiga paths flattened to
 .BR _ .
+On TRD, TR-DOS files are written as
+.I NAME.C
+(deleted
+.IR ?AME.C ).
 .PP
 .I .img
 and
@@ -99,7 +110,9 @@ A directory operand expands to
 .I *.d81 ,
 .I *.adf ,
 and
-.I *.g64
+.I *.g64 ,
+and
+.I *.trd
 in that directory (non-recursive).
 .SH OPTIONS
 .TP
@@ -108,7 +121,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.22
+.B dumpfloppy 0.23
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

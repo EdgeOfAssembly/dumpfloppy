@@ -17,8 +17,11 @@ profile.txt
 *.d81
 *.adf
 *.g64
+*.trd
 *.ipf
 *.woz
+*.stx
+*.2mg
 *.exe
 *.prg
 .cache/
