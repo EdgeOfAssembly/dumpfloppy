@@ -156,6 +156,28 @@ TEST_CASE("catalog names C64 Paranoid EA Ocean and Origin protection", "[format]
     const auto im_crack = dumpfloppy::catalog_lookup("8955f9748027eef3");
     REQUIRE(im_crack.found);
     REQUIRE(im_crack.protection.find("Rapidlok removed") != std::string::npos);
+
+    const auto g71_blank = dumpfloppy::catalog_lookup("9e30d4cc803bff1d");
+    REQUIRE(g71_blank.found);
+    REQUIRE(g71_blank.title.find("1571") != std::string::npos);
+    REQUIRE(g71_blank.protection.find("BLANKY DISKY") != std::string::npos);
+
+    const auto g71_clone = dumpfloppy::catalog_lookup("3e0318ed0b303756");
+    REQUIRE(g71_clone.found);
+    REQUIRE(g71_clone.protection.find("84 whole-track") != std::string::npos);
+
+    const auto g71_copy = dumpfloppy::catalog_lookup("965fb1fe566f8805");
+    REQUIRE(g71_copy.found);
+    REQUIRE(g71_copy.protection.find("FILE COPIER") != std::string::npos);
+
+    const auto tetris = dumpfloppy::catalog_lookup("6453f181926dc2d2");
+    REQUIRE(tetris.found);
+    REQUIRE(tetris.title.find("Tetris") != std::string::npos);
+    REQUIRE(tetris.protection.find("standard AmigaDOS OFS") != std::string::npos);
+
+    const auto awesome = dumpfloppy::catalog_lookup("e0fdc846f2f20579");
+    REQUIRE(awesome.found);
+    REQUIRE(awesome.protection.find("metadata-only") != std::string::npos);
 }
 
 TEST_CASE("Last Ninja Side A D64 report catalogues Paranoid", "[format][catalog][optional]")
@@ -200,6 +222,100 @@ TEST_CASE("Archon G64 report catalogues EA half-track protection", "[format][cat
     REQUIRE(a.catalog.found);
     REQUIRE(a.catalog.protection.find("half-track 34.5") != std::string::npos);
     REQUIRE(a.cbm.present);
+}
+
+TEST_CASE("blank G71 catalogues standard 1571 CBMFS", "[format][catalog][optional][g71]")
+{
+    const std::filesystem::path img{"/mnt/dumpfloppy-fixtures/c64/blankdisk.g71"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("blankdisk.g71 is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "9e30d4cc803bff1d");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.cbm.present);
+    REQUIRE(a.cbm.media == dumpfloppy::cbm_media::g71);
+    REQUIRE(a.cbm.disk_name == "BLANKY DISKY");
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("BLANKY DISKY") != std::string::npos);
+}
+
+TEST_CASE("Clone Machine G71 header skips FAT without CBMFS BAM",
+          "[format][catalog][optional][g71]")
+{
+    const std::filesystem::path img{
+        "/mnt/dumpfloppy-fixtures/c64/Clone_Machine_1571_Original_Disk_Side1.g71"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Clone Machine .g71 is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "3e0318ed0b303756");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.cbm.present);
+    REQUIRE(a.cbm.media == dumpfloppy::cbm_media::g71);
+    REQUIRE(a.cbm.entries.empty());
+    REQUIRE_FALSE(a.bpb.looks_valid);
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("84 whole-track") != std::string::npos);
+}
+
+TEST_CASE("Super Fast File Copy G71 lists FILE COPIER PRG",
+          "[format][catalog][optional][g71]")
+{
+    const std::filesystem::path img{
+        "/mnt/dumpfloppy-fixtures/c64/VG_Datashack_Super_Fast_File_Copy.TN.JBC.g71"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Super Fast File Copy .g71 is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "965fb1fe566f8805");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.cbm.present);
+    REQUIRE(a.cbm.disk_name == "FILE COPIER");
+    REQUIRE(a.cbm.entries.size() == 1u);
+    REQUIRE(a.cbm.entries[0].name == "!");
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("FILE COPIER") != std::string::npos);
+}
+
+TEST_CASE("Tetris IPF catalogues standard AmigaDOS OFS", "[format][catalog][optional][ipf]")
+{
+    const std::filesystem::path img{"/mnt/dumpfloppy-fixtures/amiga/Tetris.ipf"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Tetris.ipf is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "6453f181926dc2d2");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.amiga.present);
+    REQUIRE(a.amiga.volume_name == "TETRIS");
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("standard AmigaDOS OFS") != std::string::npos);
+}
+
+TEST_CASE("Awesome demo IPF stays metadata-only", "[format][catalog][optional][ipf]")
+{
+    const std::filesystem::path img{"/mnt/dumpfloppy-fixtures/amiga/AwesomeDemo.ipf"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("AwesomeDemo.ipf is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "e0fdc846f2f20579");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.foreign.present);
+    REQUIRE_FALSE(a.amiga.present);
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("metadata-only") != std::string::npos);
 }
 
 TEST_CASE("2400 A.D. MFM report catalogues Origin HLS", "[format][catalog][optional]")

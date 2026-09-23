@@ -68,7 +68,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.29`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.30`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
 `*.dsk` / `*.po`.

@@ -17,6 +17,7 @@ profile.txt
 *.d81
 *.adf
 *.g64
+*.g71
 *.trd
 *.ipf
 *.woz

@@ -23,7 +23,7 @@ struct row
 };
 
 /* Hashes are of the entire container file (seed-0 XXH64). */
-constexpr std::array<row, 24> k_disks{{
+constexpr std::array<row, 29> k_disks{{
     /* IBM PC flux / IMA */
     {"93a5a1a9002057dd",
      "Commando (Data East USA, 1986) 180K 5.25\" SS/DD booter",
@@ -104,6 +104,23 @@ constexpr std::array<row, 24> k_disks{{
     {"fcad06bacfaba8d4",
      "Shadow of the Beast (Psygnosis, 1989) Disk 2 IPF",
      "SPS IPF; Psygnosis / Rob Northen Copylock (flux, not ADF)"},
+    {"6453f181926dc2d2",
+     "Tetris (Mirrorsoft, 1987) SPS IPF #736",
+     "none (standard AmigaDOS OFS; SPS assembled 80×2×11)"},
+    {"e0fdc846f2f20579",
+     "Awesome demo (Psygnosis, 1990) SPS IPF #1450",
+     "SPS IPF #1450; custom/non-AmigaDOS tracks (metadata-only, no OFS volume)"},
+
+    /* Commodore 1571 G71 (VICE GCR-1571; local transnet_c64 dumps) */
+    {"9e30d4cc803bff1d",
+     "Blank 1571 disk (transnet GCR-1571)",
+     "none (standard 1571 GCR-1571; CBMFS BLANKY DISKY, empty directory)"},
+    {"3e0318ed0b303756",
+     "Clone Machine 1571 original Side 1 (G71)",
+     "1571 copier GCR; 84 whole-track GCR-1571; CBMFS BAM not standard"},
+    {"965fb1fe566f8805",
+     "VG Datashack Super Fast File Copy (transnet G71)",
+     "none (standard 1571 GCR-1571 CBMFS FILE COPIER; 168 half-tracks)"},
 }};
 
 } /* namespace */
