@@ -31,6 +31,9 @@ serial and volume label, the full directory (including deleted 8.3
 slots), a Type label (DATA until a format matches), XXH64 of each file,
 cluster chains, orphans,
 and a hex dump of sector 0.
+.PP
+A whole-image XXH64 catalog names known dumps (title and copy-protection
+scheme) when the file hash matches.
 A
 .I .d64
 /
@@ -105,7 +108,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.20
+.B dumpfloppy 0.21
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

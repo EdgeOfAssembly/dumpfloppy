@@ -12,12 +12,14 @@
 #include "dumpfloppy/formats/fat12.h"
 #include "dumpfloppy/formats/pkd.h"
 #include "dumpfloppy/image.hpp"
+#include "dumpfloppy/report.hpp"
 #include "dumpfloppy/util.hpp"
 #include "image_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <vector>
 
 TEST_CASE("file_format::type defaults to DATA", "[format]")
@@ -113,6 +115,103 @@ TEST_CASE("catalog lookup by whole-image XXH64", "[format][catalog]")
     REQUIRE(hit.title.find("Commando") != std::string::npos);
     REQUIRE(hit.protection.find("AH=10h") != std::string::npos);
     REQUIRE_FALSE(dumpfloppy::catalog_lookup("0000000000000000").found);
+}
+
+TEST_CASE("catalog names C64 Paranoid EA Ocean and Origin protection", "[format][catalog]")
+{
+    const auto ninja_a = dumpfloppy::catalog_lookup("be2324a14653936b");
+    REQUIRE(ninja_a.found);
+    REQUIRE(ninja_a.title.find("Last Ninja") != std::string::npos);
+    REQUIRE(ninja_a.protection.find("Paranoid") != std::string::npos);
+
+    const auto ninja_b = dumpfloppy::catalog_lookup("00b6c60995d66466");
+    REQUIRE(ninja_b.found);
+    REQUIRE(ninja_b.protection.find("Paranoid") != std::string::npos);
+
+    const auto archon = dumpfloppy::catalog_lookup("e3ce744e13387bd8");
+    REQUIRE(archon.found);
+    REQUIRE(archon.title.find("Archon") != std::string::npos);
+    REQUIRE(archon.protection.find("half-track 34.5") != std::string::npos);
+
+    const auto batman_c64 = dumpfloppy::catalog_lookup("752b75a5b8a31147");
+    REQUIRE(batman_c64.found);
+    REQUIRE(batman_c64.title.find("Ocean") != std::string::npos);
+    REQUIRE(batman_c64.protection.find("track 36") != std::string::npos);
+
+    const auto origin_mfm = dumpfloppy::catalog_lookup("bd833a724a08fbc5");
+    REQUIRE(origin_mfm.found);
+    REQUIRE(origin_mfm.title.find("2400") != std::string::npos);
+    REQUIRE(origin_mfm.protection.find("C6:H0:S170") != std::string::npos);
+
+    const auto origin_86f = dumpfloppy::catalog_lookup("6f25dadaa3091031");
+    REQUIRE(origin_86f.found);
+    REQUIRE(origin_86f.protection.find("Origin") != std::string::npos);
+
+    const auto im_crack = dumpfloppy::catalog_lookup("8955f9748027eef3");
+    REQUIRE(im_crack.found);
+    REQUIRE(im_crack.protection.find("Rapidlok removed") != std::string::npos);
+}
+
+TEST_CASE("Last Ninja Side A D64 report catalogues Paranoid", "[format][catalog][optional]")
+{
+    const std::filesystem::path img{
+        "/mnt/dumpfloppy-fixtures/c64/Last_Ninja_The_1987_System_3_Side_A.d64"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Last Ninja Side A .d64 is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "be2324a14653936b");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("Paranoid") != std::string::npos);
+    REQUIRE(a.cbm.disk_name.find("PARANO") != std::string::npos);
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    opt.hex_boot = false;
+    std::ostringstream plain;
+    dumpfloppy::write_report(a, plain, opt);
+    const std::string text = plain.str();
+    REQUIRE(text.find("CATALOG") != std::string::npos);
+    REQUIRE(text.find("Paranoid") != std::string::npos);
+    REQUIRE(text.find("Protection") != std::string::npos);
+}
+
+TEST_CASE("Archon G64 report catalogues EA half-track protection", "[format][catalog][optional]")
+{
+    const std::filesystem::path img{
+        "/mnt/dumpfloppy-fixtures/c64/"
+        "Archon (102402)(Electronic Arts, Inc.)(1983) [E1DAD185].g64"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("Archon .g64 is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "e3ce744e13387bd8");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("half-track 34.5") != std::string::npos);
+    REQUIRE(a.cbm.present);
+}
+
+TEST_CASE("2400 A.D. MFM report catalogues Origin HLS", "[format][catalog][optional]")
+{
+    const std::filesystem::path img{
+        "/mnt/dumpfloppy-fixtures/"
+        "2400 A.D. (1988) (ORIGIN Systems, Inc.) (360K) [cp cr] [!]/"
+        "2400 A.D. (1988) (ORIGIN Systems, Inc.) (360K) [cp] [!].mfm"};
+    if (!std::filesystem::exists(img))
+    {
+        SKIP("2400 A.D. .mfm is not present");
+    }
+    auto loaded = dumpfloppy::load_image(img);
+    REQUIRE(loaded);
+    REQUIRE(loaded->xxh64 == "bd833a724a08fbc5");
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+    REQUIRE(a.catalog.found);
+    REQUIRE(a.catalog.protection.find("C6:H0:S170") != std::string::npos);
 }
 
 TEST_CASE("Commando HxC dump is catalogued with CRC protection", "[format][commando]")

@@ -22,6 +22,8 @@ and extract), and Amiga `.adf` images (OFS/FFS listing and extract).
 - Amiga **ADF / OFS or FFS**: volume name, DOS type, directory (files + DIR), XXH64
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
+- Whole-image **XXH64 catalog**: known dumps print a **CATALOG** section with
+  title and copy-protection scheme (Paranoid, HLS, EA half-track, Ocean track 36, …)
 - Deleted rows: light-red background, white **bold** text (`tui/ansi.h`)
 - Boot-sector hex dump and printable strings
 - Format catalog: `include/dumpfloppy/formats/` (Archiveteam floppy images + Shikadi file formats).
@@ -50,7 +52,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.20`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.21`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64`.
 

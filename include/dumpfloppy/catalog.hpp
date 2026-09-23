@@ -21,6 +21,12 @@ struct catalog_hit
 
 /**
  * @brief Look up a whole-file XXH64 (16 lowercase hex chars).
+ *
+ * @param[in] xxh64_hex Seed-0 XXH64 of the entire container (16 lowercase hex).
+ * @return Hit with title and copy-protection label, or found=false.
+ *
+ * @note Each dump file has its own hash (.mfm ≠ .86f of the same disk).
+ *       Cracked vs original images of one title hash differently.
  */
 [[nodiscard]] catalog_hit catalog_lookup(std::string_view xxh64_hex);
 

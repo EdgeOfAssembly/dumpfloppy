@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** (see `git log -1`) · **version 0.20** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** (see `git log -1`) · **version 0.21** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -12,7 +12,7 @@ After reboot, clone or `rsync -a /mnt/dumpfloppy/ /tmp/dumpfloppy/` (or work in 
 
 Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers common floppy extensions. Fixtures live **locally** under `/mnt/dumpfloppy-fixtures/` and `/mnt/PC_games/` (zips).
 
-## Done in 0.13–0.20 (do not redo)
+## Done in 0.13–0.21 (do not redo)
 
 - FAT12 `-u` (atomic rename, reclaim-before-relocate, deleted occupancy / Star Control TACTICS)
 - HxC CHS from BPB/modal SPT; HLS vs that SPT; extra-head DAM skip
@@ -26,8 +26,10 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 - CBM/ADF `-u` same-size in-place (D64/D71/D81 PRG/SEQ/USR, OFS/FFS); G64 and REL refused
 - Format catalog split: payload / container / filesystem TUs (`generated_{payload,container,filesystem}.h`)
 - `analyze.hpp` includes fs views only (`cbm_view.hpp`, `amiga_view.hpp`, `fat_view.hpp`, `flux_view.hpp`)
+- Whole-image XXH64 catalog names copy-protection (Paranoid, EA half-track 34.5,
+  Ocean track 36, Origin HLS, HLS/Commando CRC, plus cracked/unprotected hashes)
 
-**Verify last green:** `make -s test` 169 cases / 3446 assertions (7 skipped fixtures); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
+**Verify last green:** `make -s test` 173 cases / 3481 assertions (7 skipped /tmp PC copies); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
 
 ## Next (pick one slice)
 
@@ -43,9 +45,13 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 | Populous 360K IMA | `/mnt/dumpfloppy-fixtures/Populous (1989) (Electronic Arts, Inc.) (360K) [!]/` | yes |
 | Star Control 720K | `/mnt/dumpfloppy-fixtures/Star Control (1990) (Accolade, Inc.) (720K) [!]/` | yes |
 | 2400 A.D. 360K | `/mnt/dumpfloppy-fixtures/2400 A.D. (1988) (ORIGIN Systems, Inc.) (360K) [cp cr] [!]/` | yes |
-| Karateka D64 | `/mnt/Lataukset/Karateka_Jordan_Mechner_Copy_1985-05-02.d64` | — |
-| Last Ninja D64 | `/mnt/RetroCodeMess/c64/last_ninja.d64` | — |
-| Beast Sonix ADF | `/mnt/music/_src/sotb/Beast_Sonix_1990_Scoopex.adf` | — |
+| Karateka D64 | `/mnt/dumpfloppy-fixtures/c64/Karateka_Jordan_Mechner_Copy_1985-05-02.d64` | — |
+| Last Ninja D64 (Paranoid) | `/mnt/dumpfloppy-fixtures/c64/Last_Ninja_The_1987_System_3_Side_A.d64` | — |
+| Archon G64 (EA) | `/mnt/dumpfloppy-fixtures/c64/Archon (102402)(Electronic Arts, Inc.)(1983) [E1DAD185].g64` | IA |
+| Batman C64 G64 (Ocean) | `/mnt/dumpfloppy-fixtures/c64/Batman The Caped Crusader (406-0171-00)(Ocean Software, Ltd.)(1988) [33C91B36].g64` | IA |
+| OMEGAQ D81 | `/mnt/dumpfloppy-fixtures/c64/OMEGAQ.D81` | IA |
+| Beast Sonix ADF | `/mnt/dumpfloppy-fixtures/amiga/Beast_Sonix_1990_Scoopex.adf` | — |
+| Lemmings demo ADF | `/mnt/dumpfloppy-fixtures/amiga/lemmingdemo.adf` | IA |
 
 ## Quality bar
 
