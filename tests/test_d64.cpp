@@ -93,6 +93,7 @@ TEST_CASE("FAT12 sample is not CBMFS", "[d64][fat]")
     img.path = "sample.ima";
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(img));
     REQUIRE_FALSE(a.cbm.present);
+    REQUIRE_FALSE(a.amiga.present);
     REQUIRE(a.bpb.looks_valid);
     REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
 }

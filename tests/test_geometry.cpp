@@ -32,6 +32,12 @@ TEST_CASE("container_from_path treats .ima as WinImage", "[geometry]")
             dumpfloppy::container_kind::img_raw);
     REQUIRE(dumpfloppy::container_from_path("foo.D64") ==
             dumpfloppy::container_kind::d64_c64);
+    REQUIRE(dumpfloppy::container_from_path("foo.d71") ==
+            dumpfloppy::container_kind::d71_c64);
+    REQUIRE(dumpfloppy::container_from_path("bar.D81") ==
+            dumpfloppy::container_kind::d81_c64);
+    REQUIRE(dumpfloppy::container_from_path("work.ADF") ==
+            dumpfloppy::container_kind::adf_amiga);
     REQUIRE(dumpfloppy::container_from_path("foo.bin") ==
             dumpfloppy::container_kind::unknown_raw);
 }
@@ -47,6 +53,38 @@ TEST_CASE("D64 sizes are 1541, not 160K IBM trailer", "[geometry][d64]")
     const auto errmap = dumpfloppy::geometry_from_size(175531);
     REQUIRE(errmap.media_name.find("error map") != std::string::npos);
     REQUIRE(errmap.bytes_per_sector == 256);
+}
+
+TEST_CASE("D71 and ADF sizes are not IBM trailers", "[geometry][cbm][adf]")
+{
+    const auto d71 = dumpfloppy::geometry_from_size(349696);
+    REQUIRE(d71.bytes_per_sector == 256);
+    REQUIRE(d71.media_name.find("1571") != std::string::npos);
+    REQUIRE(d71.media_name.find("320K") == std::string::npos);
+
+    const auto d71err = dumpfloppy::geometry_from_size(351062);
+    REQUIRE(d71err.media_name.find("error map") != std::string::npos);
+
+    /* 819200 is IBM 800K by size; analyse overrides when CBMFS is present. */
+    const auto ibm800 = dumpfloppy::geometry_from_size(819200);
+    REQUIRE(ibm800.bytes_per_sector == 512);
+    REQUIRE(ibm800.media_name.find("800K") != std::string::npos);
+
+    const auto d81err = dumpfloppy::geometry_from_size(822400);
+    REQUIRE(d81err.bytes_per_sector == 256);
+    REQUIRE(d81err.media_name.find("1581") != std::string::npos);
+
+    const auto adf_dd = dumpfloppy::geometry_from_size(901120);
+    REQUIRE(adf_dd.cylinders == 80);
+    REQUIRE(adf_dd.heads == 2);
+    REQUIRE(adf_dd.sectors_per_track == 11);
+    REQUIRE(adf_dd.bytes_per_sector == 512);
+    REQUIRE(adf_dd.media_name.find("Amiga") != std::string::npos);
+
+    const auto adf_hd = dumpfloppy::geometry_from_size(1802240);
+    REQUIRE(adf_hd.sectors_per_track == 22);
+    REQUIRE(adf_hd.media_name.find("HD") != std::string::npos);
+    REQUIRE(adf_hd.media_name.find("DMF") == std::string::npos);
 }
 
 TEST_CASE("media descriptor names", "[geometry]")

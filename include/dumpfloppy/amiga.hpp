@@ -4,7 +4,8 @@
  *
  * DD (80×2×11×512) and HD (80×2×22×512) raw ADF images. Bootblock `DOS`
  * plus type 0–5 (even OFS, odd FFS). Rootblock at sector_count/2.
- * @ref analyse wiring is a later wave; this header is the parse/extract API.
+ * @ref analyse stores the result in @c analysis::amiga and skips FAT when
+ * @a present is true.
  */
 #ifndef DUMPFLOPPY_AMIGA_HPP
 #define DUMPFLOPPY_AMIGA_HPP

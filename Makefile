@@ -77,7 +77,8 @@ TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \
             tests/test_format.cpp tests/test_update.cpp tests/test_deleted.cpp \
             tests/test_mfm.cpp tests/test_cbm.cpp tests/test_d64.cpp \
-            tests/test_amiga.cpp
+            tests/test_amiga.cpp tests/test_d71.cpp tests/test_d81.cpp \
+            tests/test_adf.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)

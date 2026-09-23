@@ -22,6 +22,9 @@ enum class container_kind
     hxc_mfm,     /**< HxC `.mfm` bitstream. */
     box86f,      /**< 86Box `.86f` surface image. */
     d64_c64,     /**< Commodore 1541 `.d64` (256-byte sectors, CBMFS). */
+    d71_c64,     /**< Commodore 1571 `.d71` (70-track CBMFS). */
+    d81_c64,     /**< Commodore 1581 `.d81` (80×40 CBMFS). */
+    adf_amiga,   /**< Amiga OFS/FFS `.adf` (DD 80×2×11 or HD 80×2×22). */
     unknown_raw  /**< Explicit path with another extension. */
 };
 

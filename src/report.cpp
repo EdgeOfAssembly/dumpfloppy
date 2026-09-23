@@ -3,6 +3,7 @@
  * @brief Colourful floppy secret dump. Deleted names use TUI light-red + bold white.
  */
 #include "dumpfloppy/report.hpp"
+#include "dumpfloppy/amiga.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/cbm.hpp"
@@ -66,8 +67,14 @@ const char* container_name(container_kind k)
             return "86Box 86F surface (.86f)";
         case container_kind::d64_c64:
             return "D64 (Commodore 1541 CBMFS)";
+        case container_kind::d71_c64:
+            return "D71 (Commodore 1571 CBMFS)";
+        case container_kind::d81_c64:
+            return "D81 (Commodore 1581 CBMFS)";
+        case container_kind::adf_amiga:
+            return "ADF (Amiga OFS/FFS)";
         default:
-            return "raw (not .img/.ima/.mfm/.86f/.d64)";
+            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf)";
     }
 }
 
@@ -240,6 +247,8 @@ void write_cbm_sections(const analysis& a, std::ostream& out, const report_optio
         }
         kv(out, "DOS version", dosv.str());
     }
+    kv(out, "Media", a.cbm.media_name.empty() ? cbm_media_name(a.cbm.media)
+                                              : a.cbm.media_name.c_str());
     kv(out, "DOS type", a.cbm.dos_type.empty() ? "(none)" : a.cbm.dos_type);
     {
         std::ostringstream ts;
@@ -289,6 +298,81 @@ void write_cbm_sections(const analysis& a, std::ostream& out, const report_optio
     out << '\n';
 }
 
+constexpr size_t k_w_amiga_name = 24;
+constexpr size_t k_w_amiga_type = 4;
+
+std::string amiga_directory_header()
+{
+    std::ostringstream os;
+    os << "  " << field(" ", k_w_mark) << field("Name", k_w_amiga_name)
+       << field("Type", k_w_amiga_type) << field("Size", k_w_size)
+       << field("XXH64 Checksum", k_w_sum);
+    return os.str();
+}
+
+std::string amiga_entry_line(const amiga_file& e, uint32_t size, std::string_view sum)
+{
+    const char mark = ' ';
+    const char* kind = e.is_dir ? "DIR" : "FILE";
+    const std::string size_text = e.is_dir ? std::string{} : std::to_string(size);
+    std::ostringstream os;
+    os << "  " << field(std::string_view(&mark, 1), k_w_mark)
+       << field(e.path.empty() ? e.name : e.path, k_w_amiga_name)
+       << field(kind, k_w_amiga_type) << field(size_text, k_w_size)
+       << field((e.is_dir || size == 0u) ? std::string_view{} : sum, k_w_sum);
+    return os.str();
+}
+
+void write_amiga_sections(const analysis& a, std::ostream& out, const report_options& opt)
+{
+    const bool color = opt.color;
+    section(out, color, "AMIGA VOLUME");
+    kv(out, "Volume name",
+       a.amiga.volume_name.empty() ? "(none)" : a.amiga.volume_name);
+    {
+        std::ostringstream dos;
+        dos << "DOS\\" << static_cast<unsigned>(a.amiga.dos_type) << "  "
+            << amiga_fs_name(a.amiga.ffs);
+        kv(out, "DOS type", dos.str());
+    }
+    kv(out, "Filesystem", amiga_fs_name(a.amiga.ffs));
+    kv(out, "Root block", std::to_string(a.amiga.root_block));
+    kv(out, "Sectors", std::to_string(a.amiga.sector_count));
+    out << '\n';
+
+    section(out, color, "DIRECTORY");
+    put_style(out, color, TUI_BOLD);
+    put_style(out, color, TUI_WHITE);
+    out << amiga_directory_header();
+    put_style(out, color, TUI_RESET);
+    out << '\n';
+    size_t shown = 0;
+    size_t dirs = 0;
+    for (const amiga_file& e : a.amiga.entries)
+    {
+        if (e.is_dir)
+        {
+            ++dirs;
+            out << amiga_entry_line(e, 0, {}) << '\n';
+            ++shown;
+            continue;
+        }
+        const std::vector<uint8_t> payload =
+            read_amiga_file(a.image.bytes, a.amiga, e);
+        const uint32_t size = static_cast<uint32_t>(payload.size());
+        const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
+        out << amiga_entry_line(e, size, sum) << '\n';
+        ++shown;
+    }
+    if (a.amiga.entries.empty())
+    {
+        out << "  (no OFS/FFS directory entries)\n";
+    }
+    out << "  " << shown << " entries shown, " << dirs
+        << " directories, deleted N/A\n";
+    out << '\n';
+}
+
 } /* namespace */
 
 void write_report(const analysis& a, std::ostream& out, const report_options& opt)
@@ -310,15 +394,42 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     kv(out, "SHA-256", a.image.sha256);
     kv(out, "XXH64", a.image.xxh64);
     {
-        const std::string fmt =
-            a.cbm.present ? std::string("C64 D64 / CBMFS")
-                          : identify_type(a.image.bytes, format_kind::disk_image);
+        std::string fmt;
+        if (a.cbm.present)
+        {
+            const char* media = a.cbm.media_name.empty()
+                                    ? cbm_media_name(a.cbm.media)
+                                    : a.cbm.media_name.c_str();
+            fmt = std::string("C64 ") + media + " / CBMFS";
+        }
+        else if (a.amiga.present)
+        {
+            fmt = std::string("AMIGA ADF / ") + amiga_fs_name(a.amiga.ffs);
+        }
+        else
+        {
+            fmt = identify_type(a.image.bytes, format_kind::disk_image);
+        }
         kv(out, "Format", fmt);
     }
     kv(out, "Container", container_name(a.image.container));
     if (a.cbm.present)
     {
-        kv(out, "Filesystem", "CBMFS (Commodore 1541; not FAT)");
+        const char* drive = "1541 D64";
+        if (a.cbm.media == cbm_media::d71)
+        {
+            drive = "1571 D71";
+        }
+        else if (a.cbm.media == cbm_media::d81)
+        {
+            drive = "1581 D81";
+        }
+        kv(out, "Filesystem", std::string("CBMFS (Commodore ") + drive + "; not FAT)");
+    }
+    else if (a.amiga.present)
+    {
+        kv(out, "Filesystem",
+           std::string(amiga_fs_name(a.amiga.ffs)) + " (Amiga; not FAT)");
     }
     if (a.image.size_geometry.cylinders != 0u)
     {
@@ -419,6 +530,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     if (a.cbm.present)
     {
         write_cbm_sections(a, out, opt);
+    }
+    else if (a.amiga.present)
+    {
+        write_amiga_sections(a, out, opt);
     }
     else
     {
@@ -605,7 +720,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
     out << '\n';
     }
-    } /* !cbm.present */
+    } /* !cbm.present && !amiga.present */
 
     if (!a.secrets.empty())
     {
@@ -617,7 +732,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         out << '\n';
     }
 
-    if (opt.hex_boot && !a.cbm.present)
+    if (opt.hex_boot && !a.cbm.present && !a.amiga.present)
     {
         section(out, color, "BOOT SECTOR HEX");
         std::span<const uint8_t> boot =

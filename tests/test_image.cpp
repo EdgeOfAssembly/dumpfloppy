@@ -61,6 +61,7 @@ TEST_CASE("FAT12 sample exposes serial, both labels, and deleted file", "[image]
     REQUIRE_FALSE(a.boot.is_booter);
     REQUIRE(a.boot.kind == dumpfloppy::boot_class::dos_non_system);
     REQUIRE_FALSE(a.cbm.present);
+    REQUIRE_FALSE(a.amiga.present);
 
     bool saw_hello = false;
     bool saw_deleted = false;

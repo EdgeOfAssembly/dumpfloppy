@@ -57,19 +57,67 @@ analysis analyse(floppy_image image)
         bytes.subspan(0, std::min<size_t>(512u, bytes.size()));
 
     a.catalog = catalog_lookup(a.image.xxh64);
-    a.cbm = parse_d64(bytes);
+    a.cbm = parse_cbm_image(bytes);
     if (a.cbm.present)
     {
-        /* C64 D64 is not an IBM BPB/FAT volume and not HxC flux. */
-        a.image.size_geometry.cylinders = 0;
-        a.image.size_geometry.heads = 0;
-        a.image.size_geometry.sectors_per_track = 0;
+        /* CBMFS D64/D71/D81 is not an IBM BPB/FAT volume and not HxC flux. */
         a.image.size_geometry.bytes_per_sector = k_d64_sector_bytes;
-        a.image.size_geometry.expected_bytes = k_d64_35_bytes;
-        a.image.size_geometry.media_name =
-            (bytes.size() == k_d64_35_error_bytes)
-                ? "Commodore 1541 35-track D64 + error map"
-                : "Commodore 1541 35-track D64";
+        switch (a.cbm.media)
+        {
+        case cbm_media::d71:
+            a.image.size_geometry.cylinders = 0;
+            a.image.size_geometry.heads = 0;
+            a.image.size_geometry.sectors_per_track = 0;
+            a.image.size_geometry.expected_bytes = k_d71_bytes;
+            a.image.size_geometry.media_name =
+                (bytes.size() == k_d71_error_bytes)
+                    ? "Commodore 1571 70-track D71 + error map"
+                    : "Commodore 1571 70-track D71";
+            break;
+        case cbm_media::d81:
+            a.image.size_geometry.cylinders = 80;
+            a.image.size_geometry.heads = 1;
+            a.image.size_geometry.sectors_per_track = 40;
+            a.image.size_geometry.expected_bytes = k_d81_bytes;
+            a.image.size_geometry.media_name =
+                (bytes.size() == k_d81_error_bytes)
+                    ? "Commodore 1581 80-track D81 + error map"
+                    : "Commodore 1581 80-track D81";
+            break;
+        case cbm_media::d64:
+        default:
+            a.image.size_geometry.cylinders = 0;
+            a.image.size_geometry.heads = 0;
+            a.image.size_geometry.sectors_per_track = 0;
+            a.image.size_geometry.expected_bytes = k_d64_35_bytes;
+            a.image.size_geometry.media_name =
+                (bytes.size() == k_d64_35_error_bytes)
+                    ? "Commodore 1541 35-track D64 + error map"
+                    : "Commodore 1541 35-track D64";
+            break;
+        }
+        return a;
+    }
+
+    a.amiga = parse_adf(bytes);
+    if (a.amiga.present)
+    {
+        /* Amiga OFS/FFS ADF is not an IBM BPB/FAT volume and not HxC flux. */
+        a.image.size_geometry.cylinders = 80;
+        a.image.size_geometry.heads = 2;
+        a.image.size_geometry.bytes_per_sector = k_adf_sector_bytes;
+        if (is_adf_hd_size(bytes.size()))
+        {
+            a.image.size_geometry.sectors_per_track = 22;
+            a.image.size_geometry.expected_bytes = k_adf_hd_bytes;
+            a.image.size_geometry.media_name = "Amiga HD ADF (80×2×22×512)";
+        }
+        else
+        {
+            a.image.size_geometry.sectors_per_track = 11;
+            a.image.size_geometry.expected_bytes = k_adf_dd_bytes;
+            a.image.size_geometry.media_name = "Amiga DD ADF (80×2×11×512)";
+        }
         return a;
     }
 

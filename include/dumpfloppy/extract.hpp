@@ -36,8 +36,10 @@ struct extract_options
 /**
  * @brief Write matching files into @p opt.dest_dir.
  *
- * CBMFS D64 images extract PETSCII names plus `.prg`/`.seq`/`.usr`/`.rel`/
- * `.del` (deleted slots included). FAT images walk cluster chains as before.
+ * CBMFS D64/D71/D81 images extract PETSCII names plus `.prg`/`.seq`/`.usr`/
+ * `.rel`/`.del` (deleted slots included). ADF images extract OFS/FFS files
+ * (directories skipped) using @ref amiga_host_filename (`/` flattened to
+ * `_`). FAT images walk cluster chains as before.
  *
  * Unsafe names (absolute paths, root names, empty components, `.`, `..`)
  * are skipped with a diagnostic — they must not escape @p opt.dest_dir.

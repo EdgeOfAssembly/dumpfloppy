@@ -5,6 +5,7 @@
 #ifndef DUMPFLOPPY_ANALYZE_HPP
 #define DUMPFLOPPY_ANALYZE_HPP
 
+#include "dumpfloppy/amiga.hpp"
 #include "dumpfloppy/boot.hpp"
 #include "dumpfloppy/catalog.hpp"
 #include "dumpfloppy/cbm.hpp"
@@ -26,7 +27,7 @@ namespace dumpfloppy
  *
  * Logical FAT bytes are @ref volume_bytes / @ref make_sector_store
  * (assembled IBM CHS when present, else raw @a image.bytes).
- * When @a cbm.present, the image is a 1541 D64: FAT is not walked.
+ * When @a cbm.present or @a amiga.present, FAT/HxC are not walked.
  */
 struct analysis
 {
@@ -45,7 +46,8 @@ struct analysis
     bool truncated = false;
     flux_disk flux{};
     catalog_hit catalog{};
-    cbm_disk cbm{}; /**< 1541 CBMFS; @a present is false on PC FAT images. */
+    cbm_disk cbm{};     /**< D64/D71/D81 CBMFS; @a present is false on PC FAT / ADF. */
+    amiga_disk amiga{}; /**< OFS/FFS ADF; @a present is false on PC FAT / CBM. */
 };
 
 /**
@@ -85,9 +87,10 @@ struct analysis
 /**
  * @brief Analyse a loaded image.
  *
- * A 35-track D64 with a valid CBMFS BAM is parsed as Commodore; FAT/BPB
- * and HxC flux decode are skipped so C64 bytes are not treated as DOS.
- * Catalog lookup still runs.
+ * A D64/D71/D81 with a valid CBMFS BAM/header, or a DD/HD ADF with a
+ * valid OFS/FFS root, is parsed as that filesystem; FAT/BPB and HxC flux
+ * decode are skipped so those bytes are not treated as DOS. Catalog
+ * lookup still runs.
  *
  * @param[in] image Raw image from @ref load_image.
  */

@@ -29,7 +29,8 @@ namespace dumpfloppy
 [[nodiscard]] std::string media_descriptor_name(uint8_t media);
 
 /**
- * @brief Guess container from the path extension (`.img` / `.ima` / `.d64`).
+ * @brief Guess container from the path extension (`.img` / `.ima` / `.d64` /
+ *        `.d71` / `.d81` / `.adf`).
  */
 [[nodiscard]] container_kind container_from_path(const std::string& path);
 

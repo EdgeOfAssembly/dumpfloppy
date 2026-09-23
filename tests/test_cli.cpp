@@ -45,6 +45,9 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find(".mfm") != std::string::npos);
     REQUIRE(u.find(".86f") != std::string::npos);
     REQUIRE(u.find(".d64") != std::string::npos);
+    REQUIRE(u.find(".d71") != std::string::npos);
+    REQUIRE(u.find(".d81") != std::string::npos);
+    REQUIRE(u.find(".adf") != std::string::npos);
     REQUIRE(u.find(dumpfloppy::k_version) != std::string::npos);
 }
 
@@ -121,6 +124,21 @@ TEST_CASE("parse_cli -x extract all vs glob vs --extract=", "[cli]")
     REQUIRE(d64.inputs.size() == 1);
     REQUIRE(d64.inputs[0] == "game.d64");
 
+    const auto d71 = parse({"-x", "disk.d71"});
+    REQUIRE(d71.ok);
+    REQUIRE(d71.extract.patterns.empty());
+    REQUIRE(d71.inputs[0] == "disk.d71");
+
+    const auto d81 = parse({"-x", "disk.d81"});
+    REQUIRE(d81.ok);
+    REQUIRE(d81.extract.patterns.empty());
+    REQUIRE(d81.inputs[0] == "disk.d81");
+
+    const auto adf = parse({"-x", "work.adf"});
+    REQUIRE(adf.ok);
+    REQUIRE(adf.extract.patterns.empty());
+    REQUIRE(adf.inputs[0] == "work.adf");
+
     const auto named = parse({"disk.ima", "-x", "591.PKD"});
     REQUIRE(named.extract.patterns[0] == "591.PKD");
 }
@@ -159,7 +177,8 @@ TEST_CASE("parse_cli glued -uFILE like -xGLOB", "[cli]")
     REQUIRE(u.find("-uFILE") != std::string::npos);
 }
 
-TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64", "[cli]")
+TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf",
+          "[cli]")
 {
     const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
                      "expand-empty";
@@ -178,15 +197,20 @@ TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64", "[cli]")
     REQUIRE(err.find(".mfm") != std::string::npos);
     REQUIRE(err.find(".86f") != std::string::npos);
     REQUIRE(err.find(".d64") != std::string::npos);
+    REQUIRE(err.find(".d71") != std::string::npos);
+    REQUIRE(err.find(".d81") != std::string::npos);
+    REQUIRE(err.find(".adf") != std::string::npos);
 }
 
-TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64", "[cli]")
+TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf",
+          "[cli]")
 {
     const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
                      "expand-exts";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
-    for (const char* name : {"a.ima", "b.mfm", "c.86f", "d.txt", "e.d64"})
+    for (const char* name :
+         {"a.ima", "b.mfm", "c.86f", "d.txt", "e.d64", "f.d71", "g.d81", "h.adf"})
     {
         std::ofstream out(dir / name);
         REQUIRE(out);
@@ -195,9 +219,12 @@ TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64", "[cli]")
     std::string err;
     const auto got = dumpfloppy::expand_inputs({dir}, err);
     REQUIRE(err.empty());
-    REQUIRE(got.size() == 4);
+    REQUIRE(got.size() == 7);
     REQUIRE(got[0].filename() == "a.ima");
     REQUIRE(got[1].filename() == "b.mfm");
     REQUIRE(got[2].filename() == "c.86f");
     REQUIRE(got[3].filename() == "e.d64");
+    REQUIRE(got[4].filename() == "f.d71");
+    REQUIRE(got[5].filename() == "g.d81");
+    REQUIRE(got[6].filename() == "h.adf");
 }

@@ -3,6 +3,8 @@
  * @brief Standard IBM PC floppy sizes and media-byte names.
  */
 #include "dumpfloppy/geometry.hpp"
+#include "dumpfloppy/amiga.hpp"
+#include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/util.hpp"
 
 #include <array>
@@ -45,20 +47,65 @@ geometry geometry_from_size(uint64_t byte_count)
 {
     geometry g{};
     g.bytes_per_sector = 512;
-    /* 1541 D64 uses zone SPT (21/19/18/17), not a single IBM CHS. Do not
-       classify 174848 as 160K+trailer. */
-    if (byte_count == 174848u)
+    /* CBM and ADF sizes that would otherwise look like IBM + trailer.
+       D81 819200 collides with IBM 800K (10 spt); leave that to analyse
+       (valid CBMFS header) so FAT 800K images stay IBM. */
+    if (byte_count == k_d64_35_bytes)
     {
-        g.bytes_per_sector = 256;
-        g.expected_bytes = 174848u;
+        g.bytes_per_sector = k_d64_sector_bytes;
+        g.expected_bytes = k_d64_35_bytes;
         g.media_name = "Commodore 1541 35-track D64";
         return g;
     }
-    if (byte_count == 175531u)
+    if (byte_count == k_d64_35_error_bytes)
     {
-        g.bytes_per_sector = 256;
-        g.expected_bytes = 174848u;
+        g.bytes_per_sector = k_d64_sector_bytes;
+        g.expected_bytes = k_d64_35_bytes;
         g.media_name = "Commodore 1541 35-track D64 + error map";
+        return g;
+    }
+    if (byte_count == k_d71_bytes)
+    {
+        g.bytes_per_sector = k_d64_sector_bytes;
+        g.expected_bytes = k_d71_bytes;
+        g.media_name = "Commodore 1571 70-track D71";
+        return g;
+    }
+    if (byte_count == k_d71_error_bytes)
+    {
+        g.bytes_per_sector = k_d64_sector_bytes;
+        g.expected_bytes = k_d71_bytes;
+        g.media_name = "Commodore 1571 70-track D71 + error map";
+        return g;
+    }
+    if (byte_count == k_d81_error_bytes)
+    {
+        g.bytes_per_sector = k_d64_sector_bytes;
+        g.cylinders = 80;
+        g.heads = 1;
+        g.sectors_per_track = 40;
+        g.expected_bytes = k_d81_bytes;
+        g.media_name = "Commodore 1581 80-track D81 + error map";
+        return g;
+    }
+    if (byte_count == k_adf_dd_bytes)
+    {
+        g.cylinders = 80;
+        g.heads = 2;
+        g.sectors_per_track = 11;
+        g.bytes_per_sector = k_adf_sector_bytes;
+        g.expected_bytes = k_adf_dd_bytes;
+        g.media_name = "Amiga DD ADF (80×2×11×512)";
+        return g;
+    }
+    if (byte_count == k_adf_hd_bytes)
+    {
+        g.cylinders = 80;
+        g.heads = 2;
+        g.sectors_per_track = 22;
+        g.bytes_per_sector = k_adf_sector_bytes;
+        g.expected_bytes = k_adf_hd_bytes;
+        g.media_name = "Amiga HD ADF (80×2×22×512)";
         return g;
     }
     for (const size_row& row : k_sizes)
@@ -153,6 +200,18 @@ container_kind container_from_path(const std::string& path)
     if (lower.size() >= 4 && lower.ends_with(".d64"))
     {
         return container_kind::d64_c64;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".d71"))
+    {
+        return container_kind::d71_c64;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".d81"))
+    {
+        return container_kind::d81_c64;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".adf"))
+    {
+        return container_kind::adf_amiga;
     }
     return container_kind::unknown_raw;
 }

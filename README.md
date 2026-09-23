@@ -1,8 +1,9 @@
 # dumpfloppy
 
 C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`),
-HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), and Commodore 1541
-`.d64` images (CBMFS listing and extract).
+HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), Commodore 1541/1571/1581
+`.d64` / `.d71` / `.d81` images (CBMFS listing and extract), and Amiga
+`.adf` images (OFS/FFS listing and extract).
 
 `.ima` is WinImage’s raw dump; the sector layout is the same as `.img`.
 
@@ -15,8 +16,9 @@ HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), and Commodore 1541
 - **Volume label** from EBPB *and* the root directory (they can differ)
 - FAT copies, free/bad/orphan clusters
 - Directory tree including **deleted** 8.3 names (`0xE5` → `?`)
-- Commodore 1541 **D64 / CBMFS**: disk name, ID, DOS type, PRG/SEQ/… listing
+- Commodore **D64 / D71 / D81 CBMFS**: disk name, ID, DOS type, PRG/SEQ/… listing
   (deleted rows use the same light-red + bold white as FAT)
+- Amiga **ADF / OFS or FFS**: volume name, DOS type, directory (files + DIR), XXH64
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
 - Deleted rows: light-red background, white **bold** text (`tui/ansi.h`)
@@ -46,13 +48,17 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.14`. Options and paths may be interleaved. A directory argument
-expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64`.
+`dumpfloppy 0.15`. Options and paths may be interleaved. A directory argument
+expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
+`*.adf`.
 
 ```bash
 dumpfloppy disk.ima
 dumpfloppy game.d64
 dumpfloppy game.d64 -x
+dumpfloppy disk.d71
+dumpfloppy disk.d81 -x
+dumpfloppy work.adf -x
 dumpfloppy --no-color --no-hex disk.ima -o report.txt
 dumpfloppy ./floppies -o ./reports/
 dumpfloppy disk.ima -u HELLO.TXT
@@ -60,8 +66,10 @@ dumpfloppy disk.mfm -u PENGUIN.EXE
 dumpfloppy disk.mfm -uPENGUIN.EXE
 ```
 
-`-x` on a D64 writes PETSCII names plus `.prg` / `.seq` / `.usr` / `.rel` /
-`.del` (deleted files included). `-u` refuses D64/CBMFS in this version.
+`-x` on D64/D71/D81 writes PETSCII names plus `.prg` / `.seq` / `.usr` / `.rel` /
+`.del` (deleted files included). `-x` on ADF writes OFS/FFS files (directories
+skipped; `/` in Amiga paths becomes `_`). `-u` refuses CBMFS and ADF in this
+version.
 
 | Default | Switch |
 |---------|--------|

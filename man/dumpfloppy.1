@@ -1,6 +1,6 @@
 .TH DUMPFLOPPY 1 "2026-09-23" "dumpfloppy" "User Commands"
 .SH NAME
-dumpfloppy \- expose secrets in FAT12 and Commodore D64 floppy images
+dumpfloppy \- expose secrets in FAT12, CBMFS, and Amiga ADF images
 .SH SYNOPSIS
 .B dumpfloppy
 [\fIOPTIONS\fR]
@@ -15,8 +15,14 @@ an HxC
 .I .mfm
 bitstream, an 86Box
 .I .86f
-flux image, or a Commodore 1541
+flux image, a Commodore 1541/1571/1581
 .I .d64
+/
+.I .d71
+/
+.I .d81 ,
+or an Amiga
+.I .adf
 and prints everything it can prove from the bytes: BIOS boot signature,
 jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
 serial and volume label, the full directory (including deleted 8.3
@@ -25,15 +31,27 @@ cluster chains, orphans,
 and a hex dump of sector 0.
 A
 .I .d64
-with a valid CBMFS BAM is listed as Commodore (disk name, ID, DOS type,
+/
+.I .d71
+/
+.I .d81
+with a valid CBMFS BAM/header is listed as Commodore (disk name, ID, DOS type,
 PRG/SEQ directory) instead of inventing a FAT BPB from C64 bytes.
+A DD/HD
+.I .adf
+with a valid OFS/FFS root is listed as Amiga (volume name, DOS type, directory)
+instead of inventing a FAT BPB from Amiga bytes.
 .PP
 .B \-x
 /
 .B \-\-extract
 writes recovered files (deleted included) into the current directory.
-On a D64 the host names are the PETSCII listing name plus
+On D64/D71/D81 the host names are the PETSCII listing name plus
 .BR .prg / .seq / .usr / .rel / .del .
+On ADF, OFS/FFS files are written (directories skipped) with
+.B /
+in Amiga paths flattened to
+.BR _ .
 .PP
 .I .img
 and
@@ -68,8 +86,11 @@ A directory operand expands to
 .I *.ima ,
 .I *.mfm ,
 .I *.86f ,
+.I *.d64 ,
+.I *.d71 ,
+.I *.d81 ,
 and
-.I *.d64
+.I *.adf
 in that directory (non-recursive).
 .SH OPTIONS
 .TP
@@ -78,7 +99,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.14
+.B dumpfloppy 0.15
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -115,7 +136,7 @@ still writes deleted payloads.
 .TP
 .BR \-x ", " \-\-extract " [" \fIGLOB\fR "]"
 Extract files into the current directory by walking FAT cluster chains
-or CBMFS file chains.
+CBMFS file chains, or Amiga OFS/FFS data blocks.
 No listing is printed (errors stay on stderr).
 Deleted 8.3 names and scratched CBM files are included.
 With no
@@ -143,6 +164,12 @@ A following
 .I .86f
 /
 .I .d64
+/
+.I .d71
+/
+.I .d81
+/
+.I .adf
 path is the floppy image, not a glob.
 .TP
 .BI \-u ", " \-\-update " FILE"
@@ -169,7 +196,13 @@ untouched).
 .I .86f
 flux images are refused.
 .I .d64
-/ CBMFS images cannot be updated in this version.
+/
+.I .d71
+/
+.I .d81
+/ CBMFS and
+.I .adf
+images cannot be updated in this version.
 Glued
 .B \-uFILE
 is accepted (same as
@@ -200,6 +233,14 @@ List and extract a Commodore 1541 D64:
 .RE
 .RS
 .B dumpfloppy game.d64 \-x
+.RE
+.PP
+List a 1571 D71 or 1581 D81, or extract an Amiga ADF:
+.RS
+.B dumpfloppy disk.d71
+.RE
+.RS
+.B dumpfloppy work.adf \-x
 .RE
 .PP
 Extract only

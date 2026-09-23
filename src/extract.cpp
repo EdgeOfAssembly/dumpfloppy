@@ -3,6 +3,7 @@
  * @brief Cluster-walk extract of 8.3 files, including deleted names.
  */
 #include "dumpfloppy/extract.hpp"
+#include "dumpfloppy/amiga.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/directory.hpp"
@@ -269,6 +270,104 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
     return written;
 }
 
+bool amiga_extract_matches(const amiga_file& file, const extract_options& opt)
+{
+    if (file.is_dir)
+    {
+        return false;
+    }
+    if (opt.patterns.empty())
+    {
+        return true;
+    }
+    const std::string host = amiga_host_filename(file);
+    for (const std::string& pat : opt.patterns)
+    {
+        if (glob_match(pat, file.path) || glob_match(pat, file.name) ||
+            glob_match(pat, host))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostream& err)
+{
+    std::error_code ec{};
+    std::filesystem::create_directories(opt.dest_dir, ec);
+    if (ec)
+    {
+        err << "dumpfloppy: cannot create '" << opt.dest_dir.string()
+            << "': " << ec.message() << '\n';
+        return -1;
+    }
+
+    int written = 0;
+    int matched = 0;
+    std::unordered_set<std::string> used_dests;
+    for (const amiga_file& file : a.amiga.entries)
+    {
+        if (!amiga_extract_matches(file, opt))
+        {
+            continue;
+        }
+        ++matched;
+        const std::string host = amiga_host_filename(file);
+        const std::filesystem::path rel(host);
+        if (!path_is_safe(rel))
+        {
+            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
+            continue;
+        }
+        const std::filesystem::path preferred = opt.dest_dir / rel;
+        const std::filesystem::path dest =
+            choose_extract_dest(preferred, host, used_dests, err);
+        if (dest.empty())
+        {
+            err << "dumpfloppy: extract collision: no unique name for '"
+                << preferred.string() << "'\n";
+            return -1;
+        }
+        if (dest.has_parent_path())
+        {
+            std::filesystem::create_directories(dest.parent_path(), ec);
+            if (ec)
+            {
+                err << "dumpfloppy: cannot create '" << dest.parent_path().string()
+                    << "': " << ec.message() << '\n';
+                return -1;
+            }
+        }
+        const std::vector<uint8_t> bytes =
+            read_amiga_file(a.image.bytes, a.amiga, file);
+        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
+            return -1;
+        }
+        if (!bytes.empty())
+        {
+            out.write(reinterpret_cast<const char*>(bytes.data()),
+                      static_cast<std::streamsize>(bytes.size()));
+        }
+        if (!out)
+        {
+            err << "dumpfloppy: short write '" << dest.string() << "'\n";
+            return -1;
+        }
+        used_dests.insert(dest_key(dest));
+        ++written;
+    }
+    if (!opt.patterns.empty() && matched == 0)
+    {
+        err << "dumpfloppy: no files matched extract pattern\n";
+        return -1;
+    }
+    return written;
+}
+
 } /* namespace */
 
 bool extract_matches(const dir_entry& e, const extract_options& opt)
@@ -301,6 +400,10 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     if (a.cbm.present)
     {
         return extract_cbm_files(a, opt, err);
+    }
+    if (a.amiga.present)
+    {
+        return extract_amiga_files(a, opt, err);
     }
     if (a.flux.format_name == "86BOX 86F")
     {
