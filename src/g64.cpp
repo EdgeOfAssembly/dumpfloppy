@@ -1,11 +1,13 @@
 /**
  * @file g64.cpp
- * @brief GCR-1541 container parse and 1541 GCR track → D64 sector decode.
+ * @brief GCR-1541 / GCR-1571 container parse and GCR track → sector decode.
  *
  * Layout and sector GCR follow Peter Schepers `G64.TXT` (signature,
- * 84-slot half-track table, SYNC ≥10 ones, header ID $08, data ID $07).
+ * half-track table, SYNC ≥10 ones, header ID $08, data ID $07). G71 uses
+ * the same GCR with magic `GCR-1571` and a 1571 logical T/S (1–70).
  */
 #include "dumpfloppy/g64.hpp"
+#include "dumpfloppy/g71.hpp"
 #include "dumpfloppy/gcr_codec.h"
 #include "dumpfloppy/util.hpp"
 
@@ -24,21 +26,24 @@ constexpr unsigned k_header_bytes = 8u;
 constexpr unsigned k_data_block_bytes = 260u;
 constexpr uint16_t k_max_track_alloc = 32768u;
 
-struct g64_header
+struct gcr_disk_header
 {
     bool ok = false;
+    bool is_g71 = false;
     uint8_t track_count = 0;
     uint16_t max_track_bytes = 0;
 };
 
-[[nodiscard]] g64_header read_g64_header(std::span<const uint8_t> image)
+[[nodiscard]] gcr_disk_header read_gcr_disk_header(std::span<const uint8_t> image)
 {
-    g64_header h{};
+    gcr_disk_header h{};
     if (image.size() < k_g64_prefix_bytes)
     {
         return h;
     }
-    if (std::memcmp(image.data(), k_g64_magic, 8) != 0)
+    const bool is_g64 = std::memcmp(image.data(), k_g64_magic, 8) == 0;
+    const bool is_g71 = std::memcmp(image.data(), k_g71_magic, 8) == 0;
+    if (!is_g64 && !is_g71)
     {
         return h;
     }
@@ -47,7 +52,8 @@ struct g64_header
         return h;
     }
     const uint8_t n = image[9];
-    if (n == 0u || n > k_g64_max_tracks)
+    const uint8_t max_n = is_g71 ? k_g71_max_tracks : k_g64_max_tracks;
+    if (n == 0u || n > max_n)
     {
         return h;
     }
@@ -63,6 +69,7 @@ struct g64_header
         return h;
     }
     h.ok = true;
+    h.is_g71 = is_g71;
     h.track_count = n;
     h.max_track_bytes = max_bytes;
     return h;
@@ -136,20 +143,26 @@ bool decode_gcr_bytes(std::span<const uint8_t> bytes, std::size_t nbits,
     return scan_end;
 }
 
-void store_sector(std::vector<uint8_t>& d64, std::vector<uint8_t>& have_crc,
-                  uint8_t track, uint8_t sector, const uint8_t* data, bool crc_ok)
+void store_sector(std::vector<uint8_t>& image, std::vector<uint8_t>& have_crc,
+                  cbm_media media, uint8_t track, uint8_t sector,
+                  const uint8_t* data, bool crc_ok)
 {
-    if (!d64_ts_valid(track, sector))
+    if (!cbm_ts_valid(media, track, sector))
     {
         return;
     }
-    const std::size_t off = d64_offset(track, sector);
+    const std::size_t off = cbm_offset(media, track, sector);
+    if (off == static_cast<std::size_t>(-1) ||
+        off + static_cast<std::size_t>(k_d64_sector_bytes) > image.size())
+    {
+        return;
+    }
     const std::size_t idx = off / static_cast<std::size_t>(k_d64_sector_bytes);
-    if (have_crc[idx] != 0u)
+    if (idx >= have_crc.size() || have_crc[idx] != 0u)
     {
         return;
     }
-    std::memcpy(d64.data() + off, data, k_d64_sector_bytes);
+    std::memcpy(image.data() + off, data, k_d64_sector_bytes);
     if (crc_ok)
     {
         have_crc[idx] = 1u;
@@ -166,8 +179,8 @@ void store_sector(std::vector<uint8_t>& d64, std::vector<uint8_t>& have_crc,
     return x;
 }
 
-void decode_gcr_track(std::span<const uint8_t> gcr, std::vector<uint8_t>& d64,
-                      std::vector<uint8_t>& have_crc)
+void decode_gcr_track(std::span<const uint8_t> gcr, std::vector<uint8_t>& image,
+                      std::vector<uint8_t>& have_crc, cbm_media media)
 {
     if (gcr.empty())
     {
@@ -209,7 +222,8 @@ void decode_gcr_track(std::span<const uint8_t> gcr, std::vector<uint8_t>& d64,
             {
                 const uint8_t expect = xor_range(blk + 1, k_d64_sector_bytes);
                 const bool crc_ok = (blk[257] == expect);
-                store_sector(d64, have_crc, hdr_track, hdr_sector, blk + 1, crc_ok);
+                store_sector(image, have_crc, media, hdr_track, hdr_sector, blk + 1,
+                             crc_ok);
                 have_header = false;
                 i = bit;
                 continue;
@@ -233,28 +247,33 @@ void decode_gcr_track(std::span<const uint8_t> gcr, std::vector<uint8_t>& d64,
     return static_cast<uint8_t>(index + 1u);
 }
 
-} /* namespace */
-
-bool is_g64_image(std::span<const uint8_t> image)
+/**
+ * G64: skip half-tracks when n>42, and skip table tracks above 35.
+ * G71: skip half-tracks only when n>84 (VICE 168-slot layout). An 84-slot
+ * GCR-1571 stores whole tracks on both sides.
+ */
+[[nodiscard]] bool skip_gcr_slot(const gcr_disk_header& h, uint8_t index) noexcept
 {
-    return read_g64_header(image).ok;
+    if (h.is_g71)
+    {
+        return h.track_count > 84u && (index % 2u) != 0u;
+    }
+    const uint8_t track = table_track_number(h.track_count, index);
+    return track < 1u || track > k_d64_track_count;
 }
 
-std::vector<uint8_t> g64_decode_d64(std::span<const uint8_t> image)
+[[nodiscard]] std::vector<uint8_t>
+decode_gcr_container(std::span<const uint8_t> image, const gcr_disk_header& h)
 {
-    const g64_header h = read_g64_header(image);
-    if (!h.ok)
-    {
-        return {};
-    }
-
-    std::vector<uint8_t> d64(k_d64_35_bytes, 0);
-    std::vector<uint8_t> have_crc(683u, 0);
+    const cbm_media store = h.is_g71 ? cbm_media::d71 : cbm_media::d64;
+    const std::size_t out_size = h.is_g71 ? k_d71_bytes : k_d64_35_bytes;
+    std::vector<uint8_t> out(out_size, 0);
+    std::vector<uint8_t> have_crc(
+        out_size / static_cast<std::size_t>(k_d64_sector_bytes), 0);
 
     for (uint8_t i = 0; i < h.track_count; ++i)
     {
-        const uint8_t track = table_track_number(h.track_count, i);
-        if (track < 1u || track > k_d64_track_count)
+        if (skip_gcr_slot(h, i))
         {
             continue;
         }
@@ -279,9 +298,64 @@ std::vector<uint8_t> g64_decode_d64(std::span<const uint8_t> image)
         {
             continue;
         }
-        decode_gcr_track(image.subspan(data_off, actual), d64, have_crc);
+        decode_gcr_track(image.subspan(data_off, actual), out, have_crc, store);
     }
-    return d64;
+    return out;
+}
+
+void fill_cbmfs_from_decoded(cbm_disk& disk, std::vector<uint8_t>&& decoded,
+                             cbm_media fs_media)
+{
+    if (decoded.empty())
+    {
+        return;
+    }
+    const cbm_disk fs = parse_cbmfs(decoded, fs_media);
+    if (fs.present)
+    {
+        disk.disk_name = fs.disk_name;
+        disk.disk_id = fs.disk_id;
+        disk.dos_version = fs.dos_version;
+        disk.dos_type = fs.dos_type;
+        disk.dir_track = fs.dir_track;
+        disk.dir_sector = fs.dir_sector;
+        disk.entries = fs.entries;
+    }
+    disk.decoded = std::move(decoded);
+}
+
+} /* namespace */
+
+bool is_g64_image(std::span<const uint8_t> image)
+{
+    const gcr_disk_header h = read_gcr_disk_header(image);
+    return h.ok && !h.is_g71;
+}
+
+bool is_g71_image(std::span<const uint8_t> image)
+{
+    const gcr_disk_header h = read_gcr_disk_header(image);
+    return h.ok && h.is_g71;
+}
+
+std::vector<uint8_t> g64_decode_d64(std::span<const uint8_t> image)
+{
+    const gcr_disk_header h = read_gcr_disk_header(image);
+    if (!h.ok || h.is_g71)
+    {
+        return {};
+    }
+    return decode_gcr_container(image, h);
+}
+
+std::vector<uint8_t> g71_decode_d71(std::span<const uint8_t> image)
+{
+    const gcr_disk_header h = read_gcr_disk_header(image);
+    if (!h.ok || !h.is_g71)
+    {
+        return {};
+    }
+    return decode_gcr_container(image, h);
 }
 
 cbm_disk parse_g64(std::span<const uint8_t> image)
@@ -291,26 +365,26 @@ cbm_disk parse_g64(std::span<const uint8_t> image)
         return {};
     }
 
-    std::vector<uint8_t> d64 = g64_decode_d64(image);
     cbm_disk disk{};
     disk.present = true;
     disk.media = cbm_media::g64;
     disk.media_name = cbm_media_name(cbm_media::g64);
-    if (d64.size() == k_d64_35_bytes)
+    fill_cbmfs_from_decoded(disk, g64_decode_d64(image), cbm_media::d64);
+    return disk;
+}
+
+cbm_disk parse_g71(std::span<const uint8_t> image)
+{
+    if (!is_g71_image(image))
     {
-        const cbm_disk fs = parse_cbmfs(d64, cbm_media::d64);
-        if (fs.present)
-        {
-            disk.disk_name = fs.disk_name;
-            disk.disk_id = fs.disk_id;
-            disk.dos_version = fs.dos_version;
-            disk.dos_type = fs.dos_type;
-            disk.dir_track = fs.dir_track;
-            disk.dir_sector = fs.dir_sector;
-            disk.entries = fs.entries;
-        }
-        disk.decoded = std::move(d64);
+        return {};
     }
+
+    cbm_disk disk{};
+    disk.present = true;
+    disk.media = cbm_media::g71;
+    disk.media_name = cbm_media_name(cbm_media::g71);
+    fill_cbmfs_from_decoded(disk, g71_decode_d71(image), cbm_media::d71);
     return disk;
 }
 

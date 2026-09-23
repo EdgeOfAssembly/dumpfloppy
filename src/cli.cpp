@@ -21,8 +21,9 @@ bool is_floppy_ext(const std::filesystem::path& p)
     const std::string ext = ascii_lower(p.extension().string());
     return ext == ".img" || ext == ".ima" || ext == ".mfm" || ext == ".86f" ||
            ext == ".d64" || ext == ".d71" || ext == ".d81" || ext == ".adf" ||
-           ext == ".g64" || ext == ".trd" || ext == ".ipf" || ext == ".woz" ||
-           ext == ".stx" || ext == ".2mg" || ext == ".dsk" || ext == ".po";
+           ext == ".g64" || ext == ".g71" || ext == ".trd" || ext == ".ipf" ||
+           ext == ".woz" || ext == ".stx" || ext == ".2mg" || ext == ".dsk" ||
+           ext == ".po";
 }
 
 bool looks_like_image_operand(const std::string& tok)
@@ -53,13 +54,13 @@ std::string usage_text()
     os << "Usage: " << k_program << " [options] [images…]\n"
        << "\n"
        << "  images    Floppy images (.img / .ima / .mfm / .86f / .d64 / .d71 /\n"
-       << "            .d81 / .adf / .g64 / .trd / .ipf / .woz / .stx / .2mg /\n"
-       << "            .dsk / .po) and/or directories.\n"
+       << "            .d81 / .adf / .g64 / .g71 / .trd / .ipf / .woz / .stx /\n"
+       << "            .2mg / .dsk / .po) and/or directories.\n"
        << "            Directories expand to those extensions (batch; no --batch).\n"
        << "            Options and inputs may be interleaved.\n"
        << "\n"
        << "Dump BIOS boot sector, FAT12/16 BPB, volume serial and label,\n"
-       << "directory (including deleted entries), Commodore D64/D71/D81/G64 CBMFS,\n"
+       << "directory (including deleted entries), Commodore D64/D71/D81/G64/G71 CBMFS,\n"
        << "Amiga OFS/FFS ADF, ZX Spectrum TR-DOS TRD, SPS IPF (standard\n"
        << "AmigaDOS tracks) / Apple WOZ (5.25 6-and-2 catalog) / Atari STX /\n"
        << "Apple 2IMG containers,\n"
@@ -84,7 +85,7 @@ std::string usage_text()
        << "                       later live files when sequential growth needs them.\n"
        << "                       D64/D71/D81 CBMFS and ADF: same-size in-place only.\n"
        << "                       Accepts -u FILE, -uFILE, and --update=FILE.\n"
-       << "                       G64 GCR, REL, TRD, and .86f cannot be updated in this version.\n"
+       << "                       G64/G71 GCR, REL, TRD, and .86f cannot be updated in this version.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -253,7 +254,7 @@ expand_inputs(const std::vector<std::filesystem::path>& inputs, std::string& err
     }
     if (out.empty() && !inputs.empty())
     {
-        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd/.ipf/.woz/.stx/.2mg/.dsk/.po files found in the given directories";
+        err = "no .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.g71/.trd/.ipf/.woz/.stx/.2mg/.dsk/.po files found in the given directories";
     }
     return out;
 }

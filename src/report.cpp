@@ -78,6 +78,8 @@ const char* container_name(container_kind k)
             return "ADF (Amiga OFS/FFS)";
         case container_kind::g64_c64:
             return "G64 (Commodore 1541 GCR-1541)";
+        case container_kind::g71_c64:
+            return "G71 (Commodore 1571 GCR-1571)";
         case container_kind::trd_spectrum:
             return "TRD (ZX Spectrum TR-DOS)";
         case container_kind::ipf_sps:
@@ -89,7 +91,7 @@ const char* container_name(container_kind k)
         case container_kind::img2mg_apple:
             return "2IMG (Apple II prefix)";
         default:
-            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd/.ipf/.woz/.stx/.2mg)";
+            return "raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.g71/.trd/.ipf/.woz/.stx/.2mg)";
     }
 }
 
@@ -686,6 +688,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         else if (a.cbm.media == cbm_media::g64)
         {
             drive = "1541 G64";
+        }
+        else if (a.cbm.media == cbm_media::g71)
+        {
+            drive = "1571 G71";
         }
         kv(out, "Filesystem", std::string("CBMFS (Commodore ") + drive + ")");
     }

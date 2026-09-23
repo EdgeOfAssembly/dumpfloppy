@@ -1,12 +1,13 @@
 /**
  * @file cbm.hpp
- * @brief CBMFS geometry and parser for 1541 D64, 1571 D71, 1581 D81, and G64.
+ * @brief CBMFS geometry and parser for 1541 D64, 1571 D71, 1581 D81, G64, G71.
  *
  * 256-byte sectors. D64/D71 use 1541 zone SPT 21/19/18/17 (D71 side 1 is
  * the same table on tracks 36–70). D81 is 80 tracks × 40 sectors. G64 is
- * GCR-1541 decoded onto the 35-track D64 map (@ref cbm_disk::decoded).
- * BAM/header: D64/D71/G64 at 18/0; D81 at 40/0. @ref analyse stores the
- * result in @c analysis::cbm and skips FAT when @a present is true.
+ * GCR-1541 decoded onto the 35-track D64 map; G71 is GCR-1571 decoded onto
+ * the 70-track D71 map (@ref cbm_disk::decoded). BAM/header: D64/D71/G64/G71
+ * at 18/0; D81 at 40/0. @ref analyse stores the result in @c analysis::cbm
+ * and skips FAT when @a present is true.
  */
 #ifndef DUMPFLOPPY_CBM_HPP
 #define DUMPFLOPPY_CBM_HPP
@@ -65,7 +66,7 @@ inline constexpr std::size_t k_d81_error_bytes = 822400u;
 inline constexpr int k_cbm_max_chain = 3200;
 
 /**
- * @brief Listing label for @p media (`D64` / `D71` / `D81` / `G64`; empty if unknown).
+ * @brief Listing label for @p media (`D64` / `D71` / `D81` / `G64` / `G71`; empty if unknown).
  *
  * @param[in] media Image kind.
  */
@@ -81,6 +82,8 @@ inline constexpr int k_cbm_max_chain = 3200;
         return "D81";
     case cbm_media::g64:
         return "G64";
+    case cbm_media::g71:
+        return "G71";
     case cbm_media::unknown:
     default:
         return "";
@@ -198,6 +201,7 @@ inline constexpr int k_cbm_max_chain = 3200;
     case cbm_media::g64:
         return d64_sectors_per_track(track);
     case cbm_media::d71:
+    case cbm_media::g71:
         if (track >= 1u && track <= k_d64_track_count)
         {
             return d64_sectors_per_track(track);
@@ -286,7 +290,8 @@ inline constexpr int k_cbm_max_chain = 3200;
             static_cast<std::size_t>(sector);
         return sectors * static_cast<std::size_t>(k_d64_sector_bytes);
     }
-    if (media == cbm_media::d71 && track > k_d64_track_count)
+    if ((media == cbm_media::d71 || media == cbm_media::g71) &&
+        track > k_d64_track_count)
     {
         return k_d64_35_bytes +
                d64_offset(static_cast<uint8_t>(track - k_d64_track_count), sector);
@@ -297,7 +302,8 @@ inline constexpr int k_cbm_max_chain = 3200;
 /**
  * @brief Sector image used to walk CBM file chains.
  *
- * G64 payloads live in @a disk.decoded (D64 layout). D64/D71/D81 use @p raw.
+ * G64/G71 payloads live in @a disk.decoded (D64 / D71 layout). D64/D71/D81
+ * use @p raw.
  *
  * @param[in] raw  Original image bytes.
  * @param[in] disk Parsed CBM disk (may hold @a decoded).

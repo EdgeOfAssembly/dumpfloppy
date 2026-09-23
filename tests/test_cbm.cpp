@@ -57,6 +57,10 @@ static_assert(dumpfloppy::k_d81_bytes == 80u * 40u * 256u);
 static_assert(dumpfloppy::k_d81_error_bytes == 819200u + 3200u);
 static_assert(dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d71, 36, 0) ==
               683u * 256u);
+static_assert(dumpfloppy::cbm_offset(dumpfloppy::cbm_media::g71, 36, 0) ==
+              683u * 256u);
+static_assert(dumpfloppy::cbm_sectors_per_track(dumpfloppy::cbm_media::g71, 36) ==
+              21u);
 static_assert(dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d71, 53, 0) ==
               1040u * 256u);
 static_assert(dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81, 40, 0) ==

@@ -1,4 +1,4 @@
-.TH DUMPFLOPPY 1 "2026-09-23" "dumpfloppy" "User Commands"
+.TH DUMPFLOPPY 1 "2026-09-24" "dumpfloppy" "User Commands"
 .SH NAME
 dumpfloppy \- expose secrets in FAT12, CBMFS, and Amiga ADF images
 .SH SYNOPSIS
@@ -23,6 +23,8 @@ flux image, a Commodore 1541/1571/1581
 .I .d81 ,
 a Commodore 1541
 .I .g64
+or 1571
+.I .g71
 GCR container, an Amiga
 .I .adf ,
 or a ZX Spectrum TR-DOS
@@ -44,9 +46,12 @@ A
 .I .d81
 with a valid CBMFS BAM/header, or a
 .I .g64
-with a valid GCR-1541 header, is listed as Commodore (disk name, ID, DOS type,
+/
+.I .g71
+with a valid GCR-1541/GCR-1571 header, is listed as Commodore (disk name, ID, DOS type,
 PRG/SEQ directory) instead of inventing a FAT BPB from C64 bytes.
 G64 tracks 1–35 are GCR-decoded onto a 35-track D64 sector map.
+G71 tracks are GCR-decoded onto a 70-track D71 sector map.
 A DD/HD
 .I .adf
 with a valid OFS/FFS root is listed as Amiga (volume name, DOS type, directory)
@@ -86,7 +91,7 @@ or a decoded WOZ.
 /
 .B \-\-extract
 writes recovered files (deleted included) into the current directory.
-On D64/D71/D81/G64 the host names are the PETSCII listing name plus
+On D64/D71/D81/G64/G71 the host names are the PETSCII listing name plus
 .BR .prg / .seq / .usr / .rel / .del .
 On ADF, OFS/FFS files are written (directories skipped) with
 .B /
@@ -136,6 +141,7 @@ A directory operand expands to
 .I *.adf ,
 and
 .I *.g64 ,
+.I *.g71 ,
 and
 .I *.trd ,
 .I *.ipf ,
@@ -154,7 +160,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.28
+.B dumpfloppy 0.29
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -227,6 +233,8 @@ A following
 .I .adf
 /
 .I .g64
+/
+.I .g71
 path is the floppy image, not a glob.
 .TP
 .BI \-u ", " \-\-update " FILE"
@@ -255,6 +263,8 @@ untouched).
 .I .86f
 flux images,
 .I .g64
+/
+.I .g71
 GCR images, and CBM REL files are refused.
 Glued
 .B \-uFILE
@@ -288,12 +298,15 @@ List and extract a Commodore 1541 D64:
 .B dumpfloppy game.d64 \-x
 .RE
 .PP
-List and extract a 1541 G64:
+List and extract a 1541 G64 or 1571 G71:
 .RS
 .B dumpfloppy game.g64
 .RE
 .RS
 .B dumpfloppy game.g64 \-x
+.RE
+.RS
+.B dumpfloppy game.g71 \-x
 .RE
 .PP
 List a 1571 D71 or 1581 D81, or extract an Amiga ADF:

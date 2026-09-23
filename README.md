@@ -2,7 +2,7 @@
 
 C++23 CLI that rips secrets out of IBM PC floppy images (`.img` / `.ima`),
 HxC bitstreams (`.mfm`), 86Box flux dumps (`.86f`), Commodore 1541/1571/1581
-`.d64` / `.d71` / `.d81` images and 1541 `.g64` GCR containers (CBMFS listing
+`.d64` / `.d71` / `.d81` images and 1541 `.g64` / 1571 `.g71` GCR containers (CBMFS listing
 and extract), Amiga `.adf` images (OFS/FFS listing and extract), ZX
 Spectrum TR-DOS `.trd` images (directory listing and extract),
 `.ipf` / `.woz` / `.stx` / `.2mg` flux containers (metadata; no FAT;
@@ -21,9 +21,9 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 - **Volume label** from EBPB *and* the root directory (they can differ)
 - FAT copies, free/bad/orphan clusters
 - Directory tree including **deleted** 8.3 names (`0xE5` → `?`)
-- Commodore **D64 / D71 / D81 / G64 CBMFS**: disk name, ID, DOS type, PRG/SEQ/…
-  listing (G64 is GCR-decoded to a 35-track D64 map; deleted rows use the same
-  light-red + bold white as FAT)
+- Commodore **D64 / D71 / D81 / G64 / G71 CBMFS**: disk name, ID, DOS type, PRG/SEQ/…
+  listing (G64 is GCR-decoded to a 35-track D64 map; G71 to a 70-track D71 map;
+  deleted rows use the same light-red + bold white as FAT)
 - Amiga **ADF / OFS or FFS**: volume name, DOS type, directory (files + DIR), XXH64
 - ZX Spectrum **TRD / TR-DOS**: disk label, geometry, BASIC/CODE/DATA/PRINT listing
   (160K IBM is not TRD — disk-info sector 8 is required)
@@ -68,10 +68,10 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.28`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.29`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
-`*.adf` / `*.g64` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` / `*.dsk` /
-`*.po`.
+`*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
+`*.dsk` / `*.po`.
 
 ```bash
 dumpfloppy disk.ima
@@ -82,6 +82,8 @@ dumpfloppy disk.d81 -x
 dumpfloppy work.adf -x
 dumpfloppy game.g64
 dumpfloppy game.g64 -x
+dumpfloppy game.g71
+dumpfloppy game.g71 -x
 dumpfloppy game.trd
 dumpfloppy game.trd -x
 dumpfloppy disk.2mg
@@ -101,11 +103,11 @@ dumpfloppy game.d64 -u HELLO.prg
 dumpfloppy work.adf -u README
 ```
 
-`-x` on D64/D71/D81/G64 writes PETSCII names plus `.prg` / `.seq` / `.usr` /
+`-x` on D64/D71/D81/G64/G71 writes PETSCII names plus `.prg` / `.seq` / `.usr` /
 `.rel` / `.del` (deleted files included). `-x` on ADF writes OFS/FFS files
 (directories skipped; `/` in Amiga paths becomes `_`). `-x` on TRD writes
 `NAME.C` (deleted `?AME.C`). `-u` on D64/D71/D81 and ADF is same-size in-place
-replace; G64 GCR, REL, and TRD are refused.
+replace; G64/G71 GCR, REL, and TRD are refused.
 
 | Default | Switch |
 |---------|--------|

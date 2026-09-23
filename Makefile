@@ -82,6 +82,7 @@ TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_mfm.cpp tests/test_cbm.cpp tests/test_d64.cpp \
             tests/test_amiga.cpp tests/test_d71.cpp tests/test_d81.cpp \
             tests/test_adf.cpp tests/test_gcr.cpp tests/test_g64.cpp \
+            tests/test_g71.cpp \
             tests/test_trd.cpp tests/test_foreign.cpp tests/test_apple.cpp \
             tests/test_apple_gcr.cpp tests/test_analyze_hygiene.cpp
 

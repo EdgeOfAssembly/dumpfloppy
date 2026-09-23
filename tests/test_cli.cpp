@@ -49,6 +49,7 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find(".d81") != std::string::npos);
     REQUIRE(u.find(".adf") != std::string::npos);
     REQUIRE(u.find(".g64") != std::string::npos);
+    REQUIRE(u.find(".g71") != std::string::npos);
     REQUIRE(u.find(".trd") != std::string::npos);
     REQUIRE(u.find(".ipf") != std::string::npos);
     REQUIRE(u.find(".woz") != std::string::npos);
@@ -217,11 +218,12 @@ TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g6
     REQUIRE(err.find(".d81") != std::string::npos);
     REQUIRE(err.find(".adf") != std::string::npos);
     REQUIRE(err.find(".g64") != std::string::npos);
+    REQUIRE(err.find(".g71") != std::string::npos);
     REQUIRE(err.find(".trd") != std::string::npos);
     REQUIRE(err.find(".ipf") != std::string::npos);
 }
 
-TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf .g64 .trd",
+TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf .g64 .g71 .trd",
           "[cli]")
 {
     const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
@@ -229,7 +231,7 @@ TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf 
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     for (const char* name : {"a.ima", "b.mfm", "c.86f", "d.txt", "e.d64", "f.d71",
-                             "g.d81", "h.adf", "i.g64", "j.trd"})
+                             "g.d81", "h.adf", "i.g64", "j.g71", "k.trd"})
     {
         std::ofstream out(dir / name);
         REQUIRE(out);
@@ -238,7 +240,7 @@ TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf 
     std::string err;
     const auto got = dumpfloppy::expand_inputs({dir}, err);
     REQUIRE(err.empty());
-    REQUIRE(got.size() == 9);
+    REQUIRE(got.size() == 10);
     REQUIRE(got[0].filename() == "a.ima");
     REQUIRE(got[1].filename() == "b.mfm");
     REQUIRE(got[2].filename() == "c.86f");
@@ -247,5 +249,6 @@ TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf 
     REQUIRE(got[5].filename() == "g.d81");
     REQUIRE(got[6].filename() == "h.adf");
     REQUIRE(got[7].filename() == "i.g64");
-    REQUIRE(got[8].filename() == "j.trd");
+    REQUIRE(got[8].filename() == "j.g71");
+    REQUIRE(got[9].filename() == "k.trd");
 }

@@ -64,6 +64,7 @@ TEST_CASE("format catalogs split payload container filesystem", "[format][regist
     REQUIRE(fs.front()->registry() == dumpfloppy::format_registry_id::filesystem);
 
     bool saw_g64 = false;
+    bool saw_g71 = false;
     bool saw_cbmfs = false;
     bool saw_pkd = false;
     for (const dumpfloppy::file_format* f : pay)
@@ -85,6 +86,10 @@ TEST_CASE("format catalogs split payload container filesystem", "[format][regist
         {
             saw_g64 = true;
         }
+        if (f->type() == "C64 G71")
+        {
+            saw_g71 = true;
+        }
     }
     for (const dumpfloppy::file_format* f : fs)
     {
@@ -97,6 +102,7 @@ TEST_CASE("format catalogs split payload container filesystem", "[format][regist
         }
     }
     REQUIRE(saw_g64);
+    REQUIRE(saw_g71);
     REQUIRE(saw_cbmfs);
     REQUIRE(saw_pkd);
 }

@@ -712,9 +712,11 @@ int find_live_amiga(const std::vector<amiga_file>& entries, const std::string& w
 
 int update_cbm_files(analysis& a, const update_options& opt, std::ostream& err)
 {
-    if (a.cbm.media == cbm_media::g64)
+    if (a.cbm.media == cbm_media::g64 || a.cbm.media == cbm_media::g71)
     {
-        err << "dumpfloppy: cannot update G64 GCR images in this version\n";
+        err << "dumpfloppy: cannot update "
+            << (a.cbm.media == cbm_media::g71 ? "G71" : "G64")
+            << " GCR images in this version\n";
         return -1;
     }
     if (opt.hosts.empty())

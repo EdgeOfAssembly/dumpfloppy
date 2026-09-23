@@ -19,7 +19,8 @@ enum class cbm_media : uint8_t
     d64 = 1,     /**< 1541 35-track. */
     d71 = 2,     /**< 1571 70-track. */
     d81 = 3,     /**< 1581 80×40. */
-    g64 = 4      /**< GCR-1541 container decoded to a 35-track D64 map. */
+    g64 = 4,     /**< GCR-1541 container decoded to a 35-track D64 map. */
+    g71 = 5      /**< GCR-1571 container decoded to a 70-track D71 map. */
 };
 
 /** @brief CBM DOS file type in bits 0–3 of the directory type byte. */
@@ -55,13 +56,13 @@ struct cbm_file
  * @brief Parsed CBMFS disk; @a present is false when size or BAM/header is unusable.
  *
  * @a media / @a media_name are set when @a present is true (`D64` / `D71` /
- * `D81` / `G64`).
+ * `D81` / `G64` / `G71`).
  */
 struct cbm_disk
 {
     bool present = false;
     cbm_media media = cbm_media::unknown;
-    std::string media_name{}; /**< `D64`, `D71`, `D81`, or `G64` when @a present. */
+    std::string media_name{}; /**< `D64`, `D71`, `D81`, `G64`, or `G71` when @a present. */
     std::string disk_name{};
     std::string disk_id{};
     uint8_t dos_version = 0; /**< Header byte 2; D64/D71 @c 'A' or 0, D81 @c 'D' or 0. */
@@ -70,8 +71,8 @@ struct cbm_disk
     uint8_t dir_sector = 0;  /**< Header[1]. */
     std::vector<cbm_file> entries{};
     /**
-     * G64: 174848-byte 1541 sector map after GCR decode. Empty for D64/D71/D81
-     * (payloads are read from the raw image).
+     * G64: 174848-byte 1541 sector map after GCR decode. G71: 349696-byte
+     * 1571 map. Empty for D64/D71/D81 (payloads are read from the raw image).
      */
     std::vector<uint8_t> decoded{};
 };

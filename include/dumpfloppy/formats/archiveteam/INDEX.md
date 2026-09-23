@@ -29,6 +29,7 @@ Self-standing C++23 headers generated from
 | `at_stx.h` | `at_stx` | `ATARI STX` | `disk_image` | http://fileformats.archiveteam.org/wiki/STX |
 | `at_d64.h` | `at_d64` | `C64 D64` | `disk_image` | http://fileformats.archiveteam.org/wiki/D64 |
 | `at_g64.h` | `at_g64` | `C64 G64` | `disk_image` | http://fileformats.archiveteam.org/wiki/G64 |
+| `at_g71.h` | `at_g71` | `C64 G71` | `disk_image` | https://vice-emu.sourceforge.io/vice_17.html |
 | `at_dart.h` | `at_dart` | `APPLE DART` | `disk_image` | http://fileformats.archiveteam.org/wiki/DART |
 | `at_moof.h` | `at_moof` | `APPLE MOOF` | `disk_image` | http://fileformats.archiveteam.org/wiki/MOOF |
 | `at_pdi.h` | `at_pdi` | `MSX PDI` | `disk_image` | http://fileformats.archiveteam.org/wiki/PDI |

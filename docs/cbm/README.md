@@ -3,11 +3,11 @@
 Peter Schepers’ collection (INTRO last updated 2008). Copied intact from
 `/tmp/RetroCodeMess/docs` (TXT only; C64 schematics/PDFs stay there).
 
-dumpfloppy uses these as the on-disk spec for D64/D71/D81/G64 and CBMFS:
+dumpfloppy uses these as the on-disk spec for D64/D71/D81/G64/G71 and CBMFS:
 
 | File | Use |
 |------|-----|
-| `G64.TXT` | GCR-1541 container, SYNC, header/data GCR |
+| `G64.TXT` | GCR-1541 container, SYNC, header/data GCR (G71 is the same GCR with magic `GCR-1571`) |
 | `ZIP_SIX.TXT` | 4-to-5 GCR nibble table (F = 10101) |
 | `D64.TXT` / `D71.TXT` / `D81.TXT` | Sector images and CBMFS |
 | `DISK.TXT` | 1541/1571/1581 file layout |

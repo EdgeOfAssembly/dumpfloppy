@@ -39,7 +39,7 @@ struct update_options
  * when present, otherwise @a image.bytes). Directory size / first-cluster
  * and both FAT copies are kept in sync. Deleted names are never chosen.
  * D64/D71/D81 CBMFS and Amiga ADF accept same-size in-place replace (REL
- * and G64 GCR are refused). Grow/shrink on CBM/ADF is refused.
+ * and G64/G71 GCR are refused). Grow/shrink on CBM/ADF is refused.
  *
  * @param[in,out] a   Analysis (volume bytes and directory entries).
  * @param[in]     opt Host files to write in.

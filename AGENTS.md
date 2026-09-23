@@ -18,7 +18,7 @@ Debug is the default (ASan+UBSan). `make release` adds `-DNDEBUG`.
 - No-args → usage (exit 0), same as `-h` / `--help`
 - `-v` / `--version` from **0.1** (`-v` is never verbose)
 - Colour / hex / deleted listing default **on** → only `--no-*`
-- Operands and options interleaved; directories expand to `.img`/`.ima`/`.mfm`/`.86f`/`.d64`/`.d71`/`.d81`/`.adf`/`.g64`/`.trd`/`.ipf`/`.woz`/`.stx`/`.2mg`/`.dsk`/`.po`
+- Operands and options interleaved; directories expand to `.img`/`.ima`/`.mfm`/`.86f`/`.d64`/`.d71`/`.d81`/`.adf`/`.g64`/`.g71`/`.trd`/`.ipf`/`.woz`/`.stx`/`.2mg`/`.dsk`/`.po`
 
 ## Includes
 

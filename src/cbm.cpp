@@ -375,6 +375,8 @@ cbm_disk parse_cbmfs(std::span<const uint8_t> image, cbm_media media)
     {
     case cbm_media::d64:
     case cbm_media::d71:
+    case cbm_media::g64:
+    case cbm_media::g71:
         return parse_1541_style(image, media);
     case cbm_media::d81:
         return parse_1581(image);

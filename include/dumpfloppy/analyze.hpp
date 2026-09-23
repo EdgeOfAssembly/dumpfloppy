@@ -98,8 +98,8 @@ struct analysis
 /**
  * @brief Analyse a loaded image.
  *
- * A D64/D71/D81 with a valid CBMFS BAM/header, a G64 with a valid
- * GCR-1541 header, a DD/HD ADF with a valid OFS/FFS root, or a TRD with
+ * A D64/D71/D81 with a valid CBMFS BAM/header, a G64/G71 with a valid
+ * GCR-1541/GCR-1571 header, a DD/HD ADF with a valid OFS/FFS root, or a TRD with
  * a TR-DOS disk-info stamp, or an IPF/WOZ/STX/2IMG container, is parsed
  * as that format; FAT/BPB and HxC flux decode are skipped so those
  * bytes are not treated as DOS. WOZ 5.25 tracks are 6-and-2 decoded

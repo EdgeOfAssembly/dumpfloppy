@@ -37,6 +37,7 @@
 #include "dumpfloppy/formats/archiveteam/at_fdf.h"
 #include "dumpfloppy/formats/archiveteam/at_fdi.h"
 #include "dumpfloppy/formats/archiveteam/at_g64.h"
+#include "dumpfloppy/formats/archiveteam/at_g71.h"
 #include "dumpfloppy/formats/archiveteam/at_ima.h"
 #include "dumpfloppy/formats/archiveteam/at_imd.h"
 #include "dumpfloppy/formats/archiveteam/at_img_dosimg.h"
@@ -131,62 +132,64 @@ inline void append_generated_container(std::vector<const file_format*>& out)
     out.push_back(&generated_container_27);
     static const formats::at_g64 generated_container_28{};
     out.push_back(&generated_container_28);
-    static const formats::at_ima generated_container_29{};
+    static const formats::at_g71 generated_container_29{};
     out.push_back(&generated_container_29);
-    static const formats::at_imd generated_container_30{};
+    static const formats::at_ima generated_container_30{};
     out.push_back(&generated_container_30);
-    static const formats::at_img_dosimg generated_container_31{};
+    static const formats::at_imd generated_container_31{};
     out.push_back(&generated_container_31);
-    static const formats::at_ipf generated_container_32{};
+    static const formats::at_img_dosimg generated_container_32{};
     out.push_back(&generated_container_32);
-    static const formats::at_jam_packer generated_container_33{};
+    static const formats::at_ipf generated_container_33{};
     out.push_back(&generated_container_33);
-    static const formats::at_kryoflux generated_container_34{};
+    static const formats::at_jam_packer generated_container_34{};
     out.push_back(&generated_container_34);
-    static const formats::at_ldbs generated_container_35{};
+    static const formats::at_kryoflux generated_container_35{};
     out.push_back(&generated_container_35);
-    static const formats::at_loaddskf generated_container_36{};
+    static const formats::at_ldbs generated_container_36{};
     out.push_back(&generated_container_36);
-    static const formats::at_mirage_snx generated_container_37{};
+    static const formats::at_loaddskf generated_container_37{};
     out.push_back(&generated_container_37);
-    static const formats::at_moof generated_container_38{};
+    static const formats::at_mirage_snx generated_container_38{};
     out.push_back(&generated_container_38);
-    static const formats::at_msa generated_container_39{};
+    static const formats::at_moof generated_container_39{};
     out.push_back(&generated_container_39);
-    static const formats::at_nufx generated_container_40{};
+    static const formats::at_msa generated_container_40{};
     out.push_back(&generated_container_40);
-    static const formats::at_pdi generated_container_41{};
+    static const formats::at_nufx generated_container_41{};
     out.push_back(&generated_container_41);
-    static const formats::at_qrst generated_container_42{};
+    static const formats::at_pdi generated_container_42{};
     out.push_back(&generated_container_42);
-    static const formats::at_raw_disk_image generated_container_43{};
+    static const formats::at_qrst generated_container_43{};
     out.push_back(&generated_container_43);
-    static const formats::at_rim generated_container_44{};
+    static const formats::at_raw_disk_image generated_container_44{};
     out.push_back(&generated_container_44);
-    static const formats::at_sabdu generated_container_45{};
+    static const formats::at_rim generated_container_45{};
     out.push_back(&generated_container_45);
-    static const formats::at_scp generated_container_46{};
+    static const formats::at_sabdu generated_container_46{};
     out.push_back(&generated_container_46);
-    static const formats::at_st generated_container_47{};
+    static const formats::at_scp generated_container_47{};
     out.push_back(&generated_container_47);
-    static const formats::at_stx generated_container_48{};
+    static const formats::at_st generated_container_48{};
     out.push_back(&generated_container_48);
-    static const formats::at_sxd generated_container_49{};
+    static const formats::at_stx generated_container_49{};
     out.push_back(&generated_container_49);
-    static const formats::at_td0 generated_container_50{};
+    static const formats::at_sxd generated_container_50{};
     out.push_back(&generated_container_50);
-    static const formats::at_trd generated_container_51{};
+    static const formats::at_td0 generated_container_51{};
     out.push_back(&generated_container_51);
-    static const formats::at_woz generated_container_52{};
+    static const formats::at_trd generated_container_52{};
     out.push_back(&generated_container_52);
-    static const formats::at_wrp generated_container_53{};
+    static const formats::at_woz generated_container_53{};
     out.push_back(&generated_container_53);
-    static const formats::at_xdf generated_container_54{};
+    static const formats::at_wrp generated_container_54{};
     out.push_back(&generated_container_54);
-    static const formats::at_xpack generated_container_55{};
+    static const formats::at_xdf generated_container_55{};
     out.push_back(&generated_container_55);
-    static const formats::at_zoom generated_container_56{};
+    static const formats::at_xpack generated_container_56{};
     out.push_back(&generated_container_56);
+    static const formats::at_zoom generated_container_57{};
+    out.push_back(&generated_container_57);
 }
 
 } /* namespace dumpfloppy */
