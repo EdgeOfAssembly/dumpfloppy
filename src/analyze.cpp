@@ -3,9 +3,12 @@
  * @brief Glue: BPB + boot + FAT + directory + volume serial/label + secrets.
  */
 #include "dumpfloppy/analyze.hpp"
+#include "dumpfloppy/amiga.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/catalog.hpp"
+#include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/directory.hpp"
+#include "dumpfloppy/fat.hpp"
 #include "dumpfloppy/fat12_codec.h"
 #include "dumpfloppy/format_registry.hpp"
 #include "dumpfloppy/g64.hpp"

@@ -1,16 +1,20 @@
 /**
  * @file analyze.hpp
  * @brief Full floppy-image analysis (BPB, FAT, directory, volume, boot).
+ *
+ * Parser APIs live in cbm.hpp / amiga.hpp / fat.hpp / ibm_mfm.hpp. This
+ * header includes only the result views so TUs that call @ref analyse do
+ * not pull those parsers.
  */
 #ifndef DUMPFLOPPY_ANALYZE_HPP
 #define DUMPFLOPPY_ANALYZE_HPP
 
-#include "dumpfloppy/amiga.hpp"
+#include "dumpfloppy/amiga_view.hpp"
 #include "dumpfloppy/boot.hpp"
 #include "dumpfloppy/catalog.hpp"
-#include "dumpfloppy/cbm.hpp"
-#include "dumpfloppy/fat.hpp"
-#include "dumpfloppy/ibm_mfm.hpp"
+#include "dumpfloppy/cbm_view.hpp"
+#include "dumpfloppy/fat_view.hpp"
+#include "dumpfloppy/flux_view.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/types.hpp"
 #include "dumpfloppy/volume.hpp"

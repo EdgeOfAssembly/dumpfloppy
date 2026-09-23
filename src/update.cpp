@@ -3,8 +3,10 @@
  * @brief FAT replace (grow/shrink) and CBM/ADF same-size in-place replace.
  */
 #include "dumpfloppy/update.hpp"
+#include "dumpfloppy/amiga.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/bpb.hpp"
+#include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat.hpp"
 #include "dumpfloppy/fat12_codec.h"
