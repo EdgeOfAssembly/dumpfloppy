@@ -11,6 +11,7 @@
 #include <cstring>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace dumpfloppy_test
@@ -102,6 +103,76 @@ inline void write_dirent(uint8_t* slot, uint8_t type, uint8_t first_t, uint8_t f
     poke_petscii(slot + 5, 16, name);
     slot[30] = static_cast<uint8_t>(blocks & 0xFFu);
     slot[31] = static_cast<uint8_t>((blocks >> 8) & 0xFFu);
+}
+
+/**
+ * @brief Write a CBM data chain using @p media geometry (no BAM updates).
+ *
+ * Sequential sectors on the same track; wraps to the next track, skipping
+ * 18 (D64/D71), 53 (D71), and 40 (D81). Tests do not need interleave 10.
+ */
+inline void write_cbm_chain(std::vector<uint8_t>& img, dumpfloppy::cbm_media media,
+                            uint8_t track, uint8_t sector,
+                            std::span<const uint8_t> data)
+{
+    auto next_data_ts = [media](uint8_t t, uint8_t s) -> std::pair<uint8_t, uint8_t>
+    {
+        uint8_t ns = static_cast<uint8_t>(s + 1u);
+        uint8_t nt = t;
+        if (ns >= dumpfloppy::cbm_sectors_per_track(media, t))
+        {
+            nt = static_cast<uint8_t>(t + 1u);
+            ns = 0;
+            if ((media == dumpfloppy::cbm_media::d64 ||
+                 media == dumpfloppy::cbm_media::d71) &&
+                nt == 18u)
+            {
+                nt = 19u;
+            }
+            if (media == dumpfloppy::cbm_media::d71 && nt == 53u)
+            {
+                nt = 54u;
+            }
+            if (media == dumpfloppy::cbm_media::d81 && nt == 40u)
+            {
+                nt = 41u;
+            }
+        }
+        return {nt, ns};
+    };
+
+    std::size_t pos = 0;
+    uint8_t t = track;
+    uint8_t s = sector;
+    if (data.empty())
+    {
+        const std::size_t off = dumpfloppy::cbm_offset(media, t, s);
+        img[off] = 0;
+        img[off + 1u] = 1;
+        return;
+    }
+    while (pos < data.size())
+    {
+        const std::size_t remain = data.size() - pos;
+        const bool last = remain <= 254u;
+        const std::size_t chunk = last ? remain : 254u;
+        const std::size_t off = dumpfloppy::cbm_offset(media, t, s);
+        uint8_t* sec = img.data() + off;
+        if (last)
+        {
+            sec[0] = 0;
+            sec[1] = static_cast<uint8_t>(1u + chunk);
+            std::memcpy(sec + 2, data.data() + pos, chunk);
+            return;
+        }
+        const auto [nt, ns] = next_data_ts(t, s);
+        sec[0] = nt;
+        sec[1] = ns;
+        std::memcpy(sec + 2, data.data() + pos, 254u);
+        pos += 254u;
+        t = nt;
+        s = ns;
+    }
 }
 
 /**

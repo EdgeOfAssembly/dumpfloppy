@@ -1,10 +1,11 @@
 /**
  * @file cbm.hpp
- * @brief 1541 D64 geometry and CBMFS (BAM / directory / file chains).
+ * @brief CBMFS geometry and parser for 1541 D64, 1571 D71, and 1581 D81.
  *
- * 35-track Commodore 1541 images: 256-byte sectors, zone SPT 21/19/18/17.
- * BAM lives at track 18 sector 0. @ref analyse stores the result in
- * @c analysis::cbm and skips FAT when @a present is true.
+ * 256-byte sectors. D64/D71 use 1541 zone SPT 21/19/18/17 (D71 side 1 is
+ * the same table on tracks 36–70). D81 is 80 tracks × 40 sectors.
+ * BAM/header: D64/D71 at 18/0; D81 at 40/0. @ref analyse stores the result
+ * in @c analysis::cbm and skips FAT when @a present is true.
  */
 #ifndef DUMPFLOPPY_CBM_HPP
 #define DUMPFLOPPY_CBM_HPP
@@ -18,20 +19,56 @@
 namespace dumpfloppy
 {
 
-/** @brief Data bytes per 1541 sector (link T/S occupies the first two). */
+/** @brief Data bytes per CBM sector (link T/S occupies the first two). */
 inline constexpr uint32_t k_d64_sector_bytes = 256u;
 
 /** @brief Standard 1541 track count (1-based). */
 inline constexpr uint8_t k_d64_track_count = 35u;
 
-/** @brief Directory / BAM track on a 1541. */
+/** @brief 1571 D71 track count (1-based, both sides). */
+inline constexpr uint8_t k_d71_track_count = 70u;
+
+/** @brief 1581 D81 track count (1-based). */
+inline constexpr uint8_t k_d81_track_count = 80u;
+
+/** @brief Sectors per track on a 1581 (constant). */
+inline constexpr uint8_t k_d81_sectors_per_track = 40u;
+
+/** @brief Directory / BAM track on a 1541 / 1571. */
 inline constexpr uint8_t k_d64_bam_track = 18u;
+
+/** @brief Header track on a 1581 (BAM at 40/1–40/2, directory from 40/3). */
+inline constexpr uint8_t k_d81_header_track = 40u;
 
 /** @brief 35-track D64 without the optional error map (683 * 256). */
 inline constexpr std::size_t k_d64_35_bytes = 174848u;
 
 /** @brief 35-track D64 plus one error byte per sector (174848 + 683). */
 inline constexpr std::size_t k_d64_35_error_bytes = 175531u;
+
+/** @brief 70-track D71 without the optional error map (1366 * 256). */
+inline constexpr std::size_t k_d71_bytes = 349696u;
+
+/** @brief 70-track D71 plus one error byte per sector (349696 + 1366). */
+inline constexpr std::size_t k_d71_error_bytes = 351062u;
+
+/** @brief 80×40 D81 without the optional error map (3200 * 256). */
+inline constexpr std::size_t k_d81_bytes = 819200u;
+
+/** @brief 80×40 D81 plus one error byte per sector (819200 + 3200). */
+inline constexpr std::size_t k_d81_error_bytes = 822400u;
+
+/** @brief Max file/directory chain visits (one per 1581 sector). */
+inline constexpr int k_cbm_max_chain = 3200;
+
+/** @brief Detected CBM disk image kind. */
+enum class cbm_media : uint8_t
+{
+    unknown = 0, /**< Size did not match D64/D71/D81, or parse failed. */
+    d64 = 1,     /**< 1541 35-track. */
+    d71 = 2,     /**< 1571 70-track. */
+    d81 = 3      /**< 1581 80×40. */
+};
 
 /** @brief CBM DOS file type in bits 0–3 of the directory type byte. */
 enum class cbm_file_kind : uint8_t
@@ -62,18 +99,45 @@ struct cbm_file
     uint16_t size_sectors = 0; /**< Directory bytes 30–31, little-endian. */
 };
 
-/** @brief Parsed 1541 CBMFS disk; @a present is false when size or BAM is unusable. */
+/**
+ * @brief Parsed CBMFS disk; @a present is false when size or BAM/header is unusable.
+ *
+ * @a media / @a media_name are set when @a present is true (`D64` / `D71` / `D81`).
+ */
 struct cbm_disk
 {
     bool present = false;
+    cbm_media media = cbm_media::unknown;
+    std::string media_name{}; /**< `D64`, `D71`, or `D81` when @a present. */
     std::string disk_name{};
     std::string disk_id{};
-    uint8_t dos_version = 0; /**< BAM byte 2; typically @c 'A' or 0. */
-    std::string dos_type{};  /**< BAM 0xA5–0xA6 (often "2A"). */
-    uint8_t dir_track = 0;   /**< BAM[0]. */
-    uint8_t dir_sector = 0;  /**< BAM[1]. */
+    uint8_t dos_version = 0; /**< Header byte 2; D64/D71 @c 'A' or 0, D81 @c 'D' or 0. */
+    std::string dos_type{};  /**< D64/D71 at 0xA5 (often "2A"); D81 at offset 25 ("3D"). */
+    uint8_t dir_track = 0;   /**< Header[0]. */
+    uint8_t dir_sector = 0;  /**< Header[1]. */
     std::vector<cbm_file> entries{};
 };
+
+/**
+ * @brief Listing label for @p media (`D64` / `D71` / `D81`; empty if unknown).
+ *
+ * @param[in] media Image kind.
+ */
+[[nodiscard]] constexpr const char* cbm_media_name(cbm_media media) noexcept
+{
+    switch (media)
+    {
+    case cbm_media::d64:
+        return "D64";
+    case cbm_media::d71:
+        return "D71";
+    case cbm_media::d81:
+        return "D81";
+    case cbm_media::unknown:
+    default:
+        return "";
+    }
+}
 
 /**
  * @brief Sectors on a 1541 track (0 if @p track is outside 1–35).
@@ -126,6 +190,101 @@ struct cbm_disk
 }
 
 /**
+ * @brief True for a 70-track D71 size (plain or with error map).
+ *
+ * @param[in] n Image length in bytes.
+ */
+[[nodiscard]] constexpr bool is_d71_size(std::size_t n) noexcept
+{
+    return n == k_d71_bytes || n == k_d71_error_bytes;
+}
+
+/**
+ * @brief True for an 80×40 D81 size (plain or with error map).
+ *
+ * @param[in] n Image length in bytes.
+ */
+[[nodiscard]] constexpr bool is_d81_size(std::size_t n) noexcept
+{
+    return n == k_d81_bytes || n == k_d81_error_bytes;
+}
+
+/**
+ * @brief Map a CBM image length to @ref cbm_media.
+ *
+ * @param[in] n Image length in bytes.
+ *
+ * @return @ref cbm_media::unknown when @p n is not a D64/D71/D81 size.
+ */
+[[nodiscard]] constexpr cbm_media cbm_media_from_size(std::size_t n) noexcept
+{
+    if (is_d64_35_size(n))
+    {
+        return cbm_media::d64;
+    }
+    if (is_d71_size(n))
+    {
+        return cbm_media::d71;
+    }
+    if (is_d81_size(n))
+    {
+        return cbm_media::d81;
+    }
+    return cbm_media::unknown;
+}
+
+/**
+ * @brief Sectors on @p track for @p media (0 if the track is out of range).
+ *
+ * D71 tracks 36–70 use the 1541 table for @c track-35.
+ *
+ * @param[in] media Image kind.
+ * @param[in] track 1-based track number.
+ */
+[[nodiscard]] constexpr uint8_t cbm_sectors_per_track(cbm_media media,
+                                                      uint8_t track) noexcept
+{
+    switch (media)
+    {
+    case cbm_media::d64:
+        return d64_sectors_per_track(track);
+    case cbm_media::d71:
+        if (track >= 1u && track <= k_d64_track_count)
+        {
+            return d64_sectors_per_track(track);
+        }
+        if (track > k_d64_track_count && track <= k_d71_track_count)
+        {
+            return d64_sectors_per_track(static_cast<uint8_t>(track - k_d64_track_count));
+        }
+        return 0u;
+    case cbm_media::d81:
+        if (track >= 1u && track <= k_d81_track_count)
+        {
+            return k_d81_sectors_per_track;
+        }
+        return 0u;
+    case cbm_media::unknown:
+    default:
+        return 0u;
+    }
+}
+
+/**
+ * @brief True when @p track/@p sector is legal for @p media.
+ *
+ * @param[in] media  Image kind.
+ * @param[in] track  1-based track.
+ * @param[in] sector 0-based sector.
+ */
+[[nodiscard]] constexpr bool cbm_ts_valid(cbm_media media, uint8_t track,
+                                          uint8_t sector) noexcept
+{
+    const uint8_t spt = cbm_sectors_per_track(media, track);
+    return spt != 0u && sector < spt;
+}
+
+/**
  * @brief Byte offset of track/sector in a 35-track D64.
  *
  * @param[in] track  1-based (1–35).
@@ -133,7 +292,8 @@ struct cbm_disk
  *
  * @return Offset, or @c std::size_t(-1) when the T/S is out of range.
  *
- * @note Track 18 sector 0 is at @c 17*21*256.
+ * @note Track 18 sector 0 is at @c 17*21*256. Track 36 is invalid here;
+ *       use @ref cbm_offset with @ref cbm_media::d71.
  */
 [[nodiscard]] constexpr std::size_t d64_offset(uint8_t track, uint8_t sector) noexcept
 {
@@ -148,6 +308,79 @@ struct cbm_disk
     }
     sectors += static_cast<std::size_t>(sector);
     return sectors * static_cast<std::size_t>(k_d64_sector_bytes);
+}
+
+/**
+ * @brief Byte offset of track/sector for @p media.
+ *
+ * @param[in] media  Image kind.
+ * @param[in] track  1-based.
+ * @param[in] sector 0-based.
+ *
+ * @return Offset, or @c std::size_t(-1) when the T/S is out of range.
+ *
+ * @note D71 track 36 sector 0 is at @c 683*256. D81 track 40 sector 0 is
+ *       at @c 39*40*256.
+ */
+[[nodiscard]] constexpr std::size_t cbm_offset(cbm_media media, uint8_t track,
+                                               uint8_t sector) noexcept
+{
+    if (!cbm_ts_valid(media, track, sector))
+    {
+        return static_cast<std::size_t>(-1);
+    }
+    if (media == cbm_media::d81)
+    {
+        const std::size_t sectors =
+            (static_cast<std::size_t>(track) - 1u) *
+                static_cast<std::size_t>(k_d81_sectors_per_track) +
+            static_cast<std::size_t>(sector);
+        return sectors * static_cast<std::size_t>(k_d64_sector_bytes);
+    }
+    if (media == cbm_media::d71 && track > k_d64_track_count)
+    {
+        return k_d64_35_bytes +
+               d64_offset(static_cast<uint8_t>(track - k_d64_track_count), sector);
+    }
+    return d64_offset(track, sector);
+}
+
+/**
+ * @brief Geometry-aware SPT (1541 wrapper kept as the one-argument overload).
+ *
+ * @param[in] media Image kind.
+ * @param[in] track 1-based track.
+ */
+[[nodiscard]] constexpr uint8_t d64_sectors_per_track(cbm_media media,
+                                                      uint8_t track) noexcept
+{
+    return cbm_sectors_per_track(media, track);
+}
+
+/**
+ * @brief Geometry-aware T/S check (1541 wrapper kept as the two-argument overload).
+ *
+ * @param[in] media  Image kind.
+ * @param[in] track  1-based track.
+ * @param[in] sector 0-based sector.
+ */
+[[nodiscard]] constexpr bool d64_ts_valid(cbm_media media, uint8_t track,
+                                          uint8_t sector) noexcept
+{
+    return cbm_ts_valid(media, track, sector);
+}
+
+/**
+ * @brief Geometry-aware sector offset (1541 wrapper kept as the two-argument overload).
+ *
+ * @param[in] media  Image kind.
+ * @param[in] track  1-based track.
+ * @param[in] sector 0-based sector.
+ */
+[[nodiscard]] constexpr std::size_t d64_offset(cbm_media media, uint8_t track,
+                                               uint8_t sector) noexcept
+{
+    return cbm_offset(media, track, sector);
 }
 
 /**
@@ -185,12 +418,25 @@ struct cbm_disk
 [[nodiscard]] std::string cbm_host_filename(const cbm_file& file);
 
 /**
- * @brief Parse CBMFS using 1541 T/S geometry (BAM at 18/0).
+ * @brief Parse CBMFS using @p media geometry.
  *
- * @param[in] image Whole D64 (or a span large enough to hold 18/0).
+ * D64/D71: BAM at 18/0, DOS @c 'A' or 0, name at 0x90, ID at 0xA2, type at 0xA5.
+ * D81: header at 40/0, DOS @c 'D' or 0, name at 4, ID at 22, type at 25.
  *
- * @return @a present false if the BAM sector is missing or not 1541 DOS
- *         (`A` / 0) with a valid directory T/S in BAM[0..1].
+ * @param[in] image Whole image (or a span large enough for the header sector).
+ * @param[in] media Geometry to apply; @ref cbm_media::unknown yields not present.
+ *
+ * @return @a present false if the header sector is missing or DOS/dir T/S is invalid.
+ */
+[[nodiscard]] cbm_disk parse_cbmfs(std::span<const uint8_t> image, cbm_media media);
+
+/**
+ * @brief Parse CBMFS, inferring geometry from image size (D64 fallback).
+ *
+ * Known D64/D71/D81 sizes use that media; any other length tries 1541 BAM
+ * at 18/0 (legacy @ref parse_cbmfs behaviour).
+ *
+ * @param[in] image Whole image.
  */
 [[nodiscard]] cbm_disk parse_cbmfs(std::span<const uint8_t> image);
 
@@ -204,7 +450,37 @@ struct cbm_disk
 [[nodiscard]] cbm_disk parse_d64(std::span<const uint8_t> image);
 
 /**
+ * @brief Parse a 70-track D71 and its CBMFS (BAM still at 18/0).
+ *
+ * @param[in] image Image bytes; size must be 349696 or 351062.
+ *
+ * @return @a present false when the size is not a D71 or BAM is invalid.
+ */
+[[nodiscard]] cbm_disk parse_d71(std::span<const uint8_t> image);
+
+/**
+ * @brief Parse an 80×40 D81 and its CBMFS (header at 40/0).
+ *
+ * @param[in] image Image bytes; size must be 819200 or 822400.
+ *
+ * @return @a present false when the size is not a D81 or the header is invalid.
+ */
+[[nodiscard]] cbm_disk parse_d81(std::span<const uint8_t> image);
+
+/**
+ * @brief Pick D64/D71/D81 by image size and parse CBMFS.
+ *
+ * @param[in] image Whole image.
+ *
+ * @return @a present false when the size is not a known CBM image or the
+ *         BAM/header is invalid.
+ */
+[[nodiscard]] cbm_disk parse_cbm_image(std::span<const uint8_t> image);
+
+/**
  * @brief Follow a CBM file chain (254 data bytes/sector; last T=0, S=last used byte).
+ *
+ * Geometry is inferred from @p image size (D64 fallback).
  *
  * @param[in] image Whole image.
  * @param[in] track First data track.
@@ -213,18 +489,41 @@ struct cbm_disk
  * @return Payload bytes (empty when the start T/S is 0 or unreadable).
  *
  * @note Stops on cycles, invalid T/S, or a truncated sector. Deleted files
- *       still follow their stored chain.
+ *       still follow their stored chain. Chain cap is @ref k_cbm_max_chain.
  */
 [[nodiscard]] std::vector<uint8_t>
 read_cbm_file(std::span<const uint8_t> image, uint8_t track, uint8_t sector);
 
 /**
- * @brief Read the payload for a directory entry.
+ * @brief Follow a CBM file chain with explicit @p media geometry.
+ *
+ * @param[in] image Whole image.
+ * @param[in] media Geometry (D71 accepts tracks 36–70; D81 is 1–80, SPT 40).
+ * @param[in] track First data track.
+ * @param[in] sector First data sector.
+ */
+[[nodiscard]] std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image,
+                                                 cbm_media media, uint8_t track,
+                                                 uint8_t sector);
+
+/**
+ * @brief Read the payload for a directory entry (geometry from image size).
  *
  * @param[in] image Whole image.
  * @param[in] file  Directory slot (uses @a first_track / @a first_sector).
  */
 [[nodiscard]] std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image,
+                                                 const cbm_file& file);
+
+/**
+ * @brief Read the payload for a directory entry with explicit @p media.
+ *
+ * @param[in] image Whole image.
+ * @param[in] media Geometry.
+ * @param[in] file  Directory slot.
+ */
+[[nodiscard]] std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image,
+                                                 cbm_media media,
                                                  const cbm_file& file);
 
 } /* namespace dumpfloppy */

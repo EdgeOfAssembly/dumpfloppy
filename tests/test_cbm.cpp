@@ -1,8 +1,10 @@
 /**
  * @file test_cbm.cpp
- * @brief 1541 D64 geometry, CBMFS parse, and file-chain round-trip.
+ * @brief D64/D71/D81 geometry, CBMFS parse, and file-chain round-trip.
  */
 #include "d64_builder.hpp"
+#include "d71_builder.hpp"
+#include "d81_builder.hpp"
 #include "dumpfloppy/cbm.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -49,6 +51,29 @@ static_assert(dumpfloppy::d64_sectors_per_track(35) == 17u);
 static_assert(!dumpfloppy::d64_ts_valid(0, 0));
 static_assert(!dumpfloppy::d64_ts_valid(18, 19));
 static_assert(dumpfloppy::d64_ts_valid(18, 18));
+static_assert(dumpfloppy::k_d71_bytes == 1366u * 256u);
+static_assert(dumpfloppy::k_d71_error_bytes == 349696u + 1366u);
+static_assert(dumpfloppy::k_d81_bytes == 80u * 40u * 256u);
+static_assert(dumpfloppy::k_d81_error_bytes == 819200u + 3200u);
+static_assert(dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d71, 36, 0) ==
+              683u * 256u);
+static_assert(dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d71, 53, 0) ==
+              1040u * 256u);
+static_assert(dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81, 40, 0) ==
+              39u * 40u * 256u);
+static_assert(dumpfloppy::cbm_sectors_per_track(dumpfloppy::cbm_media::d71, 36) ==
+              21u);
+static_assert(dumpfloppy::cbm_sectors_per_track(dumpfloppy::cbm_media::d71, 70) ==
+              17u);
+static_assert(dumpfloppy::cbm_sectors_per_track(dumpfloppy::cbm_media::d81, 1) ==
+              40u);
+static_assert(dumpfloppy::d64_offset(dumpfloppy::cbm_media::d71, 36, 0) ==
+              683u * 256u);
+static_assert(dumpfloppy::d64_offset(36, 0) == static_cast<std::size_t>(-1));
+static_assert(dumpfloppy::cbm_media_from_size(dumpfloppy::k_d71_bytes) ==
+              dumpfloppy::cbm_media::d71);
+static_assert(dumpfloppy::cbm_media_from_size(dumpfloppy::k_d81_bytes) ==
+              dumpfloppy::cbm_media::d81);
 
 TEST_CASE("d64_offset matches 1541 zone table", "[cbm][d64]")
 {
@@ -101,6 +126,8 @@ TEST_CASE("synthetic D64 parses name, ID, PRG and deleted SEQ", "[cbm][d64]")
 
     const dumpfloppy::cbm_disk d64 = dumpfloppy::parse_d64(img);
     REQUIRE(d64.present);
+    REQUIRE(d64.media == dumpfloppy::cbm_media::d64);
+    REQUIRE(d64.media_name == "D64");
     REQUIRE(d64.disk_name == "TEST DISK");
     REQUIRE(d64.disk_id == "DF");
     REQUIRE(d64.dos_version == static_cast<uint8_t>('A'));
@@ -111,8 +138,14 @@ TEST_CASE("synthetic D64 parses name, ID, PRG and deleted SEQ", "[cbm][d64]")
 
     const dumpfloppy::cbm_disk fs = dumpfloppy::parse_cbmfs(img);
     REQUIRE(fs.present);
+    REQUIRE(fs.media == dumpfloppy::cbm_media::d64);
     REQUIRE(fs.entries.size() == d64.entries.size());
     REQUIRE(fs.disk_name == d64.disk_name);
+
+    const dumpfloppy::cbm_disk picked = dumpfloppy::parse_cbm_image(img);
+    REQUIRE(picked.present);
+    REQUIRE(picked.media == dumpfloppy::cbm_media::d64);
+    REQUIRE(picked.entries.size() == d64.entries.size());
 
     const dumpfloppy::cbm_file* prg = find_name(d64, "HELLO");
     REQUIRE(prg != nullptr);
@@ -172,4 +205,144 @@ TEST_CASE("Last Ninja D64 BAM looks like CBMFS", "[cbm][d64][lastninja]")
     REQUIRE(disk.dir_sector == 1);
     REQUIRE(disk.disk_name.find("DIGITAL") != std::string::npos);
     REQUIRE(disk.disk_id == "TD");
+}
+
+TEST_CASE("d71/d81 geometry tables and 1541 wrappers", "[cbm][d71][d81]")
+{
+    using dumpfloppy::cbm_media;
+    using dumpfloppy::cbm_offset;
+    using dumpfloppy::cbm_sectors_per_track;
+    using dumpfloppy::d64_offset;
+
+    REQUIRE(cbm_offset(cbm_media::d71, 1, 0) == 0u);
+    REQUIRE(cbm_offset(cbm_media::d71, 18, 0) == 17u * 21u * 256u);
+    REQUIRE(cbm_offset(cbm_media::d71, 36, 0) == 683u * 256u);
+    REQUIRE(cbm_offset(cbm_media::d71, 36, 0) == dumpfloppy::k_d64_35_bytes);
+    REQUIRE(cbm_offset(cbm_media::d71, 70, 16) + 256u == dumpfloppy::k_d71_bytes);
+    REQUIRE(cbm_sectors_per_track(cbm_media::d71, 36) == 21u);
+    REQUIRE(cbm_sectors_per_track(cbm_media::d71, 53) == 19u);
+    REQUIRE(cbm_sectors_per_track(cbm_media::d71, 70) == 17u);
+    REQUIRE(cbm_offset(cbm_media::d71, 71, 0) == static_cast<std::size_t>(-1));
+
+    REQUIRE(cbm_offset(cbm_media::d81, 1, 0) == 0u);
+    REQUIRE(cbm_offset(cbm_media::d81, 40, 0) == 39u * 40u * 256u);
+    REQUIRE(cbm_offset(cbm_media::d81, 80, 39) + 256u == dumpfloppy::k_d81_bytes);
+    REQUIRE(cbm_sectors_per_track(cbm_media::d81, 40) == 40u);
+    REQUIRE(cbm_offset(cbm_media::d81, 40, 40) == static_cast<std::size_t>(-1));
+    REQUIRE(cbm_offset(cbm_media::d81, 81, 0) == static_cast<std::size_t>(-1));
+
+    /* 1541 wrappers stay 35-track; geometry-aware overloads accept D71/D81. */
+    REQUIRE(d64_offset(36, 0) == static_cast<std::size_t>(-1));
+    REQUIRE(d64_offset(cbm_media::d71, 36, 0) == 683u * 256u);
+    REQUIRE(d64_offset(cbm_media::d81, 40, 0) == 39u * 40u * 256u);
+}
+
+TEST_CASE("parse_d71/d81 reject wrong size and invalid header", "[cbm][d71][d81]")
+{
+    std::vector<uint8_t> tiny(256, 0);
+    REQUIRE_FALSE(dumpfloppy::parse_d71(tiny).present);
+    REQUIRE_FALSE(dumpfloppy::parse_d81(tiny).present);
+    REQUIRE_FALSE(dumpfloppy::parse_cbm_image(tiny).present);
+
+    const auto d64 = dumpfloppy_test::make_sample_d64();
+    REQUIRE_FALSE(dumpfloppy::parse_d71(d64).present);
+    REQUIRE_FALSE(dumpfloppy::parse_d81(d64).present);
+
+    auto d71 = dumpfloppy_test::make_sample_d71();
+    REQUIRE(d71.size() == 349696u);
+    uint8_t* bam = d71.data() + dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d71, 18, 0);
+    bam[2] = static_cast<uint8_t>('X');
+    REQUIRE_FALSE(dumpfloppy::parse_d71(d71).present);
+    REQUIRE_FALSE(dumpfloppy::parse_cbmfs(d71, dumpfloppy::cbm_media::d71).present);
+
+    auto d81 = dumpfloppy_test::make_sample_d81();
+    REQUIRE(d81.size() == 819200u);
+    uint8_t* hdr = d81.data() + dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81, 40, 0);
+    hdr[2] = static_cast<uint8_t>('A');
+    REQUIRE_FALSE(dumpfloppy::parse_d81(d81).present);
+    REQUIRE_FALSE(dumpfloppy::parse_cbmfs(d81, dumpfloppy::cbm_media::d81).present);
+}
+
+TEST_CASE("synthetic D71 BAM 18/0 PRG on track 36 round-trip", "[cbm][d71]")
+{
+    const auto img = dumpfloppy_test::make_sample_d71();
+    REQUIRE(img.size() == 349696u);
+
+    const dumpfloppy::cbm_disk d71 = dumpfloppy::parse_d71(img);
+    REQUIRE(d71.present);
+    REQUIRE(d71.media == dumpfloppy::cbm_media::d71);
+    REQUIRE(d71.media_name == "D71");
+    REQUIRE(d71.disk_name == "TEST 1571");
+    REQUIRE(d71.disk_id == "71");
+    REQUIRE(d71.dos_version == static_cast<uint8_t>('A'));
+    REQUIRE(d71.dos_type == "2A");
+    REQUIRE(d71.dir_track == 18);
+    REQUIRE(d71.dir_sector == 1);
+    REQUIRE(d71.entries.size() == 1u);
+
+    const dumpfloppy::cbm_disk via_image = dumpfloppy::parse_cbm_image(img);
+    REQUIRE(via_image.present);
+    REQUIRE(via_image.media == dumpfloppy::cbm_media::d71);
+    REQUIRE(via_image.entries.size() == 1u);
+
+    const dumpfloppy::cbm_disk via_fs = dumpfloppy::parse_cbmfs(img);
+    REQUIRE(via_fs.present);
+    REQUIRE(via_fs.media == dumpfloppy::cbm_media::d71);
+
+    const dumpfloppy::cbm_file* prg = find_name(d71, "SIDE1");
+    REQUIRE(prg != nullptr);
+    REQUIRE(prg->kind == dumpfloppy::cbm_file_kind::prg);
+    REQUIRE(prg->type_byte == 0x82u);
+    REQUIRE_FALSE(prg->deleted);
+    REQUIRE(prg->first_track == 36);
+    REQUIRE(prg->first_sector == 0);
+    REQUIRE(prg->size_sectors == 2u);
+
+    const std::vector<uint8_t> prg_bytes = dumpfloppy::read_cbm_file(img, *prg);
+    REQUIRE(prg_bytes == dumpfloppy_test::sample_d71_prg_bytes());
+    REQUIRE(prg_bytes.size() == 300u);
+
+    const std::vector<uint8_t> explicit_media = dumpfloppy::read_cbm_file(
+        img, dumpfloppy::cbm_media::d71, 36, 0);
+    REQUIRE(explicit_media == prg_bytes);
+}
+
+TEST_CASE("synthetic D81 header 40/0 dir 40/3 PRG round-trip", "[cbm][d81]")
+{
+    const auto img = dumpfloppy_test::make_sample_d81();
+    REQUIRE(img.size() == 819200u);
+
+    const dumpfloppy::cbm_disk d81 = dumpfloppy::parse_d81(img);
+    REQUIRE(d81.present);
+    REQUIRE(d81.media == dumpfloppy::cbm_media::d81);
+    REQUIRE(d81.media_name == "D81");
+    REQUIRE(d81.disk_name == "TEST 1581");
+    REQUIRE(d81.disk_id == "81");
+    REQUIRE(d81.dos_version == static_cast<uint8_t>('D'));
+    REQUIRE(d81.dos_type == "3D");
+    REQUIRE(d81.dir_track == 40);
+    REQUIRE(d81.dir_sector == 3);
+    REQUIRE(d81.entries.size() == 1u);
+
+    const dumpfloppy::cbm_disk via_image = dumpfloppy::parse_cbm_image(img);
+    REQUIRE(via_image.present);
+    REQUIRE(via_image.media == dumpfloppy::cbm_media::d81);
+    REQUIRE(via_image.disk_name == "TEST 1581");
+
+    const dumpfloppy::cbm_file* prg = find_name(d81, "HELLO81");
+    REQUIRE(prg != nullptr);
+    REQUIRE(prg->kind == dumpfloppy::cbm_file_kind::prg);
+    REQUIRE(prg->type_byte == 0x82u);
+    REQUIRE_FALSE(prg->deleted);
+    REQUIRE(prg->first_track == 1);
+    REQUIRE(prg->first_sector == 0);
+    REQUIRE(prg->size_sectors == 2u);
+
+    const std::vector<uint8_t> prg_bytes = dumpfloppy::read_cbm_file(img, *prg);
+    REQUIRE(prg_bytes == dumpfloppy_test::sample_d81_prg_bytes());
+    REQUIRE(prg_bytes.size() == 300u);
+
+    const std::vector<uint8_t> explicit_media = dumpfloppy::read_cbm_file(
+        img, dumpfloppy::cbm_media::d81, *prg);
+    REQUIRE(explicit_media == prg_bytes);
 }

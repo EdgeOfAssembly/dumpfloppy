@@ -1,6 +1,6 @@
 /**
  * @file cbm.cpp
- * @brief 1541 D64 CBMFS parser (BAM, directory chain, file chains).
+ * @brief D64/D71/D81 CBMFS parser (BAM/header, directory chain, file chains).
  */
 #include "dumpfloppy/cbm.hpp"
 
@@ -19,12 +19,23 @@ constexpr uint8_t k_type_kind_mask = 0x0Fu;
 constexpr unsigned k_dir_slots = 8u;
 constexpr unsigned k_dirent_bytes = 32u;
 constexpr unsigned k_name_bytes = 16u;
-constexpr int k_max_chain = 683; /* one visit per 35-track sector */
+constexpr uint8_t k_d64_name_off = 0x90u;
+constexpr uint8_t k_d64_id_off = 0xA2u;
+constexpr uint8_t k_d64_type_off = 0xA5u;
+constexpr uint8_t k_d81_name_off = 4u;
+constexpr uint8_t k_d81_id_off = 22u;
+constexpr uint8_t k_d81_type_off = 25u;
 
 [[nodiscard]] uint16_t pack_ts(uint8_t track, uint8_t sector) noexcept
 {
     return static_cast<uint16_t>((static_cast<uint16_t>(track) << 8) |
                                  static_cast<uint16_t>(sector));
+}
+
+[[nodiscard]] cbm_media media_or_d64(std::size_t n) noexcept
+{
+    const cbm_media inferred = cbm_media_from_size(n);
+    return inferred == cbm_media::unknown ? cbm_media::d64 : inferred;
 }
 
 [[nodiscard]] bool sector_in_image(std::span<const uint8_t> image, std::size_t off) noexcept
@@ -68,18 +79,47 @@ constexpr int k_max_chain = 683; /* one visit per 35-track sector */
     return true;
 }
 
-[[nodiscard]] bool bam_looks_cbmfs(std::span<const uint8_t> bam) noexcept
+[[nodiscard]] bool dos_is_1541(uint8_t dos) noexcept
+{
+    return dos == static_cast<uint8_t>('A') || dos == 0u;
+}
+
+[[nodiscard]] bool dos_is_1581(uint8_t dos) noexcept
+{
+    return dos == static_cast<uint8_t>('D') || dos == 0u;
+}
+
+[[nodiscard]] bool bam_looks_cbmfs(std::span<const uint8_t> bam, cbm_media media) noexcept
 {
     if (bam.size() < static_cast<std::size_t>(k_d64_sector_bytes))
     {
         return false;
     }
-    const uint8_t dos = bam[2];
-    if (dos != static_cast<uint8_t>('A') && dos != 0u)
+    if (!dos_is_1541(bam[2]))
     {
         return false;
     }
-    return d64_ts_valid(bam[0], bam[1]);
+    return cbm_ts_valid(media, bam[0], bam[1]);
+}
+
+[[nodiscard]] bool header_looks_1581(std::span<const uint8_t> hdr) noexcept
+{
+    if (hdr.size() < static_cast<std::size_t>(k_d64_sector_bytes))
+    {
+        return false;
+    }
+    if (!dos_is_1581(hdr[2]))
+    {
+        return false;
+    }
+    return cbm_ts_valid(cbm_media::d81, hdr[0], hdr[1]);
+}
+
+void mark_present(cbm_disk& disk, cbm_media media)
+{
+    disk.present = true;
+    disk.media = media;
+    disk.media_name = cbm_media_name(media);
 }
 
 void parse_dir_slot(std::span<const uint8_t> slot, std::vector<cbm_file>& out)
@@ -113,18 +153,18 @@ void parse_dir_slot(std::span<const uint8_t> slot, std::vector<cbm_file>& out)
     out.push_back(std::move(f));
 }
 
-void walk_directory(std::span<const uint8_t> image, uint8_t track, uint8_t sector,
-                    std::vector<cbm_file>& out)
+void walk_directory(std::span<const uint8_t> image, cbm_media media, uint8_t track,
+                    uint8_t sector, std::vector<cbm_file>& out)
 {
     std::unordered_set<uint16_t> seen;
     seen.reserve(32);
-    for (int step = 0; step < k_max_chain; ++step)
+    for (int step = 0; step < k_cbm_max_chain; ++step)
     {
         if (track == 0u)
         {
             return;
         }
-        if (!d64_ts_valid(track, sector))
+        if (!cbm_ts_valid(media, track, sector))
         {
             return;
         }
@@ -133,7 +173,7 @@ void walk_directory(std::span<const uint8_t> image, uint8_t track, uint8_t secto
         {
             return;
         }
-        const std::size_t off = d64_offset(track, sector);
+        const std::size_t off = cbm_offset(media, track, sector);
         if (!sector_in_image(image, off))
         {
             return;
@@ -148,6 +188,59 @@ void walk_directory(std::span<const uint8_t> image, uint8_t track, uint8_t secto
         track = next_t;
         sector = next_s;
     }
+}
+
+cbm_disk parse_1541_style(std::span<const uint8_t> image, cbm_media media)
+{
+    cbm_disk disk{};
+    const std::size_t bam_off = cbm_offset(media, k_d64_bam_track, 0u);
+    if (!sector_in_image(image, bam_off))
+    {
+        return disk;
+    }
+    const std::span<const uint8_t> bam =
+        image.subspan(bam_off, k_d64_sector_bytes);
+    if (!bam_looks_cbmfs(bam, media))
+    {
+        return disk;
+    }
+
+    mark_present(disk, media);
+    disk.dir_track = bam[0];
+    disk.dir_sector = bam[1];
+    disk.dos_version = bam[2];
+    disk.disk_name = petscii_to_ascii(bam.subspan(k_d64_name_off, k_name_bytes));
+    disk.disk_id = petscii_to_ascii(bam.subspan(k_d64_id_off, 2u));
+    disk.dos_type = petscii_to_ascii(bam.subspan(k_d64_type_off, 2u));
+    walk_directory(image, media, disk.dir_track, disk.dir_sector, disk.entries);
+    return disk;
+}
+
+cbm_disk parse_1581(std::span<const uint8_t> image)
+{
+    cbm_disk disk{};
+    const std::size_t hdr_off = cbm_offset(cbm_media::d81, k_d81_header_track, 0u);
+    if (!sector_in_image(image, hdr_off))
+    {
+        return disk;
+    }
+    const std::span<const uint8_t> hdr =
+        image.subspan(hdr_off, k_d64_sector_bytes);
+    if (!header_looks_1581(hdr))
+    {
+        return disk;
+    }
+
+    mark_present(disk, cbm_media::d81);
+    disk.dir_track = hdr[0];
+    disk.dir_sector = hdr[1];
+    disk.dos_version = hdr[2];
+    disk.disk_name = petscii_to_ascii(hdr.subspan(k_d81_name_off, k_name_bytes));
+    disk.disk_id = petscii_to_ascii(hdr.subspan(k_d81_id_off, 2u));
+    disk.dos_type = petscii_to_ascii(hdr.subspan(k_d81_type_off, 2u));
+    walk_directory(image, cbm_media::d81, disk.dir_track, disk.dir_sector,
+                   disk.entries);
+    return disk;
 }
 
 } /* namespace */
@@ -238,30 +331,24 @@ std::string cbm_host_filename(const cbm_file& file)
     return name;
 }
 
+cbm_disk parse_cbmfs(std::span<const uint8_t> image, cbm_media media)
+{
+    switch (media)
+    {
+    case cbm_media::d64:
+    case cbm_media::d71:
+        return parse_1541_style(image, media);
+    case cbm_media::d81:
+        return parse_1581(image);
+    case cbm_media::unknown:
+    default:
+        return {};
+    }
+}
+
 cbm_disk parse_cbmfs(std::span<const uint8_t> image)
 {
-    cbm_disk disk{};
-    const std::size_t bam_off = d64_offset(k_d64_bam_track, 0u);
-    if (!sector_in_image(image, bam_off))
-    {
-        return disk;
-    }
-    const std::span<const uint8_t> bam =
-        image.subspan(bam_off, k_d64_sector_bytes);
-    if (!bam_looks_cbmfs(bam))
-    {
-        return disk;
-    }
-
-    disk.present = true;
-    disk.dir_track = bam[0];
-    disk.dir_sector = bam[1];
-    disk.dos_version = bam[2];
-    disk.disk_name = petscii_to_ascii(bam.subspan(0x90, k_name_bytes));
-    disk.disk_id = petscii_to_ascii(bam.subspan(0xA2, 2u));
-    disk.dos_type = petscii_to_ascii(bam.subspan(0xA5, 2u));
-    walk_directory(image, disk.dir_track, disk.dir_sector, disk.entries);
-    return disk;
+    return parse_cbmfs(image, media_or_d64(image.size()));
 }
 
 cbm_disk parse_d64(std::span<const uint8_t> image)
@@ -270,11 +357,39 @@ cbm_disk parse_d64(std::span<const uint8_t> image)
     {
         return {};
     }
-    return parse_cbmfs(image);
+    return parse_cbmfs(image, cbm_media::d64);
 }
 
-std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, uint8_t track,
-                                   uint8_t sector)
+cbm_disk parse_d71(std::span<const uint8_t> image)
+{
+    if (!is_d71_size(image.size()))
+    {
+        return {};
+    }
+    return parse_cbmfs(image, cbm_media::d71);
+}
+
+cbm_disk parse_d81(std::span<const uint8_t> image)
+{
+    if (!is_d81_size(image.size()))
+    {
+        return {};
+    }
+    return parse_cbmfs(image, cbm_media::d81);
+}
+
+cbm_disk parse_cbm_image(std::span<const uint8_t> image)
+{
+    const cbm_media media = cbm_media_from_size(image.size());
+    if (media == cbm_media::unknown)
+    {
+        return {};
+    }
+    return parse_cbmfs(image, media);
+}
+
+std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, cbm_media media,
+                                   uint8_t track, uint8_t sector)
 {
     std::vector<uint8_t> payload;
     if (track == 0u)
@@ -285,9 +400,9 @@ std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, uint8_t track
     std::unordered_set<uint16_t> seen;
     seen.reserve(64);
     payload.reserve(254u);
-    for (int step = 0; step < k_max_chain; ++step)
+    for (int step = 0; step < k_cbm_max_chain; ++step)
     {
-        if (!d64_ts_valid(track, sector))
+        if (!cbm_ts_valid(media, track, sector))
         {
             return payload;
         }
@@ -296,7 +411,7 @@ std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, uint8_t track
         {
             return payload;
         }
-        const std::size_t off = d64_offset(track, sector);
+        const std::size_t off = cbm_offset(media, track, sector);
         if (!sector_in_image(image, off))
         {
             return payload;
@@ -325,9 +440,21 @@ std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, uint8_t track
     return payload;
 }
 
+std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, uint8_t track,
+                                   uint8_t sector)
+{
+    return read_cbm_file(image, media_or_d64(image.size()), track, sector);
+}
+
+std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, cbm_media media,
+                                   const cbm_file& file)
+{
+    return read_cbm_file(image, media, file.first_track, file.first_sector);
+}
+
 std::vector<uint8_t> read_cbm_file(std::span<const uint8_t> image, const cbm_file& file)
 {
-    return read_cbm_file(image, file.first_track, file.first_sector);
+    return read_cbm_file(image, media_or_d64(image.size()), file);
 }
 
 } /* namespace dumpfloppy */
