@@ -10,6 +10,7 @@
 #include "dumpfloppy/formats/archiveteam/at_woz.h"
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/update.hpp"
+#include "image_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -102,6 +103,49 @@ std::vector<uint8_t> make_2img()
     return img;
 }
 
+std::vector<uint8_t> fat_to_stx(const std::vector<uint8_t>& fat)
+{
+    constexpr uint8_t spt = 8;
+    const uint32_t nsec = static_cast<uint32_t>(fat.size() / 512u);
+    const uint8_t tracks = static_cast<uint8_t>(nsec / spt);
+    std::vector<uint8_t> stx(16, 0);
+    stx[0] = 'R';
+    stx[1] = 'S';
+    stx[2] = 'Y';
+    stx[4] = 0x00;
+    stx[5] = 0x03;
+    stx[6] = 0x01;
+    stx[10] = tracks;
+    stx[11] = 0x02;
+    for (uint8_t tr = 0; tr < tracks; ++tr)
+    {
+        const uint32_t rec = 16u + static_cast<uint32_t>(spt) * 16u +
+                             static_cast<uint32_t>(spt) * 512u;
+        const std::size_t t0 = stx.size();
+        stx.resize(t0 + rec, 0);
+        put_le32(stx, t0, rec);
+        put_le32(stx, t0 + 4u, 0);
+        stx[t0 + 8u] = spt;
+        stx[t0 + 9u] = 0;
+        stx[t0 + 10u] = 0x01; /* sector descriptors */
+        stx[t0 + 11u] = 0;
+        stx[t0 + 14u] = tr;
+        for (uint8_t s = 1; s <= spt; ++s)
+        {
+            const std::size_t d = t0 + 16u + static_cast<std::size_t>(s - 1u) * 16u;
+            put_le32(stx, d, static_cast<uint32_t>(s - 1u) * 512u);
+            stx[d + 8u] = tr;
+            stx[d + 9u] = 0;
+            stx[d + 10u] = s;
+            stx[d + 11u] = 2;
+        }
+        const std::size_t data = t0 + 16u + static_cast<std::size_t>(spt) * 16u;
+        const std::size_t src = static_cast<std::size_t>(tr) * spt * 512u;
+        std::memcpy(stx.data() + data, fat.data() + src, static_cast<std::size_t>(spt) * 512u);
+    }
+    return stx;
+}
+
 dumpfloppy::floppy_image wrap(std::vector<uint8_t> bytes, const char* path)
 {
     dumpfloppy::floppy_image img{};
@@ -173,6 +217,53 @@ TEST_CASE("extract and update refuse IPF", "[foreign][extract]")
     u.hosts.push_back("x");
     std::ostringstream uerr;
     REQUIRE(dumpfloppy::update_files(a, u, uerr) != 0);
+}
+
+TEST_CASE("STX standard 512-byte sectors list GEMDOS FAT12", "[foreign][stx]")
+{
+    const auto fat = dumpfloppy_test::make_fat12_sample();
+    const dumpfloppy::analysis a =
+        dumpfloppy::analyse(wrap(fat_to_stx(fat), "t.stx"));
+    REQUIRE(a.foreign.present);
+    REQUIRE(a.foreign.kind == dumpfloppy::foreign_kind::stx);
+    REQUIRE_FALSE(a.flux.assembled_chs.empty());
+    REQUIRE(a.bpb.looks_valid);
+    REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
+    bool hello = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.name_83 == "HELLO.TXT")
+        {
+            hello = true;
+        }
+    }
+    REQUIRE(hello);
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    std::ostringstream plain;
+    dumpfloppy::write_report(a, plain, opt);
+    const std::string s = plain.str();
+    REQUIRE(s.find("ATARI STX / FAT12") != std::string::npos);
+    REQUIRE(s.find("GEMDOS") != std::string::npos);
+    REQUIRE(s.find("HELLO.TXT") != std::string::npos);
+    REQUIRE(s.find("CONTAINER") != std::string::npos);
+}
+
+TEST_CASE("extract HELLO.TXT from assembled STX", "[foreign][stx][extract]")
+{
+    const auto fat = dumpfloppy_test::make_fat12_sample();
+    const dumpfloppy::analysis a =
+        dumpfloppy::analyse(wrap(fat_to_stx(fat), "t.stx"));
+    const auto dest =
+        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "stx-out";
+    std::filesystem::remove_all(dest);
+    std::filesystem::create_directories(dest);
+    dumpfloppy::extract_options opt{};
+    opt.enabled = true;
+    opt.dest_dir = dest;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::extract_files(a, opt, err) >= 1);
+    REQUIRE(std::filesystem::exists(dest / "HELLO.TXT"));
 }
 
 TEST_CASE("catalog names Shadow of the Beast IPF Copylock", "[foreign][catalog]")

@@ -646,6 +646,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
                 fmt = std::string("APPLE ") + a.apple.fs_name;
             }
         }
+        else if (a.foreign.present && a.bpb.looks_valid)
+        {
+            fmt = a.foreign.format + " / FAT12";
+        }
         else if (a.foreign.present)
         {
             fmt = a.foreign.format;
@@ -685,6 +689,10 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.apple.present)
     {
         kv(out, "Filesystem", a.apple.fs_name);
+    }
+    else if (a.foreign.present && a.bpb.looks_valid)
+    {
+        kv(out, "Filesystem", "FAT12 (GEMDOS)");
     }
     else if (a.foreign.present)
     {
@@ -806,12 +814,16 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         }
         write_apple_sections(a, out, opt);
     }
-    else if (a.foreign.present)
+    else if (a.foreign.present && a.flux.assembled_chs.empty())
     {
         write_foreign_sections(a, out, opt);
     }
     else
     {
+    if (a.foreign.present)
+    {
+        write_foreign_sections(a, out, opt);
+    }
     section(out, color, "BOOT");
     kv(out, "Jump", describe_jump(a.bpb.jump));
     kv(out, "OEM", a.bpb.oem.empty() ? "(none)" : a.bpb.oem);
@@ -1008,7 +1020,8 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
 
     if (opt.hex_boot && !a.cbm.present && !a.amiga.present && !a.trd.present &&
-        !a.apple.present && !a.foreign.present)
+        !a.apple.present &&
+        !(a.foreign.present && a.flux.assembled_chs.empty()))
     {
         section(out, color, "BOOT SECTOR HEX");
         std::span<const uint8_t> boot =

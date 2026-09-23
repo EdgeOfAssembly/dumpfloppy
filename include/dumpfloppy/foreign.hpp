@@ -8,10 +8,11 @@
 #ifndef DUMPFLOPPY_FOREIGN_HPP
 #define DUMPFLOPPY_FOREIGN_HPP
 
+#include "dumpfloppy/flux_view.hpp"
 #include "dumpfloppy/foreign_view.hpp"
 
-#include <span>
 #include <cstdint>
+#include <span>
 
 namespace dumpfloppy
 {
@@ -22,6 +23,17 @@ namespace dumpfloppy
  * @param[in] data Whole image.
  */
 [[nodiscard]] foreign_disk parse_foreign(std::span<const uint8_t> data);
+
+/**
+ * @brief Assemble standard 512-byte STX sectors into IBM CHS.
+ *
+ * Copy-protected / fuzzy / non-512 sectors are recorded on @a flux.protection
+ * and omitted from @a assembled_chs. Empty @a assembled_chs means no GEMDOS
+ * volume could be built.
+ *
+ * @param[in] data Whole STX file (including the 16-byte Pasti header).
+ */
+[[nodiscard]] flux_disk assemble_stx(std::span<const uint8_t> data);
 
 } /* namespace dumpfloppy */
 

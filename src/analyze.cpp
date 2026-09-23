@@ -185,7 +185,20 @@ analysis analyse(floppy_image image)
         }
         return a;
     }
-    if (a.foreign.present)
+    if (a.foreign.kind == foreign_kind::stx)
+    {
+        a.flux = assemble_stx(bytes);
+        if (!a.flux.assembled_chs.empty())
+        {
+            a.image.size_geometry.cylinders = a.flux.chs_cyls;
+            a.image.size_geometry.heads = a.flux.chs_heads;
+            a.image.size_geometry.sectors_per_track = a.flux.chs_spt;
+            a.image.size_geometry.bytes_per_sector = 512;
+            a.image.size_geometry.media_name = "Atari ST STX (assembled GEMDOS)";
+            a.foreign.note = a.flux.note;
+        }
+    }
+    if (a.foreign.present && a.flux.assembled_chs.empty())
     {
         a.image.size_geometry.cylinders = 0;
         a.image.size_geometry.heads = 0;
@@ -195,7 +208,10 @@ analysis analyse(floppy_image image)
         return a;
     }
 
-    a.flux = decode_hxc_mfm(bytes);
+    if (!a.flux.present)
+    {
+        a.flux = decode_hxc_mfm(bytes);
+    }
     if (!a.flux.present)
     {
         a.flux = inspect_86f(bytes);

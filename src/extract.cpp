@@ -587,7 +587,7 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     {
         return extract_apple_files(a, opt, err);
     }
-    if (a.foreign.present)
+    if (a.foreign.present && a.flux.assembled_chs.empty())
     {
         err << "dumpfloppy: cannot extract " << a.foreign.format
             << " flux/nibble images in this version\n";

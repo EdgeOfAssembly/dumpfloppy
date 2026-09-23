@@ -26,7 +26,8 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 - ZX Spectrum **TRD / TR-DOS**: disk label, geometry, BASIC/CODE/DATA/PRINT listing
   (160K IBM is not TRD — disk-info sector 8 is required)
 - **IPF / WOZ / STX / 2IMG**: container metadata (SPS id, tracks, platform); FAT is
-  not invented from flux bytes. Extract/update refused until a decoder exists.
+  not invented from flux bytes. STX standard 512-byte sectors are assembled into
+  a GEMDOS/FAT12 volume (listing + extract). `-u` still refused.
 - Apple **DOS 3.3 / ProDOS**: catalog listing and extract from raw 140K or 2IMG
   payload (VTOC T17/S0 vs ProDOS volume header in block 2)
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
@@ -61,7 +62,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.25`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.26`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` / `*.dsk` /
 `*.po`.
@@ -79,6 +80,8 @@ dumpfloppy game.trd
 dumpfloppy game.trd -x
 dumpfloppy disk.2mg
 dumpfloppy disk.dsk -x
+dumpfloppy game.stx
+dumpfloppy game.stx -x
 dumpfloppy --no-color --no-hex disk.ima -o report.txt
 dumpfloppy ./floppies -o ./reports/
 dumpfloppy disk.ima -u HELLO.TXT
