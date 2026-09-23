@@ -1,6 +1,9 @@
 /**
  * @file cbm.cpp
  * @brief D64/D71/D81 CBMFS parser (BAM/header, directory chain, file chains).
+ *
+ * D81 also requires BAM 40/1 (DOS plus ones-complement) so IBM 800K FAT
+ * with a coincidental `'D'` at 40/0 is not treated as 1581.
  */
 #include "dumpfloppy/cbm.hpp"
 
@@ -112,7 +115,36 @@ constexpr uint8_t k_d81_type_off = 25u;
     {
         return false;
     }
+    /* D81.TXT: byte 3 is $00. A lone 'D' in IBM 800K data is not a header. */
+    if (hdr[3] != 0u)
+    {
+        return false;
+    }
     return cbm_ts_valid(cbm_media::d81, hdr[0], hdr[1]);
+}
+
+/**
+ * 1581 BAM at 40/1: DOS version plus its ones-complement ($44/$BB).
+ * IBM 800K FAT can coincidentally hold 40/3/'D' at 40/0; this pair does not.
+ */
+[[nodiscard]] bool bam_looks_1581(std::span<const uint8_t> image, uint8_t dos) noexcept
+{
+    const std::size_t off = cbm_offset(cbm_media::d81, k_d81_header_track, 1u);
+    if (!sector_in_image(image, off))
+    {
+        return false;
+    }
+    const std::span<const uint8_t> bam =
+        image.subspan(off, k_d64_sector_bytes);
+    if (bam[2] != dos)
+    {
+        return false;
+    }
+    if (bam[3] != static_cast<uint8_t>(~dos))
+    {
+        return false;
+    }
+    return cbm_ts_valid(cbm_media::d81, bam[0], bam[1]);
 }
 
 void mark_present(cbm_disk& disk, cbm_media media)
@@ -227,6 +259,10 @@ cbm_disk parse_1581(std::span<const uint8_t> image)
     const std::span<const uint8_t> hdr =
         image.subspan(hdr_off, k_d64_sector_bytes);
     if (!header_looks_1581(hdr))
+    {
+        return disk;
+    }
+    if (!bam_looks_1581(image, hdr[2]))
     {
         return disk;
     }

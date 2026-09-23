@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** (see `git log -1`) · **version 0.16** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** (see `git log -1`) · **version 0.17** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -12,7 +12,7 @@ After reboot, clone or `rsync -a /mnt/dumpfloppy/ /tmp/dumpfloppy/` (or work in 
 
 Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers common floppy extensions. Fixtures live **locally** under `/mnt/dumpfloppy-fixtures/` and `/mnt/PC_games/` (zips).
 
-## Done in 0.13–0.16 (do not redo)
+## Done in 0.13–0.17 (do not redo)
 
 - FAT12 `-u` (atomic rename, reclaim-before-relocate, deleted occupancy / Star Control TACTICS)
 - HxC CHS from BPB/modal SPT; HLS vs that SPT; extra-head DAM skip
@@ -22,16 +22,16 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 - TRD Type needs sector-8 signature (160K IBM is not TRD)
 - G64 GCR-1541: decode tracks 1–35 to a D64 map, CBMFS listing + `-x`; `-u` refused
 - Schepers CBM format TXT notes in `docs/cbm/` (from RetroCodeMess; leave `.TXT` intact)
+- D81 vs IBM 800K: size stays 800K; CBMFS needs header 40/0 plus BAM 40/1 DOS/`~DOS`
 
-**Verify last green:** `make -s test` 163 cases / 1855 assertions (7 skipped fixtures); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
+**Verify last green:** `make -s test` 164 cases / 1862 assertions (7 skipped fixtures); `make -s verify` CBMC SUCCESS (FAT12 + GCR).
 
 ## Next (pick one slice)
 
-1. **Tighten D81 vs IBM 800K** — `geometry_from_size(819200)` is still IBM 800K; CBMFS is header-gated (`DOS 'D'` at T40 S0). Add an 800K FAT `analyse` test so a coincidental 1581-looking byte does not steal a FAT disk.
-2. **CBM/ADF `-u`** — refuse is current; in-place same-size PRG/ADF file replace is the useful first mutate.
-3. **Split the 509-class format TU** — `all_formats()` is cached; still one generated mega-include. Payload vs container vs filesystem registries.
-4. **Narrow `analyze.hpp`** — still includes FAT + CBM + Amiga + MFM. Forward-declare fs views.
-5. **Other platforms:** Apple WOZ/2MG, Atari ST/STX, Spectrum TRD (parser, not size sniff), Amiga IPF. G71 (GCR-1571) if a fixture appears.
+1. **CBM/ADF `-u`** — refuse is current; in-place same-size PRG/ADF file replace is the useful first mutate.
+2. **Split the 509-class format TU** — `all_formats()` is cached; still one generated mega-include. Payload vs container vs filesystem registries.
+3. **Narrow `analyze.hpp`** — still includes FAT + CBM + Amiga + MFM. Forward-declare fs views.
+4. **Other platforms:** Apple WOZ/2MG, Atari ST/STX, Spectrum TRD (parser, not size sniff), Amiga IPF. G71 (GCR-1571) if a fixture appears.
 
 ## Local fixtures (never GitHub)
 

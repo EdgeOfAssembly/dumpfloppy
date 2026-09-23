@@ -36,6 +36,19 @@ inline void d81_header_init(uint8_t* hdr, std::string_view name, std::string_vie
     hdr[28] = 0xA0;
 }
 
+/** @brief 1581 BAM sector: DOS version plus ones-complement (D81.TXT 40/1). */
+inline void d81_bam_init(uint8_t* bam, uint8_t next_t, uint8_t next_s, uint8_t dos,
+                         uint8_t id0, uint8_t id1)
+{
+    std::memset(bam, 0, dumpfloppy::k_d64_sector_bytes);
+    bam[0] = next_t;
+    bam[1] = next_s;
+    bam[2] = dos;
+    bam[3] = static_cast<uint8_t>(~dos);
+    bam[4] = id0;
+    bam[5] = id1;
+}
+
 /** @brief Distinctive 300-byte PRG for a D81 fixture. */
 inline std::vector<uint8_t> sample_d81_prg_bytes()
 {
@@ -60,6 +73,12 @@ inline std::vector<uint8_t> make_sample_d81()
     uint8_t* hdr = img.data() + dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81,
                                                        40, 0);
     d81_header_init(hdr, "TEST 1581", "81");
+    uint8_t* bam0 = img.data() + dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81,
+                                                       40, 1);
+    d81_bam_init(bam0, 40, 2, static_cast<uint8_t>('D'), hdr[22], hdr[23]);
+    uint8_t* bam1 = img.data() + dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81,
+                                                       40, 2);
+    d81_bam_init(bam1, 0, 0xFF, static_cast<uint8_t>('D'), hdr[22], hdr[23]);
 
     const std::vector<uint8_t> prg = sample_d81_prg_bytes();
     write_cbm_chain(img, dumpfloppy::cbm_media::d81, 1, 0, prg);

@@ -261,6 +261,11 @@ TEST_CASE("parse_d71/d81 reject wrong size and invalid header", "[cbm][d71][d81]
     hdr[2] = static_cast<uint8_t>('A');
     REQUIRE_FALSE(dumpfloppy::parse_d81(d81).present);
     REQUIRE_FALSE(dumpfloppy::parse_cbmfs(d81, dumpfloppy::cbm_media::d81).present);
+
+    auto d81_bam = dumpfloppy_test::make_sample_d81();
+    uint8_t* bam81 = d81_bam.data() + dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81, 40, 1);
+    bam81[3] = 0x00; /* not ~'D' */
+    REQUIRE_FALSE(dumpfloppy::parse_d81(d81_bam).present);
 }
 
 TEST_CASE("synthetic D71 BAM 18/0 PRG on track 36 round-trip", "[cbm][d71]")

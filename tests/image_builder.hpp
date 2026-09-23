@@ -501,6 +501,69 @@ inline std::vector<uint8_t> make_booter_sample()
     return img;
 }
 
+/**
+ * @brief 819200-byte FAT12 800K (80×2×10×512) with HELLO.TXT.
+ *
+ * Same length as a 1581 D81. Used to prove CBMFS needs the 40/1 BAM
+ * complement, not a coincidental `'D'` at 40/0.
+ */
+inline std::vector<uint8_t> make_fat12_800k()
+{
+    constexpr uint16_t total_sec = 1600;
+    constexpr uint16_t spf = 3;
+    constexpr uint8_t spc = 2;
+    constexpr uint16_t root_ent = 224;
+    constexpr uint16_t spt = 10;
+    constexpr uint16_t heads = 2;
+    constexpr uint8_t media = 0xF0;
+    std::vector<uint8_t> img(static_cast<size_t>(total_sec) * k_bps, 0);
+    uint8_t* b = img.data();
+    b[0] = 0xEB;
+    b[1] = 0x3C;
+    b[2] = 0x90;
+    std::memcpy(b + 3, "DUMPFLPY", 8);
+    poke_le16(b + 11, k_bps);
+    b[13] = spc;
+    poke_le16(b + 14, k_reserved);
+    b[16] = k_fats;
+    poke_le16(b + 17, root_ent);
+    poke_le16(b + 19, total_sec);
+    b[21] = media;
+    poke_le16(b + 22, spf);
+    poke_le16(b + 24, spt);
+    poke_le16(b + 26, heads);
+    b[0x26] = 0x29;
+    poke_le32(b + 0x27, 0x80000001u);
+    std::memcpy(b + 0x2B, "IBM800K    ", 11);
+    std::memcpy(b + 0x36, "FAT12   ", 8);
+    b[510] = 0x55;
+    b[511] = 0xAA;
+
+    uint8_t* fat0 = img.data() + static_cast<size_t>(k_reserved) * k_bps;
+    const size_t fat_len = static_cast<size_t>(spf) * k_bps;
+    fat12_entry_set(fat0, fat_len, 0, static_cast<uint16_t>(0xF00u | media));
+    fat12_entry_set(fat0, fat_len, 1, 0xFFF);
+    fat12_entry_set(fat0, fat_len, 2, 0xFFF);
+    std::memcpy(fat0 + fat_len, fat0, fat_len);
+
+    const size_t root_off =
+        static_cast<size_t>(k_reserved + k_fats * spf) * k_bps;
+    uint8_t* root = img.data() + root_off;
+    put_name11(root, "IBM800K    ");
+    root[11] = 0x08;
+    uint8_t* hello = root + 32;
+    put_name11(hello, "HELLO   TXT");
+    hello[11] = 0x20;
+    poke_le16(hello + 26, 2);
+    poke_le32(hello + 28, 14);
+
+    const size_t root_secs = (static_cast<size_t>(root_ent) * 32u + (k_bps - 1u)) / k_bps;
+    const size_t data =
+        static_cast<size_t>(k_reserved + k_fats * spf) * k_bps + root_secs * k_bps;
+    std::memcpy(img.data() + data, "Hello, floppy\n", 14);
+    return img;
+}
+
 } /* namespace dumpfloppy_test */
 
 #endif /* DUMPFLOPPY_TEST_IMAGE_BUILDER_HPP */

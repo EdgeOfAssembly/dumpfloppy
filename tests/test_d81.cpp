@@ -6,9 +6,11 @@
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/extract.hpp"
+#include "dumpfloppy/geometry.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/update.hpp"
+#include "image_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -127,4 +129,37 @@ TEST_CASE("load_image .d81 is container d81_c64", "[d81][image]")
     REQUIRE(a.cbm.media == dumpfloppy::cbm_media::d81);
     REQUIRE(a.cbm.disk_name == "TEST 1581");
     REQUIRE(a.image.size_geometry.media_name.find("1581") != std::string::npos);
+}
+
+TEST_CASE("IBM 800K FAT is not stolen by a coincidental 1581 header byte",
+          "[d81][fat][analyse]")
+{
+    auto bytes = dumpfloppy_test::make_fat12_800k();
+    REQUIRE(bytes.size() == dumpfloppy::k_d81_bytes);
+    const std::size_t hdr_off =
+        dumpfloppy::cbm_offset(dumpfloppy::cbm_media::d81, 40, 0);
+    bytes[hdr_off] = 40;
+    bytes[hdr_off + 1u] = 3;
+    bytes[hdr_off + 2u] = static_cast<uint8_t>('D');
+    bytes[hdr_off + 3u] = 0;
+
+    dumpfloppy::floppy_image img{};
+    img.bytes = std::move(bytes);
+    img.path = "disk.img";
+    img.container = dumpfloppy::container_kind::img_raw;
+    img.size_geometry = dumpfloppy::geometry_from_size(img.bytes.size());
+    const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(img));
+    REQUIRE_FALSE(a.cbm.present);
+    REQUIRE(a.bpb.looks_valid);
+    REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
+    REQUIRE(a.image.size_geometry.media_name.find("800K") != std::string::npos);
+    bool saw_hello = false;
+    for (const dumpfloppy::dir_entry& e : a.entries)
+    {
+        if (e.name_83 == "HELLO.TXT")
+        {
+            saw_hello = true;
+        }
+    }
+    REQUIRE(saw_hello);
 }

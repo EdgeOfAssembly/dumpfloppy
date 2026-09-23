@@ -488,11 +488,14 @@ cbm_sector_bytes(std::span<const uint8_t> raw, const cbm_disk& disk) noexcept
 [[nodiscard]] cbm_disk parse_d71(std::span<const uint8_t> image);
 
 /**
- * @brief Parse an 80×40 D81 and its CBMFS (header at 40/0).
+ * @brief Parse an 80×40 D81 and its CBMFS (header at 40/0, BAM at 40/1).
+ *
+ * Header DOS @c 'D' or 0, byte 3 @c $00, and BAM 40/1 DOS plus ones-complement
+ * ($44/$BB). Size 819200 also matches IBM 800K; the BAM pair keeps FAT disks.
  *
  * @param[in] image Image bytes; size must be 819200 or 822400.
  *
- * @return @a present false when the size is not a D81 or the header is invalid.
+ * @return @a present false when the size is not a D81 or the header/BAM is invalid.
  */
 [[nodiscard]] cbm_disk parse_d81(std::span<const uint8_t> image);
 
