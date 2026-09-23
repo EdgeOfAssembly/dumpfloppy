@@ -3,7 +3,8 @@
  * @brief 1541 D64 geometry and CBMFS (BAM / directory / file chains).
  *
  * 35-track Commodore 1541 images: 256-byte sectors, zone SPT 21/19/18/17.
- * BAM lives at track 18 sector 0. Not wired into @c analyse this wave.
+ * BAM lives at track 18 sector 0. @ref analyse stores the result in
+ * @c analysis::cbm and skips FAT when @a present is true.
  */
 #ifndef DUMPFLOPPY_CBM_HPP
 #define DUMPFLOPPY_CBM_HPP
@@ -165,6 +166,23 @@ struct cbm_disk
  * @param[in] kind File kind from the directory type nibble.
  */
 [[nodiscard]] const char* cbm_file_kind_name(cbm_file_kind kind) noexcept;
+
+/**
+ * @brief Host filename extension for @p kind (`.prg` / `.seq` / `.usr` /
+ *        `.rel` / `.del`; `.cbm` for @ref cbm_file_kind::other).
+ *
+ * @param[in] kind File kind from the directory type nibble.
+ */
+[[nodiscard]] const char* cbm_file_kind_ext(cbm_file_kind kind) noexcept;
+
+/**
+ * @brief PETSCII listing name plus type extension for extract.
+ *
+ * Path separators in @a file.name become `_`. An empty name is `unnamed`.
+ *
+ * @param[in] file Directory slot.
+ */
+[[nodiscard]] std::string cbm_host_filename(const cbm_file& file);
 
 /**
  * @brief Parse CBMFS using 1541 T/S geometry (BAM at 18/0).

@@ -5,6 +5,7 @@
 #include "dumpfloppy/geometry.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <string>
 
 TEST_CASE("720K and 1.44M sizes map to CHS", "[geometry]")
 {
@@ -29,8 +30,23 @@ TEST_CASE("container_from_path treats .ima as WinImage", "[geometry]")
             dumpfloppy::container_kind::ima_winimage);
     REQUIRE(dumpfloppy::container_from_path("foo.img") ==
             dumpfloppy::container_kind::img_raw);
+    REQUIRE(dumpfloppy::container_from_path("foo.D64") ==
+            dumpfloppy::container_kind::d64_c64);
     REQUIRE(dumpfloppy::container_from_path("foo.bin") ==
             dumpfloppy::container_kind::unknown_raw);
+}
+
+TEST_CASE("D64 sizes are 1541, not 160K IBM trailer", "[geometry][d64]")
+{
+    const auto d64 = dumpfloppy::geometry_from_size(174848);
+    REQUIRE(d64.cylinders == 0);
+    REQUIRE(d64.bytes_per_sector == 256);
+    REQUIRE(d64.media_name.find("1541") != std::string::npos);
+    REQUIRE(d64.media_name.find("160K") == std::string::npos);
+
+    const auto errmap = dumpfloppy::geometry_from_size(175531);
+    REQUIRE(errmap.media_name.find("error map") != std::string::npos);
+    REQUIRE(errmap.bytes_per_sector == 256);
 }
 
 TEST_CASE("media descriptor names", "[geometry]")

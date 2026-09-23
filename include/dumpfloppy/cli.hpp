@@ -43,7 +43,7 @@ struct cli_options
 
 /**
  * @brief Expand directory operands to `*.img` / `*.ima` / `*.mfm` / `*.86f`
- *        (non-recursive).
+ *        / `*.d64` (non-recursive).
  *
  * Explicit file operands are kept as-is. Hidden names are skipped in dirs.
  *

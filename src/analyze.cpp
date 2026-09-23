@@ -57,6 +57,22 @@ analysis analyse(floppy_image image)
         bytes.subspan(0, std::min<size_t>(512u, bytes.size()));
 
     a.catalog = catalog_lookup(a.image.xxh64);
+    a.cbm = parse_d64(bytes);
+    if (a.cbm.present)
+    {
+        /* C64 D64 is not an IBM BPB/FAT volume and not HxC flux. */
+        a.image.size_geometry.cylinders = 0;
+        a.image.size_geometry.heads = 0;
+        a.image.size_geometry.sectors_per_track = 0;
+        a.image.size_geometry.bytes_per_sector = k_d64_sector_bytes;
+        a.image.size_geometry.expected_bytes = k_d64_35_bytes;
+        a.image.size_geometry.media_name =
+            (bytes.size() == k_d64_35_error_bytes)
+                ? "Commodore 1541 35-track D64 + error map"
+                : "Commodore 1541 35-track D64";
+        return a;
+    }
+
     a.flux = decode_hxc_mfm(bytes);
     if (!a.flux.present)
     {

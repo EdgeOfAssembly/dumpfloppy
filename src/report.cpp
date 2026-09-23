@@ -5,6 +5,7 @@
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/bpb.hpp"
+#include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/format.h"
 #include "dumpfloppy/format_registry.hpp"
@@ -63,8 +64,10 @@ const char* container_name(container_kind k)
             return "HxC MFM bitstream (.mfm)";
         case container_kind::box86f:
             return "86Box 86F surface (.86f)";
+        case container_kind::d64_c64:
+            return "D64 (Commodore 1541 CBMFS)";
         default:
-            return "raw (not .img/.ima/.mfm/.86f)";
+            return "raw (not .img/.ima/.mfm/.86f/.d64)";
     }
 }
 
@@ -191,6 +194,103 @@ std::string entry_line(const dir_entry& e)
     return os.str();
 }
 
+constexpr size_t k_w_cbm_name = 16;
+constexpr size_t k_w_cbm_type = 4;
+constexpr size_t k_w_cbm_ts = 7;
+
+std::string cbm_directory_header()
+{
+    std::ostringstream os;
+    os << "  " << field(" ", k_w_mark) << field("Name", k_w_cbm_name)
+       << field("Type", k_w_cbm_type) << field("Size", k_w_size)
+       << field("T/S", k_w_cbm_ts) << field("XXH64 Checksum", k_w_sum);
+    return os.str();
+}
+
+std::string cbm_entry_line(const cbm_file& e, uint32_t size, std::string_view sum)
+{
+    const char mark = e.deleted ? 'D' : ' ';
+    std::ostringstream ts;
+    ts << static_cast<unsigned>(e.first_track) << '/'
+       << static_cast<unsigned>(e.first_sector);
+    std::ostringstream os;
+    os << "  " << field(std::string_view(&mark, 1), k_w_mark)
+       << field(e.name, k_w_cbm_name) << field(cbm_file_kind_name(e.kind), k_w_cbm_type)
+       << field(std::to_string(size), k_w_size) << field(ts.str(), k_w_cbm_ts)
+       << field(size == 0u ? std::string_view{} : sum, k_w_sum);
+    return os.str();
+}
+
+void write_cbm_sections(const analysis& a, std::ostream& out, const report_options& opt)
+{
+    const bool color = opt.color;
+    section(out, color, "CBM VOLUME");
+    kv(out, "Disk name", a.cbm.disk_name.empty() ? "(none)" : a.cbm.disk_name);
+    kv(out, "Disk ID", a.cbm.disk_id.empty() ? "(none)" : a.cbm.disk_id);
+    {
+        std::ostringstream dosv;
+        if (a.cbm.dos_version >= 0x20u && a.cbm.dos_version <= 0x7Eu)
+        {
+            dosv << static_cast<char>(a.cbm.dos_version);
+        }
+        else
+        {
+            dosv << "0x" << std::hex << std::uppercase
+                 << static_cast<unsigned>(a.cbm.dos_version);
+        }
+        kv(out, "DOS version", dosv.str());
+    }
+    kv(out, "DOS type", a.cbm.dos_type.empty() ? "(none)" : a.cbm.dos_type);
+    {
+        std::ostringstream ts;
+        ts << static_cast<unsigned>(a.cbm.dir_track) << '/'
+           << static_cast<unsigned>(a.cbm.dir_sector);
+        kv(out, "Directory T/S", ts.str());
+    }
+    out << '\n';
+
+    section(out, color, "DIRECTORY");
+    put_style(out, color, TUI_BOLD);
+    put_style(out, color, TUI_WHITE);
+    out << cbm_directory_header();
+    put_style(out, color, TUI_RESET);
+    out << '\n';
+    size_t shown = 0;
+    size_t deleted_n = 0;
+    for (const cbm_file& e : a.cbm.entries)
+    {
+        if (e.deleted)
+        {
+            ++deleted_n;
+            if (!opt.show_deleted)
+            {
+                continue;
+            }
+        }
+        const std::vector<uint8_t> payload = read_cbm_file(a.image.bytes, e);
+        const uint32_t size =
+            payload.empty() ? static_cast<uint32_t>(e.size_sectors) * 254u
+                            : static_cast<uint32_t>(payload.size());
+        const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
+        const std::string line = cbm_entry_line(e, size, sum);
+        if (e.deleted)
+        {
+            emit_deleted_line(out, color, line);
+        }
+        else
+        {
+            out << line << '\n';
+        }
+        ++shown;
+    }
+    if (a.cbm.entries.empty())
+    {
+        out << "  (no CBMFS directory entries)\n";
+    }
+    out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
+    out << '\n';
+}
+
 } /* namespace */
 
 void write_report(const analysis& a, std::ostream& out, const report_options& opt)
@@ -211,8 +311,17 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
     kv(out, "SHA-256", a.image.sha256);
     kv(out, "XXH64", a.image.xxh64);
-    kv(out, "Format", identify_type(a.image.bytes, format_kind::disk_image));
+    {
+        const std::string fmt =
+            a.cbm.present ? std::string("C64 D64 / CBMFS")
+                          : identify_type(a.image.bytes, format_kind::disk_image);
+        kv(out, "Format", fmt);
+    }
     kv(out, "Container", container_name(a.image.container));
+    if (a.cbm.present)
+    {
+        kv(out, "Filesystem", "CBMFS (Commodore 1541; not FAT)");
+    }
     if (a.image.size_geometry.cylinders != 0u)
     {
         std::ostringstream os;
@@ -309,6 +418,12 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         }
     }
 
+    if (a.cbm.present)
+    {
+        write_cbm_sections(a, out, opt);
+    }
+    else
+    {
     section(out, color, "BOOT");
     kv(out, "Jump", describe_jump(a.bpb.jump));
     kv(out, "OEM", a.bpb.oem.empty() ? "(none)" : a.bpb.oem);
@@ -492,6 +607,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
     out << '\n';
     }
+    } /* !cbm.present */
 
     if (!a.secrets.empty())
     {
@@ -503,7 +619,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         out << '\n';
     }
 
-    if (opt.hex_boot)
+    if (opt.hex_boot && !a.cbm.present)
     {
         section(out, color, "BOOT SECTOR HEX");
         std::span<const uint8_t> boot =

@@ -7,6 +7,7 @@
 
 #include "dumpfloppy/boot.hpp"
 #include "dumpfloppy/catalog.hpp"
+#include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/fat.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/image.hpp"
@@ -25,6 +26,7 @@ namespace dumpfloppy
  *
  * Logical FAT bytes are @ref volume_bytes / @ref make_sector_store
  * (assembled IBM CHS when present, else raw @a image.bytes).
+ * When @a cbm.present, the image is a 1541 D64: FAT is not walked.
  */
 struct analysis
 {
@@ -43,6 +45,7 @@ struct analysis
     bool truncated = false;
     flux_disk flux{};
     catalog_hit catalog{};
+    cbm_disk cbm{}; /**< 1541 CBMFS; @a present is false on PC FAT images. */
 };
 
 /**
@@ -81,6 +84,10 @@ struct analysis
 
 /**
  * @brief Analyse a loaded image.
+ *
+ * A 35-track D64 with a valid CBMFS BAM is parsed as Commodore; FAT/BPB
+ * and HxC flux decode are skipped so C64 bytes are not treated as DOS.
+ * Catalog lookup still runs.
  *
  * @param[in] image Raw image from @ref load_image.
  */

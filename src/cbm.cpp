@@ -199,6 +199,44 @@ const char* cbm_file_kind_name(cbm_file_kind kind) noexcept
     }
 }
 
+const char* cbm_file_kind_ext(cbm_file_kind kind) noexcept
+{
+    switch (kind)
+    {
+    case cbm_file_kind::seq:
+        return ".seq";
+    case cbm_file_kind::usr:
+        return ".usr";
+    case cbm_file_kind::rel:
+        return ".rel";
+    case cbm_file_kind::del:
+        return ".del";
+    case cbm_file_kind::other:
+        return ".cbm";
+    case cbm_file_kind::prg:
+    default:
+        return ".prg";
+    }
+}
+
+std::string cbm_host_filename(const cbm_file& file)
+{
+    std::string name = file.name;
+    for (char& c : name)
+    {
+        if (c == '/' || c == '\\')
+        {
+            c = '_';
+        }
+    }
+    if (name.empty())
+    {
+        name = "unnamed";
+    }
+    name += cbm_file_kind_ext(file.kind);
+    return name;
+}
+
 cbm_disk parse_cbmfs(std::span<const uint8_t> image)
 {
     cbm_disk disk{};

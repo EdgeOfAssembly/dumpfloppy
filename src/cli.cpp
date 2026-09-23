@@ -19,7 +19,8 @@ namespace
 bool is_floppy_ext(const std::filesystem::path& p)
 {
     const std::string ext = ascii_lower(p.extension().string());
-    return ext == ".img" || ext == ".ima" || ext == ".mfm" || ext == ".86f";
+    return ext == ".img" || ext == ".ima" || ext == ".mfm" || ext == ".86f" ||
+           ext == ".d64";
 }
 
 bool looks_like_image_operand(const std::string& tok)
@@ -49,13 +50,14 @@ std::string usage_text()
     std::ostringstream os;
     os << "Usage: " << k_program << " [options] [images…]\n"
        << "\n"
-       << "  images    Floppy images (.img / .ima / .mfm / .86f) and/or directories.\n"
+       << "  images    Floppy images (.img / .ima / .mfm / .86f / .d64) and/or directories.\n"
        << "            Directories expand to those extensions (batch; no --batch).\n"
        << "            Options and inputs may be interleaved.\n"
        << "\n"
        << "Dump BIOS boot sector, FAT12/16 BPB, volume serial and label,\n"
-       << "directory (including deleted entries), HxC/86F flux metadata,\n"
-       << "copy-protection schemes, and a whole-image XXH64 catalog lookup.\n"
+       << "directory (including deleted entries), Commodore 1541 D64 CBMFS,\n"
+       << "HxC/86F flux metadata, copy-protection schemes, and a whole-image\n"
+       << "XXH64 catalog lookup.\n"
        << "\n"
        << "Options:\n"
        << "  -h, --help           Show this help and exit\n"
@@ -73,6 +75,7 @@ std::string usage_text()
        << "                       grow/shrink allocates or frees clusters and relocates\n"
        << "                       later live files when sequential growth needs them.\n"
        << "                       Accepts -u FILE, -uFILE, and --update=FILE.\n"
+       << "                       D64/CBMFS images cannot be updated in this version.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -241,7 +244,7 @@ expand_inputs(const std::vector<std::filesystem::path>& inputs, std::string& err
     }
     if (out.empty() && !inputs.empty())
     {
-        err = "no .img/.ima/.mfm/.86f files found in the given directories";
+        err = "no .img/.ima/.mfm/.86f/.d64 files found in the given directories";
     }
     return out;
 }

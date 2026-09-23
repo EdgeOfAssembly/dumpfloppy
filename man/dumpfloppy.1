@@ -1,6 +1,6 @@
 .TH DUMPFLOPPY 1 "2026-09-23" "dumpfloppy" "User Commands"
 .SH NAME
-dumpfloppy \- expose secrets in FAT12 floppy images (.img / .ima)
+dumpfloppy \- expose secrets in FAT12 and Commodore D64 floppy images
 .SH SYNOPSIS
 .B dumpfloppy
 [\fIOPTIONS\fR]
@@ -13,20 +13,27 @@ or WinImage
 .IR .ima ),
 an HxC
 .I .mfm
-bitstream, or an 86Box
+bitstream, an 86Box
 .I .86f
-flux image
+flux image, or a Commodore 1541
+.I .d64
 and prints everything it can prove from the bytes: BIOS boot signature,
 jump, OEM name, BIOS Parameter Block, FAT type, both FAT copies, volume
 serial and volume label, the full directory (including deleted 8.3
 slots), a Type label (DATA until a format matches), XXH64 of each file,
 cluster chains, orphans,
 and a hex dump of sector 0.
+A
+.I .d64
+with a valid CBMFS BAM is listed as Commodore (disk name, ID, DOS type,
+PRG/SEQ directory) instead of inventing a FAT BPB from C64 bytes.
 .PP
 .B \-x
 /
 .B \-\-extract
 writes recovered files (deleted included) into the current directory.
+On a D64 the host names are the PETSCII listing name plus
+.BR .prg / .seq / .usr / .rel / .del .
 .PP
 .I .img
 and
@@ -60,8 +67,9 @@ A directory operand expands to
 .I *.img ,
 .I *.ima ,
 .I *.mfm ,
+.I *.86f ,
 and
-.I *.86f
+.I *.d64
 in that directory (non-recursive).
 .SH OPTIONS
 .TP
@@ -70,7 +78,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.13
+.B dumpfloppy 0.14
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -106,9 +114,10 @@ This switch is listing-only:
 still writes deleted payloads.
 .TP
 .BR \-x ", " \-\-extract " [" \fIGLOB\fR "]"
-Extract files into the current directory by walking FAT cluster chains.
+Extract files into the current directory by walking FAT cluster chains
+or CBMFS file chains.
 No listing is printed (errors stay on stderr).
-Deleted 8.3 names are included.
+Deleted 8.3 names and scratched CBM files are included.
 With no
 .I GLOB
 every payload file is written.
@@ -132,6 +141,8 @@ A following
 .I .mfm
 /
 .I .86f
+/
+.I .d64
 path is the floppy image, not a glob.
 .TP
 .BI \-u ", " \-\-update " FILE"
@@ -157,6 +168,8 @@ images patch changed 512-byte DAM payloads (extra HLS IDs are left
 untouched).
 .I .86f
 flux images are refused.
+.I .d64
+/ CBMFS images cannot be updated in this version.
 Glued
 .B \-uFILE
 is accepted (same as
@@ -179,6 +192,14 @@ Dump a 720K WinImage floppy:
 Extract every file, including deleted names, into the current directory:
 .RS
 .B dumpfloppy disk1.ima \-x
+.RE
+.PP
+List and extract a Commodore 1541 D64:
+.RS
+.B dumpfloppy game.d64
+.RE
+.RS
+.B dumpfloppy game.d64 \-x
 .RE
 .PP
 Extract only

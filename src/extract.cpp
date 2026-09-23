@@ -4,6 +4,7 @@
  */
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/analyze.hpp"
+#include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/volume.hpp"
@@ -119,11 +120,11 @@ bool dest_taken(const std::filesystem::path& p,
 }
 
 /**
- * @brief Host path for @p e; on collision, 8.3 (`?` if deleted) or
+ * @brief Host path for @p preferred; on collision, @p fallback_name or
  *        `stem.deleted.ext` so a prior payload is not trunc-overwritten.
  */
 std::filesystem::path choose_extract_dest(const std::filesystem::path& preferred,
-                                          const dir_entry& e,
+                                          std::string_view fallback_name,
                                           const std::unordered_set<std::string>& used,
                                           std::ostream& err)
 {
@@ -137,15 +138,16 @@ std::filesystem::path choose_extract_dest(const std::filesystem::path& preferred
         return parent.empty() ? std::filesystem::path(name) : parent / name;
     };
 
-    if (!e.name_83.empty())
+    if (!fallback_name.empty())
     {
-        const std::filesystem::path as_83 = in_parent(e.name_83);
-        if (path_is_safe(std::filesystem::path(e.name_83)) &&
-            dest_key(as_83) != dest_key(preferred) && !dest_taken(as_83, used))
+        const std::string fb(fallback_name);
+        const std::filesystem::path as_fb = in_parent(fb);
+        if (path_is_safe(std::filesystem::path(fb)) &&
+            dest_key(as_fb) != dest_key(preferred) && !dest_taken(as_fb, used))
         {
             err << "dumpfloppy: extract collision: '" << preferred.string()
-                << "' already exists; writing '" << as_83.string() << "'\n";
-            return as_83;
+                << "' already exists; writing '" << as_fb.string() << "'\n";
+            return as_fb;
         }
     }
 
@@ -171,6 +173,100 @@ std::filesystem::path choose_extract_dest(const std::filesystem::path& preferred
         }
     }
     return {};
+}
+
+bool cbm_extract_matches(const cbm_file& file, const extract_options& opt)
+{
+    if (opt.patterns.empty())
+    {
+        return true;
+    }
+    const std::string host = cbm_host_filename(file);
+    const char* kind = cbm_file_kind_name(file.kind);
+    for (const std::string& pat : opt.patterns)
+    {
+        if (glob_match(pat, file.name) || glob_match(pat, host) ||
+            glob_match(pat, kind))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostream& err)
+{
+    std::error_code ec{};
+    std::filesystem::create_directories(opt.dest_dir, ec);
+    if (ec)
+    {
+        err << "dumpfloppy: cannot create '" << opt.dest_dir.string()
+            << "': " << ec.message() << '\n';
+        return -1;
+    }
+
+    int written = 0;
+    int matched = 0;
+    std::unordered_set<std::string> used_dests;
+    for (const cbm_file& file : a.cbm.entries)
+    {
+        if (!cbm_extract_matches(file, opt))
+        {
+            continue;
+        }
+        ++matched;
+        const std::string host = cbm_host_filename(file);
+        const std::filesystem::path rel(host);
+        if (!path_is_safe(rel))
+        {
+            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
+            continue;
+        }
+        const std::filesystem::path preferred = opt.dest_dir / rel;
+        const std::filesystem::path dest =
+            choose_extract_dest(preferred, host, used_dests, err);
+        if (dest.empty())
+        {
+            err << "dumpfloppy: extract collision: no unique name for '"
+                << preferred.string() << "'\n";
+            return -1;
+        }
+        if (dest.has_parent_path())
+        {
+            std::filesystem::create_directories(dest.parent_path(), ec);
+            if (ec)
+            {
+                err << "dumpfloppy: cannot create '" << dest.parent_path().string()
+                    << "': " << ec.message() << '\n';
+                return -1;
+            }
+        }
+        const std::vector<uint8_t> bytes = read_cbm_file(a.image.bytes, file);
+        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
+            return -1;
+        }
+        if (!bytes.empty())
+        {
+            out.write(reinterpret_cast<const char*>(bytes.data()),
+                      static_cast<std::streamsize>(bytes.size()));
+        }
+        if (!out)
+        {
+            err << "dumpfloppy: short write '" << dest.string() << "'\n";
+            return -1;
+        }
+        used_dests.insert(dest_key(dest));
+        ++written;
+    }
+    if (!opt.patterns.empty() && matched == 0)
+    {
+        err << "dumpfloppy: no files matched extract pattern\n";
+        return -1;
+    }
+    return written;
 }
 
 } /* namespace */
@@ -201,6 +297,10 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     if (!opt.enabled)
     {
         return 0;
+    }
+    if (a.cbm.present)
+    {
+        return extract_cbm_files(a, opt, err);
     }
     if (a.flux.format_name == "86BOX 86F")
     {
@@ -241,7 +341,7 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             continue;
         }
         const std::filesystem::path dest =
-            choose_extract_dest(preferred, e, used_dests, err);
+            choose_extract_dest(preferred, e.name_83, used_dests, err);
         if (dest.empty())
         {
             err << "dumpfloppy: extract collision: no unique name for '"

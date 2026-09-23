@@ -45,6 +45,22 @@ geometry geometry_from_size(uint64_t byte_count)
 {
     geometry g{};
     g.bytes_per_sector = 512;
+    /* 1541 D64 uses zone SPT (21/19/18/17), not a single IBM CHS. Do not
+       classify 174848 as 160K+trailer. */
+    if (byte_count == 174848u)
+    {
+        g.bytes_per_sector = 256;
+        g.expected_bytes = 174848u;
+        g.media_name = "Commodore 1541 35-track D64";
+        return g;
+    }
+    if (byte_count == 175531u)
+    {
+        g.bytes_per_sector = 256;
+        g.expected_bytes = 174848u;
+        g.media_name = "Commodore 1541 35-track D64 + error map";
+        return g;
+    }
     for (const size_row& row : k_sizes)
     {
         if (row.bytes == byte_count)
@@ -133,6 +149,10 @@ container_kind container_from_path(const std::string& path)
     if (lower.size() >= 4 && lower.ends_with(".86f"))
     {
         return container_kind::box86f;
+    }
+    if (lower.size() >= 4 && lower.ends_with(".d64"))
+    {
+        return container_kind::d64_c64;
     }
     return container_kind::unknown_raw;
 }
