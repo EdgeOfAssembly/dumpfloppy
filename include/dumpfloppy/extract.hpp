@@ -37,7 +37,8 @@ struct extract_options
  * @brief Write matching files into @p opt.dest_dir.
  *
  * CBMFS D64/D71/D81/G64 images extract PETSCII names plus `.prg`/`.seq`/`.usr`/
- * `.rel`/`.del` (deleted slots included). ADF images extract OFS/FFS files
+ * `.rel`/`.del` (deleted slots included). FAT leftover free/bad clusters
+ * extract as `unused_cNNNN.{c,map,txt,bin}`. ADF images extract OFS/FFS files
  * (directories skipped) using @ref amiga_host_filename (`/` flattened to
  * `_`). TRD images extract TR-DOS files as `NAME.C` (deleted `?AME.C`).
  * Apple DOS 3.3 / ProDOS (raw or 2IMG) extract catalog names. STX images

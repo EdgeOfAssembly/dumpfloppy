@@ -20,6 +20,7 @@
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/trd_view.hpp"
 #include "dumpfloppy/types.hpp"
+#include "dumpfloppy/unused_view.hpp"
 #include "dumpfloppy/volume.hpp"
 
 #include <span>
@@ -48,6 +49,7 @@ struct analysis
     volume_info volume{};
     std::vector<dir_entry> entries{};
     std::vector<uint16_t> orphan_clusters{};
+    std::vector<unused_run> unused{}; /**< FAT-free/bad clusters with leftover bytes. */
     std::vector<std::string> secrets{};
     uint64_t volume_bytes = 0;
     uint64_t trailing_bytes = 0;

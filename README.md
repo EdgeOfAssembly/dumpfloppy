@@ -20,6 +20,7 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 - **Volume serial** (`XXXX-XXXX` from DOS 4+ EBPB 0x28/0x29)
 - **Volume label** from EBPB *and* the root directory (they can differ)
 - FAT copies, free/bad/orphan clusters
+- Leftover data in FAT-free/bad clusters recovered as `unused_cNNNN.{c,map,txt,bin}`
 - Directory tree including **deleted** 8.3 names (`0xE5` → `?`)
 - Commodore **D64 / D71 / D81 / G64 / G71 CBMFS**: disk name, ID, DOS type, PRG/SEQ/…
   listing (G64 is GCR-decoded to a 35-track D64 map; G71 to a 70-track D71 map;
@@ -68,7 +69,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.30`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.31`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
 `*.dsk` / `*.po`.
@@ -103,6 +104,8 @@ dumpfloppy game.d64 -u HELLO.prg
 dumpfloppy work.adf -u README
 ```
 
+`-x` on FAT also writes leftover unused-cluster runs as `unused_cNNNN.c` /
+`.map` / `.txt` / `.bin` (deleted 8.3 names stay `?NAME.EXT`).
 `-x` on D64/D71/D81/G64/G71 writes PETSCII names plus `.prg` / `.seq` / `.usr` /
 `.rel` / `.del` (deleted files included). `-x` on ADF writes OFS/FFS files
 (directories skipped; `/` in Amiga paths becomes `_`). `-x` on TRD writes
@@ -114,6 +117,7 @@ replace; G64/G71 GCR, REL, and TRD are refused.
 | ANSI colour on | `--no-color` |
 | Boot hex dump on | `--no-hex` |
 | Deleted entries shown in the listing | `--no-deleted` (listing only; `-x` still extracts deleted) |
+| Unused leftover FAT clusters listed | `--no-unused` (listing only; `-x` still extracts unused) |
 | Extract files | `-x` / `--extract` (optional glob) |
 | Update a named file | `-u` / `--update FILE` (repeatable; silent; glued `-uFILE` ok) |
 

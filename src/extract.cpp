@@ -670,6 +670,59 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
         used_dests.insert(dest_key(dest));
         ++written;
     }
+    for (const unused_run& run : a.unused)
+    {
+        bool want = opt.patterns.empty();
+        if (!want)
+        {
+            for (const std::string& pat : opt.patterns)
+            {
+                if (glob_match(pat, run.host_name) || glob_match(pat, run.guess))
+                {
+                    want = true;
+                    break;
+                }
+            }
+        }
+        if (!want)
+        {
+            continue;
+        }
+        ++matched;
+        const std::filesystem::path rel(run.host_name);
+        if (!path_is_safe(rel))
+        {
+            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
+            continue;
+        }
+        const std::filesystem::path preferred = opt.dest_dir / rel;
+        const std::filesystem::path dest =
+            choose_extract_dest(preferred, run.host_name, used_dests, err);
+        if (dest.empty())
+        {
+            err << "dumpfloppy: extract collision: no unique name for '"
+                << preferred.string() << "'\n";
+            return -1;
+        }
+        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
+            return -1;
+        }
+        if (!run.payload.empty())
+        {
+            out.write(reinterpret_cast<const char*>(run.payload.data()),
+                      static_cast<std::streamsize>(run.payload.size()));
+        }
+        if (!out)
+        {
+            err << "dumpfloppy: short write '" << dest.string() << "'\n";
+            return -1;
+        }
+        used_dests.insert(dest_key(dest));
+        ++written;
+    }
     if (!opt.patterns.empty() && matched == 0)
     {
         err << "dumpfloppy: no files matched extract pattern\n";

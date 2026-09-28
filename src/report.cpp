@@ -1030,6 +1030,41 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
     } /* !cbm.present && !amiga.present && !trd.present */
 
+    if (opt.show_unused && !a.unused.empty())
+    {
+        section(out, color, "UNUSED");
+        kv(out, "Runs", std::to_string(a.unused.size()));
+        uint64_t leftover = 0;
+        for (const unused_run& r : a.unused)
+        {
+            leftover += r.payload.size();
+        }
+        kv(out, "Leftover bytes", std::to_string(leftover));
+        constexpr size_t k_show = 32u;
+        const size_t nshow = std::min(k_show, a.unused.size());
+        for (size_t i = 0; i < nshow; ++i)
+        {
+            const unused_run& r = a.unused[i];
+            const unsigned nclus = static_cast<unsigned>(r.last_cluster) -
+                                   static_cast<unsigned>(r.first_cluster) + 1u;
+            const char* kname =
+                (r.kind == unused_kind::fat_bad) ? "bad" : "free";
+            out << "  " << r.host_name << "  c" << r.first_cluster << "-c"
+                << r.last_cluster << "  " << nclus << " clus  " << r.payload.size()
+                << "  " << kname << "  " << r.guess;
+            if (!r.preview.empty())
+            {
+                out << "  \"" << r.preview << '"';
+            }
+            out << '\n';
+        }
+        if (a.unused.size() > nshow)
+        {
+            out << "  …\n";
+        }
+        out << '\n';
+    }
+
     if (!a.secrets.empty())
     {
         section(out, color, "SECRETS");

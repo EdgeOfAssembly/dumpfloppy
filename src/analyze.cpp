@@ -17,11 +17,13 @@
 #include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/foreign.hpp"
 #include "dumpfloppy/trd.hpp"
+#include "dumpfloppy/unused.hpp"
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/volume.hpp"
 
 #include <algorithm>
 #include <span>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -450,6 +452,27 @@ analysis analyse(floppy_image image)
     if (!a.orphan_clusters.empty())
     {
         a.secrets.emplace_back("orphan clusters allocated in FAT but not in any directory chain");
+    }
+    if (a.bpb.looks_valid && !flux_without_chs &&
+        (a.kind == fat_kind::fat12 || a.kind == fat_kind::fat16))
+    {
+        a.unused = scan_unused_clusters(volume, a.bpb, a.kind);
+        if (!a.unused.empty())
+        {
+            uint64_t leftover = 0;
+            uint32_t clusters = 0;
+            for (const unused_run& r : a.unused)
+            {
+                leftover += r.payload.size();
+                clusters += static_cast<uint32_t>(r.last_cluster) -
+                            static_cast<uint32_t>(r.first_cluster) + 1u;
+            }
+            a.secrets.emplace_back(
+                std::to_string(a.unused.size()) + " unused FAT run(s), " +
+                std::to_string(clusters) + " cluster(s), " +
+                std::to_string(leftover) +
+                " byte(s) of leftover data (not in any directory chain)");
+        }
     }
     for (const dir_entry& e : a.entries)
     {

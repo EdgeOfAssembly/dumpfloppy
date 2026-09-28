@@ -564,6 +564,65 @@ inline std::vector<uint8_t> make_fat12_800k()
     return img;
 }
 
+/**
+ * @brief Live HELLO.TXT plus leftover free/bad clusters (generic unused recover).
+ *
+ * Clusters 10–11: linker-style memory map (FAT free).
+ * Clusters 12–13: C source with `#include` (FAT free).
+ * Cluster 14: zeros (ignored). Cluster 15: 0xF6 format fill (ignored).
+ * Cluster 16: FAT-bad with leftover text.
+ */
+inline std::vector<uint8_t> make_fat12_unused_leftover()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+    write_min_fat12_boot(img.data());
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_init_media(fat0, fat_len);
+    fat12_entry_set(fat0, fat_len, 2, 0xFFF); /* HELLO.TXT */
+    fat12_entry_set(fat0, fat_len, 16, 0xFF7); /* leftover marked bad */
+    fat12_mirror_fat1(img);
+
+    uint8_t* root = fat12_root(img);
+    put_file_dirent(root, "HELLO   TXT", 2, 14);
+
+    const size_t data = fat12_data_off();
+    std::memcpy(img.data() + data, "Hello, floppy\n", 14);
+
+    const char map[] =
+        "LOADSEG                                             9BA:1749\n"
+        "LOADSND                                               0:4D77\n"
+        "LOADVIEW                                              0:36DA\n"
+        "LOADVIEWF                                             0:36B3\n"
+        "LOG                                                   0:7E13\n"
+        "LOGFILE                                             9BA:1863\n"
+        "MENUBASE                                            9BA:1D6C\n"
+        "MENUCOL                                             9BA:1D64\n"
+        "Segment DATA.DATA, Addr = BA1C, Size = 6\n";
+    std::memcpy(img.data() + data + static_cast<size_t>(10u - 2u) * k_bps, map,
+                sizeof(map) - 1u);
+
+    const char src[] =
+        "#include\"types.h\"\n"
+        "#include\"game.h\"\n"
+        "\n"
+        "STRPTR\n"
+        "DisplayInput()\n"
+        "{\n"
+        "    DisplayStatusLine();\n"
+        "}\n";
+    std::memcpy(img.data() + data + static_cast<size_t>(12u - 2u) * k_bps, src,
+                sizeof(src) - 1u);
+
+    std::memset(img.data() + data + static_cast<size_t>(15u - 2u) * k_bps, 0xF6,
+                k_bps);
+
+    const char bad[] = "BAD-CLUSTER leftover payload 0123456789\n";
+    std::memcpy(img.data() + data + static_cast<size_t>(16u - 2u) * k_bps, bad,
+                sizeof(bad) - 1u);
+    return img;
+}
+
 } /* namespace dumpfloppy_test */
 
 #endif /* DUMPFLOPPY_TEST_IMAGE_BUILDER_HPP */

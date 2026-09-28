@@ -40,6 +40,7 @@ TEST_CASE("usage text names the program and the core flags", "[cli]")
     REQUIRE(u.find("-o, --output") != std::string::npos);
     REQUIRE(u.find("-x, --extract") != std::string::npos);
     REQUIRE(u.find("-u, --update") != std::string::npos);
+    REQUIRE(u.find("--no-unused") != std::string::npos);
     REQUIRE(u.find("-uFILE") != std::string::npos);
     REQUIRE(u.find("listing only") != std::string::npos);
     REQUIRE(u.find(".mfm") != std::string::npos);

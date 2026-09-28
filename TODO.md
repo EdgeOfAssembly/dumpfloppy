@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** (see `git log -1`) · **version 0.30** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** (see `git log -1`) · **version 0.31** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -12,7 +12,7 @@ After reboot, clone or `rsync -a /mnt/dumpfloppy/ /tmp/dumpfloppy/` (or work in 
 
 Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers common floppy extensions. Fixtures live **locally** under `/mnt/dumpfloppy-fixtures/` and `/mnt/PC_games/` (zips).
 
-## Done in 0.13–0.30 (do not redo)
+## Done in 0.13–0.31 (do not redo)
 
 - FAT12 `-u` (atomic rename, reclaim-before-relocate, deleted occupancy / Star Control TACTICS)
 - HxC CHS from BPB/modal SPT; HLS vs that SPT; extra-head DAM skip
@@ -37,8 +37,9 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 - IPF standard AmigaDOS (`4489`) sectors → DD ADF OFS/FFS listing + extract; `-u` refused
 - G71 GCR-1571: decode to a 70-track D71 map (168 half-tracks or 84 whole tracks), CBMFS listing + `-x`; `-u` refused
 - Real G71 fixtures (transnet_c64): blank 168-slot CBMFS, Super Fast File Copy listing, Clone Machine 84-slot header-only; Tetris SPS #736 IPF standard OFS; Awesome demo IPF metadata-only
+- FAT unused-cluster recovery: leftover free/bad clusters → `unused_cNNNN.{c,map,txt,bin}`; listing + `-x`; `--no-unused` listing-only. SQ2 Disk 1 is the example (AGI C + AGI.EXE map in 402K “free” space).
 
-**Verify last green:** `make -s test` 227 cases / 4974 assertions (7 skipped /tmp PC copies); `make -s verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2).
+**Verify last green:** `make -s test` 234 cases / 5007 assertions (7 skipped /tmp PC copies); `make -s verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2).
 
 ## Next (pick one slice)
 
@@ -66,6 +67,7 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 | Super Fast File Copy G71 | `/mnt/dumpfloppy-fixtures/c64/VG_Datashack_Super_Fast_File_Copy.TN.JBC.g71` | IA transnet_c64 |
 | Tetris SPS IPF | `/mnt/dumpfloppy-fixtures/amiga/Tetris.ipf` | IA SPS #736 |
 | Awesome demo SPS IPF | `/mnt/dumpfloppy-fixtures/amiga/AwesomeDemo.ipf` | IA SPS #1450 |
+| SQ2 Disk 1 720K IMA | `/mnt/dumpfloppy-fixtures/pc/sq2-disk1.ima` | leftover AGI C + map in unused FAT |
 
 ## Quality bar
 

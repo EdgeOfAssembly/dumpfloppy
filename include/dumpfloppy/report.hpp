@@ -18,6 +18,7 @@ struct report_options
     bool color = true;         /**< ANSI; deleted = light-red bg + white bold. */
     bool hex_boot = true;      /**< 512-byte boot-sector hex dump. */
     bool show_deleted = true;  /**< Include 0xE5 directory slots. */
+    bool show_unused = true;   /**< List leftover FAT-free/bad cluster runs. */
 };
 
 /**

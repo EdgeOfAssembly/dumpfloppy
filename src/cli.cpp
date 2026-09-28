@@ -76,8 +76,10 @@ std::string usage_text()
        << "      --no-hex         Skip boot-sector hex dump (default: dump)\n"
        << "      --no-deleted     Hide deleted directory entries in the listing only\n"
        << "                       (extract still includes them; default: show)\n"
+       << "      --no-unused      Hide leftover FAT-free/bad cluster runs in the listing\n"
+       << "                       (extract still writes them; default: show)\n"
        << "  -x, --extract [GLOB] Extract files to the current directory (no listing).\n"
-       << "                       Default: all payloads, deleted included.\n"
+       << "                       Default: all payloads, deleted and unused included.\n"
        << "                       Quote globs: -x '*.PKD' -x '5??.PKD'\n"
        << "  -u, --update FILE    Overwrite the same-named file in the image.\n"
        << "                       Repeatable. Silent (no listing). FAT: same size in-place;\n"
@@ -126,6 +128,11 @@ cli_options parse_cli(int argc, char** argv)
         if (!end_opts && arg == "--no-deleted")
         {
             o.report.show_deleted = false;
+            continue;
+        }
+        if (!end_opts && arg == "--no-unused")
+        {
+            o.report.show_unused = false;
             continue;
         }
         if (!end_opts && (arg == "-x" || arg == "--extract"))

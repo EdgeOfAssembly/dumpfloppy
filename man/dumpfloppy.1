@@ -1,4 +1,4 @@
-.TH DUMPFLOPPY 1 "2026-09-24" "dumpfloppy" "User Commands"
+.TH DUMPFLOPPY 1 "2026-09-28" "dumpfloppy" "User Commands"
 .SH NAME
 dumpfloppy \- expose secrets in FAT12, CBMFS, and Amiga ADF images
 .SH SYNOPSIS
@@ -90,7 +90,17 @@ or a decoded WOZ.
 .B \-x
 /
 .B \-\-extract
-writes recovered files (deleted included) into the current directory.
+writes recovered files (deleted directory slots and leftover FAT-free/bad
+clusters included) into the current directory.
+Unused leftover runs are written as
+.B unused_cNNNN.c
+/
+.B .map
+/
+.B .txt
+/
+.B .bin
+depending on content (C source, linker memory map, text, or binary).
 On D64/D71/D81/G64/G71 the host names are the PETSCII listing name plus
 .BR .prg / .seq / .usr / .rel / .del .
 On ADF, OFS/FFS files are written (directories skipped) with
@@ -160,7 +170,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.30
+.B dumpfloppy 0.31
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -194,6 +204,14 @@ This switch is listing-only:
 /
 .B \-\-extract
 still writes deleted payloads.
+.TP
+.B \-\-no-unused
+Omit leftover FAT-free/bad cluster runs from the listing (default: show them).
+This switch is listing-only:
+.B \-x
+still writes
+.B unused_cNNNN
+payloads.
 .TP
 .BR \-x ", " \-\-extract " [" \fIGLOB\fR "]"
 Extract files into the current directory by walking FAT cluster chains
