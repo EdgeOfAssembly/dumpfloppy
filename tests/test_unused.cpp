@@ -56,7 +56,6 @@ TEST_CASE("unused leftover map and C source split into recovered files", "[unuse
             REQUIRE(r.host_name.find(".c") != std::string::npos);
             const std::string body(r.payload.begin(), r.payload.end());
             REQUIRE(body.find("#include") != std::string::npos);
-            REQUIRE(body.find("DisplayInput") != std::string::npos);
         }
         if (r.kind == dumpfloppy::unused_kind::fat_bad)
         {
@@ -67,6 +66,28 @@ TEST_CASE("unused leftover map and C source split into recovered files", "[unuse
     REQUIRE(saw_map);
     REQUIRE(saw_c);
     REQUIRE(saw_bad);
+
+    bool saw_showobj = false;
+    bool saw_display = false;
+    for (const dumpfloppy::unused_run& r : a.unused)
+    {
+        if (r.host_name == "unused_SHOWOBJ.c")
+        {
+            saw_showobj = true;
+            const std::string body(r.payload.begin(), r.payload.end());
+            REQUIRE(body.find("ShowObj") != std::string::npos);
+            REQUIRE(body.find("DisplayInput") == std::string::npos);
+        }
+        if (r.host_name == "unused_DISPLAY.c")
+        {
+            saw_display = true;
+            const std::string body(r.payload.begin(), r.payload.end());
+            REQUIRE(body.find("DisplayInput") != std::string::npos);
+            REQUIRE(body.find("ShowObj") == std::string::npos);
+        }
+    }
+    REQUIRE(saw_showobj);
+    REQUIRE(saw_display);
 }
 
 TEST_CASE("write_report lists UNUSED leftover runs", "[unused][report]")
@@ -118,7 +139,8 @@ TEST_CASE("extract writes unused leftover files", "[unused][extract]")
             std::ifstream in(ent.path());
             const std::string body((std::istreambuf_iterator<char>(in)),
                                    std::istreambuf_iterator<char>());
-            REQUIRE(body.find("DisplayInput") != std::string::npos);
+            REQUIRE((body.find("DisplayInput") != std::string::npos ||
+                     body.find("ShowObj") != std::string::npos));
             found_c = true;
         }
         if (name.ends_with(".map"))
@@ -201,4 +223,26 @@ TEST_CASE("SQ2 Disk 1 IMA recovers unused map and C source",
     }
     REQUIRE(saw_map);
     REQUIRE(saw_c);
+
+    unsigned c_files = 0;
+    bool saw_showobj = false;
+    bool saw_animate = false;
+    for (const dumpfloppy::unused_run& r : a.unused)
+    {
+        if (r.guess == "C source")
+        {
+            ++c_files;
+        }
+        if (r.host_name.find("SHOWOBJ") != std::string::npos)
+        {
+            saw_showobj = true;
+        }
+        if (r.host_name.find("ADVANCEL") != std::string::npos)
+        {
+            saw_animate = true;
+        }
+    }
+    REQUIRE(c_files >= 10u);
+    REQUIRE(saw_showobj);
+    REQUIRE(saw_animate);
 }

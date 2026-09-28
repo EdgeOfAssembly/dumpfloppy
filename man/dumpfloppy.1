@@ -101,6 +101,9 @@ Unused leftover runs are written as
 /
 .B .bin
 depending on content (C source, linker memory map, text, or binary).
+Text leftovers are split on the DOS Ctrl-Z (`0x1A`) end-of-file byte when
+the following bytes look like a new file; a C banner comment supplies the
+basename (`unused_SHOWOBJ.c`).
 On D64/D71/D81/G64/G71 the host names are the PETSCII listing name plus
 .BR .prg / .seq / .usr / .rel / .del .
 On ADF, OFS/FFS files are written (directories skipped) with
@@ -170,7 +173,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.31
+.B dumpfloppy 0.32
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

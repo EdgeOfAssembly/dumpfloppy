@@ -27,8 +27,9 @@ enum class unused_kind : uint8_t
  * @brief One contiguous run of leftover clusters.
  *
  * @a payload is the concatenated cluster bytes with trailing NULs on the
- * last cluster trimmed. @a host_name is a safe extract basename
- * (`unused_c0327.c`).
+ * last cluster trimmed. Text leftovers are split on DOS Ctrl-Z (`0x1A`)
+ * when the next bytes look like a new file. @a host_name is
+ * `unused_SHOWOBJ.c` from a C banner comment, or `unused_c0327.c`.
  */
 struct unused_run
 {

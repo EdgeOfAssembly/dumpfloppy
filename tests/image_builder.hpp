@@ -603,14 +603,17 @@ inline std::vector<uint8_t> make_fat12_unused_leftover()
                 sizeof(map) - 1u);
 
     const char src[] =
-        "#include\"types.h\"\n"
-        "#include\"game.h\"\n"
-        "\n"
-        "STRPTR\n"
-        "DisplayInput()\n"
-        "{\n"
-        "    DisplayStatusLine();\n"
-        "}\n";
+        "/* SHOWOBJ\r\n"
+        "** Show an object\r\n"
+        "*/\r\n"
+        "#include\"types.h\"\r\n"
+        "ShowObj()\r\n{\r\n}\r\n"
+        "\x1a"
+        "/* DISPLAY\r\n"
+        "** Status line\r\n"
+        "*/\r\n"
+        "#include\"game.h\"\r\n"
+        "DisplayInput()\r\n{\r\n    DisplayStatusLine();\r\n}\r\n";
     std::memcpy(img.data() + data + static_cast<size_t>(12u - 2u) * k_bps, src,
                 sizeof(src) - 1u);
 

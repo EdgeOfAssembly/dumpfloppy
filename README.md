@@ -20,7 +20,7 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
 - **Volume serial** (`XXXX-XXXX` from DOS 4+ EBPB 0x28/0x29)
 - **Volume label** from EBPB *and* the root directory (they can differ)
 - FAT copies, free/bad/orphan clusters
-- Leftover data in FAT-free/bad clusters recovered as `unused_cNNNN.{c,map,txt,bin}`
+- Leftover data in FAT-free/bad clusters recovered as `unused_SHOWOBJ.c` / `unused_cNNNN.{c,map,txt,bin}` (text runs split on DOS Ctrl-Z)
 - Directory tree including **deleted** 8.3 names (`0xE5` → `?`)
 - Commodore **D64 / D71 / D81 / G64 / G71 CBMFS**: disk name, ID, DOS type, PRG/SEQ/…
   listing (G64 is GCR-decoded to a 35-track D64 map; G71 to a 70-track D71 map;
@@ -69,7 +69,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.31`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.32`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
 `*.dsk` / `*.po`.

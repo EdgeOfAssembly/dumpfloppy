@@ -16,12 +16,15 @@
 #include "dumpfloppy/util.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace dumpfloppy
 {
@@ -150,10 +153,124 @@ constexpr unsigned k_preview_chars = 48u;
     return count_seg_off(bytes) >= 8u && mostly_text(bytes);
 }
 
+[[nodiscard]] size_t skip_text_ws(std::span<const uint8_t> bytes) noexcept
+{
+    size_t i = 0;
+    while (i < bytes.size())
+    {
+        const uint8_t b = bytes[i];
+        if (b != ' ' && b != '\t' && b != '\r' && b != '\n')
+        {
+            break;
+        }
+        ++i;
+    }
+    return i;
+}
+
+[[nodiscard]] bool starts_with_ci(std::span<const uint8_t> bytes,
+                                  std::string_view word) noexcept
+{
+    if (bytes.size() < word.size())
+    {
+        return false;
+    }
+    for (size_t i = 0; i < word.size(); ++i)
+    {
+        const unsigned char a = static_cast<unsigned char>(bytes[i]);
+        const unsigned char b = static_cast<unsigned char>(word[i]);
+        if (std::tolower(a) != std::tolower(b))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * True when bytes after a DOS Ctrl-Z look like a new text file (C banner,
+ * include, ASM comment, or BAT keyword). Binary 0x1A in object leftovers
+ * fails this test.
+ */
+[[nodiscard]] bool looks_like_new_text_file(std::span<const uint8_t> bytes) noexcept
+{
+    const size_t i = skip_text_ws(bytes);
+    if (i >= bytes.size())
+    {
+        return false;
+    }
+    const std::span<const uint8_t> s = bytes.subspan(i);
+    if (s.size() >= 2u && s[0] == '/' && s[1] == '*')
+    {
+        return true;
+    }
+    if (starts_with_ci(s, "#include"))
+    {
+        return true;
+    }
+    if (s[0] == ';')
+    {
+        return true;
+    }
+    if (starts_with_ci(s, "echo") || starts_with_ci(s, "copy") ||
+        starts_with_ci(s, "rem ") || starts_with_ci(s, "set "))
+    {
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] std::string banner_stem(std::span<const uint8_t> bytes)
+{
+    size_t i = skip_text_ws(bytes);
+    if (i + 2u > bytes.size() || bytes[i] != '/' || bytes[i + 1u] != '*')
+    {
+        return {};
+    }
+    i += 2u;
+    while (i < bytes.size() && (bytes[i] == ' ' || bytes[i] == '\t'))
+    {
+        ++i;
+    }
+    if (i >= bytes.size())
+    {
+        return {};
+    }
+    const unsigned char first = bytes[i];
+    if (!std::isalpha(first) && first != '_')
+    {
+        return {};
+    }
+    std::string stem;
+    stem.push_back(static_cast<char>(std::toupper(first)));
+    ++i;
+    while (i < bytes.size() && stem.size() < 12u)
+    {
+        const unsigned char c = bytes[i];
+        if (std::isalnum(c) || c == '_' || c == '.')
+        {
+            stem.push_back(static_cast<char>(std::toupper(c)));
+            ++i;
+            continue;
+        }
+        break;
+    }
+    return stem;
+}
+
 void classify(unused_run& run)
 {
     const std::span<const uint8_t> p = run.payload;
-    if (contains_bytes(p, "#include") || contains_bytes(p, "STRPTR"))
+    const size_t w = skip_text_ws(p);
+    const std::span<const uint8_t> head =
+        (w < p.size()) ? p.subspan(w) : std::span<const uint8_t>{};
+    if (!head.empty() && head[0] == ';')
+    {
+        run.guess = "assembly";
+        return;
+    }
+    if (contains_bytes(p, "#include") || contains_bytes(p, "STRPTR") ||
+        (head.size() >= 2u && head[0] == '/' && head[1] == '*'))
     {
         run.guess = "C source";
         return;
@@ -161,6 +278,12 @@ void classify(unused_run& run)
     if (looks_like_map(p))
     {
         run.guess = "memory map";
+        return;
+    }
+    if (starts_with_ci(head, "echo") || starts_with_ci(head, "copy") ||
+        starts_with_ci(head, "rem ") || starts_with_ci(head, "set "))
+    {
+        run.guess = "batch";
         return;
     }
     if (mostly_text(p))
@@ -182,14 +305,68 @@ void set_host_name(unused_run& run)
     {
         ext = ".map";
     }
+    else if (run.guess == "assembly")
+    {
+        ext = ".asm";
+    }
+    else if (run.guess == "batch")
+    {
+        ext = ".bat";
+    }
     else if (run.guess == "text")
     {
         ext = ".txt";
     }
-    char buf[40] = {};
-    std::snprintf(buf, sizeof(buf), "unused_c%04u%s",
-                  static_cast<unsigned>(run.first_cluster), ext);
+
+    const std::string stem = banner_stem(run.payload);
+    char buf[48] = {};
+    if (!stem.empty() && stem.find("..") == std::string::npos)
+    {
+        const size_t dot = stem.rfind('.');
+        if (dot != std::string::npos && dot + 1u < stem.size())
+        {
+            std::snprintf(buf, sizeof(buf), "unused_%s", stem.c_str());
+        }
+        else
+        {
+            std::snprintf(buf, sizeof(buf), "unused_%s%s", stem.c_str(), ext);
+        }
+    }
+    else
+    {
+        std::snprintf(buf, sizeof(buf), "unused_c%04u%s",
+                      static_cast<unsigned>(run.first_cluster), ext);
+    }
     run.host_name = buf;
+}
+
+void uniquify_host_name(unused_run& run, const std::vector<unused_run>& out)
+{
+    const std::string original = run.host_name;
+    const size_t dot = original.rfind('.');
+    const std::string stem =
+        (dot == std::string::npos) ? original : original.substr(0, dot);
+    const std::string ext =
+        (dot == std::string::npos) ? std::string{} : original.substr(dot);
+    unsigned n = 2;
+    for (;;)
+    {
+        bool taken = false;
+        for (const unused_run& other : out)
+        {
+            if (other.host_name == run.host_name)
+            {
+                taken = true;
+                break;
+            }
+        }
+        if (!taken)
+        {
+            return;
+        }
+        run.host_name = stem + "_" + std::to_string(n) + ext;
+        ++n;
+    }
 }
 
 void set_preview(unused_run& run)
@@ -240,17 +417,131 @@ void emit_run(unused_run run, std::vector<unused_run>& out)
     {
         return;
     }
+    while (!run.payload.empty() && run.payload.back() == 0x1Au)
+    {
+        run.payload.pop_back();
+    }
+    if (run.payload.size() < k_min_dirty)
+    {
+        return;
+    }
     classify(run);
     set_host_name(run);
+    uniquify_host_name(run, out);
     set_preview(run);
     run.xxh64 = xxh64_hex(run.payload);
     out.push_back(std::move(run));
 }
 
+void slice_run(const unused_run& src, size_t begin, size_t end, uint32_t clusz,
+               std::vector<unused_run>& out)
+{
+    if (end <= begin || clusz == 0u)
+    {
+        return;
+    }
+    unused_run part = src;
+    part.payload.assign(src.payload.begin() + static_cast<std::ptrdiff_t>(begin),
+                        src.payload.begin() + static_cast<std::ptrdiff_t>(end));
+    trim_trailing_nuls(part.payload);
+    const uint32_t delta0 = static_cast<uint32_t>(begin / clusz);
+    const uint32_t delta1 =
+        static_cast<uint32_t>((end > 0u ? end - 1u : 0u) / clusz);
+    part.first_cluster =
+        static_cast<uint16_t>(src.first_cluster + static_cast<uint16_t>(delta0));
+    part.last_cluster =
+        static_cast<uint16_t>(src.first_cluster + static_cast<uint16_t>(delta1));
+    emit_run(std::move(part), out);
+}
+
+/**
+ * Split a mostly-text leftover on DOS Ctrl-Z (0x1A) when the following
+ * bytes look like a new text file. Binary 0x1A is left in place.
+ */
+[[nodiscard]] size_t find_text_file_after_map(std::span<const uint8_t> bytes)
+{
+    if (bytes.size() < k_min_dirty)
+    {
+        return static_cast<size_t>(-1);
+    }
+    std::vector<size_t> cands;
+    for (size_t i = 0; i + 1u < bytes.size(); ++i)
+    {
+        if (bytes[i] == '/' && bytes[i + 1u] == '*')
+        {
+            cands.push_back(i);
+        }
+    }
+    const char inc[] = "#include";
+    const size_t inc_len = sizeof(inc) - 1u;
+    for (size_t i = 0; i + inc_len <= bytes.size(); ++i)
+    {
+        if (std::memcmp(bytes.data() + i, inc, inc_len) == 0)
+        {
+            cands.push_back(i);
+        }
+    }
+    std::sort(cands.begin(), cands.end());
+    cands.erase(std::unique(cands.begin(), cands.end()), cands.end());
+    for (size_t cand : cands)
+    {
+        if (cand == 0u)
+        {
+            continue;
+        }
+        const std::span<const uint8_t> head(bytes.data(), cand);
+        if (looks_like_map(head) && looks_like_new_text_file(bytes.subspan(cand)))
+        {
+            return cand;
+        }
+    }
+    return static_cast<size_t>(-1);
+}
+
+void emit_ctrlz_split(unused_run run, uint32_t clusz,
+                      std::vector<unused_run>& out)
+{
+    if (!mostly_text(run.payload) && !contains_bytes(run.payload, "#include") &&
+        !contains_bytes(run.payload, "/*"))
+    {
+        emit_run(std::move(run), out);
+        return;
+    }
+
+    std::vector<size_t> starts;
+    starts.push_back(0);
+    std::vector<size_t> ends;
+    const size_t n = run.payload.size();
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (run.payload[i] != 0x1Au)
+        {
+            continue;
+        }
+        const std::span<const uint8_t> rest =
+            std::span<const uint8_t>(run.payload).subspan(i + 1u);
+        if (!looks_like_new_text_file(rest))
+        {
+            continue;
+        }
+        ends.push_back(i);
+        starts.push_back(i + 1u);
+    }
+    ends.push_back(n);
+    if (starts.size() != ends.size() || starts.size() <= 1u)
+    {
+        emit_run(std::move(run), out);
+        return;
+    }
+    for (size_t k = 0; k < starts.size(); ++k)
+    {
+        slice_run(run, starts[k], ends[k], clusz, out);
+    }
+}
+
 /**
  * Split a leftover run when a linker map (seg:off columns) is followed by
- * C sources (`#include`). Any FAT12/16 image can hold that mix in one
- * free-cluster span; emit two recovered files.
+ * C sources (`#include`). Then split text leftovers on DOS Ctrl-Z.
  */
 void finish_run(unused_run& run, uint32_t clusz, std::vector<unused_run>& out)
 {
@@ -264,38 +555,28 @@ void finish_run(unused_run& run, uint32_t clusz, std::vector<unused_run>& out)
         return;
     }
 
-    const char inc[] = "#include";
-    const auto* p = reinterpret_cast<const char*>(run.payload.data());
-    const auto* found =
-        std::search(p, p + run.payload.size(), std::begin(inc),
-                    std::end(inc) - 1);
-    if (found != p + run.payload.size() && found != p && clusz != 0u)
+    const size_t split = find_text_file_after_map(run.payload);
+    if (split != static_cast<size_t>(-1) && clusz != 0u)
     {
-        const size_t split = static_cast<size_t>(found - p);
-        const std::span<const uint8_t> head(run.payload.data(), split);
-        if (split >= k_min_dirty && looks_like_map(head))
-        {
-            unused_run map = run;
-            map.last_cluster = static_cast<uint16_t>(
-                run.first_cluster +
-                static_cast<uint16_t>((split - 1u) / clusz));
-            map.payload.assign(run.payload.begin(),
-                               run.payload.begin() +
-                                   static_cast<std::ptrdiff_t>(split));
-            trim_trailing_nuls(map.payload);
-            emit_run(std::move(map), out);
+        unused_run map = run;
+        map.last_cluster = static_cast<uint16_t>(
+            run.first_cluster + static_cast<uint16_t>((split - 1u) / clusz));
+        map.payload.assign(run.payload.begin(),
+                           run.payload.begin() +
+                               static_cast<std::ptrdiff_t>(split));
+        trim_trailing_nuls(map.payload);
+        emit_run(std::move(map), out);
 
-            unused_run src = run;
-            const uint32_t delta = static_cast<uint32_t>(split / clusz);
-            src.first_cluster = static_cast<uint16_t>(run.first_cluster + delta);
-            src.payload.assign(run.payload.begin() +
-                                   static_cast<std::ptrdiff_t>(split),
-                               run.payload.end());
-            emit_run(std::move(src), out);
-            return;
-        }
+        unused_run src = run;
+        const uint32_t delta = static_cast<uint32_t>(split / clusz);
+        src.first_cluster = static_cast<uint16_t>(run.first_cluster + delta);
+        src.payload.assign(run.payload.begin() +
+                               static_cast<std::ptrdiff_t>(split),
+                           run.payload.end());
+        emit_ctrlz_split(std::move(src), clusz, out);
+        return;
     }
-    emit_run(std::move(run), out);
+    emit_ctrlz_split(std::move(run), clusz, out);
 }
 
 } /* namespace */
