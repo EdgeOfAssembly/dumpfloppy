@@ -69,10 +69,13 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.33`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.34`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
 `*.dsk` / `*.po`.
+
+FAT `-x` keeps subdirectories (`RAMTEST/MANUAL.RT` lands in
+`dest/RAMTEST/MANUAL.RT`). Amiga paths stay flattened (`/` becomes `_`).
 
 ```bash
 dumpfloppy disk.ima

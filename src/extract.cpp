@@ -12,6 +12,7 @@
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/volume.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <ostream>
@@ -140,6 +141,7 @@ bool path_is_safe(const std::filesystem::path& rel)
  * bytes cannot reach the host filesystem. `/` and `\` stay until that
  * check rejects absolute paths, empty components, `.`, and `..`, then
  * they are flattened. A printable `?` (deleted 8.3 marker) is kept.
+ * Amiga, CBM, TRD, and Apple use this. FAT uses @c host_fat_path.
  */
 std::string host_leaf(std::string host, std::ostream& err)
 {
@@ -150,6 +152,104 @@ std::string host_leaf(std::string host, std::ostream& err)
         return {};
     }
     host = flatten_separators(std::move(host));
+    if (host.empty() || !path_is_safe(std::filesystem::path(host)))
+    {
+        err << "dumpfloppy: skip unsafe path '" << host << "'\n";
+        return {};
+    }
+    return host;
+}
+
+/** @brief FNV-1a 32-bit (offset basis 2166136261, prime 16777619). */
+uint32_t fnv1a_32(std::string_view bytes)
+{
+    uint32_t hash = 2166136261u;
+    for (const char ch : bytes)
+    {
+        hash ^= static_cast<uint32_t>(static_cast<unsigned char>(ch));
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+void append_hex8(std::string& out, uint32_t value)
+{
+    static constexpr char k_hex[] = "0123456789abcdef";
+    char buf[8];
+    for (int i = 7; i >= 0; --i)
+    {
+        buf[i] = k_hex[value & 0x0Fu];
+        value >>= 4;
+    }
+    out.append(buf, 8u);
+}
+
+/**
+ * @brief Leave a component of at most 255 bytes unchanged.
+ *
+ * A longer component (already masked to printable ASCII) becomes a
+ * 240-byte prefix, `_`, and 8 lowercase hex digits of FNV-1a of that
+ * full component, so the host name fits in NAME_MAX and still extracts.
+ */
+std::string shorten_component(std::string_view comp)
+{
+    constexpr std::size_t k_max = 255u;
+    constexpr std::size_t k_prefix = 240u;
+    if (comp.size() <= k_max)
+    {
+        return std::string(comp);
+    }
+    std::string out;
+    out.reserve(k_prefix + 1u + 8u);
+    out.append(comp.substr(0, k_prefix));
+    out.push_back('_');
+    append_hex8(out, fnv1a_32(comp));
+    return out;
+}
+
+/** @brief Shorten each `/` or `\\` piece; separators themselves stay. */
+std::string shorten_fat_components(std::string host)
+{
+    std::string out;
+    out.reserve(host.size());
+    std::string part;
+    auto flush = [&]()
+    {
+        out += shorten_component(part);
+        part.clear();
+    };
+    for (const char c : host)
+    {
+        if (c == '/' || c == '\\')
+        {
+            flush();
+            out.push_back(c);
+        }
+        else
+        {
+            part.push_back(c);
+        }
+    }
+    flush();
+    return out;
+}
+
+/**
+ * @brief Relative FAT path, or empty when the name must not be created.
+ *
+ * Same rejects as host_leaf (absolute, empty, `.`, `..`) after
+ * non-printables are masked. Separators are kept so
+ * `RAMTEST/MANUAL.RT` is created under that subdirectory.
+ */
+std::string host_fat_path(std::string host, std::ostream& err)
+{
+    host = mask_nonprintable(std::move(host));
+    if (!path_is_safe(std::filesystem::path(host)))
+    {
+        err << "dumpfloppy: skip unsafe path '" << host << "'\n";
+        return {};
+    }
+    host = shorten_fat_components(std::move(host));
     if (host.empty() || !path_is_safe(std::filesystem::path(host)))
     {
         err << "dumpfloppy: skip unsafe path '" << host << "'\n";
@@ -667,14 +767,14 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             continue;
         }
         ++matched;
-        const std::string host = host_leaf(fat_host_string(e), err);
+        const std::string host = host_fat_path(fat_host_string(e), err);
         if (host.empty())
         {
             continue;
         }
         const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
-        /* operator/ discards dest_dir when rel is absolute. host_leaf
+        /* operator/ discards dest_dir when rel is absolute. host_fat_path
          * already rejected those; keep the guard so a leaf cannot escape. */
         if (preferred.is_absolute() && rel.is_absolute())
         {

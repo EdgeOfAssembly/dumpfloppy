@@ -79,6 +79,39 @@ namespace dumpfloppy
 [[nodiscard]] bool is_printable_ascii(std::string_view s);
 
 /**
+ * @brief Escape bytes outside printable ASCII as `\xNN`.
+ *
+ * Bytes in 0x20–0x7E are copied unchanged. Every other byte becomes a
+ * four-character `\xNN` sequence (lowercase hex). Display only: stored
+ * directory and OEM bytes are not modified.
+ *
+ * @param[in] raw Name, path, or OEM field as stored.
+ * @return Text with no raw controls, NULs, or bytes above 0x7E.
+ */
+[[nodiscard]] inline std::string escape_name(std::string_view raw)
+{
+    std::string out;
+    out.reserve(raw.size());
+    static constexpr char k_hex[] = "0123456789abcdef";
+    for (const char ch : raw)
+    {
+        const auto c = static_cast<unsigned char>(ch);
+        if (c >= 0x20u && c <= 0x7Eu)
+        {
+            out.push_back(static_cast<char>(c));
+        }
+        else
+        {
+            out.push_back('\\');
+            out.push_back('x');
+            out.push_back(k_hex[c >> 4]);
+            out.push_back(k_hex[c & 0x0Fu]);
+        }
+    }
+    return out;
+}
+
+/**
  * @brief Format a DOS 4+ volume serial as `XXXX-XXXX` (high word first).
  */
 [[nodiscard]] std::string format_volume_serial(uint32_t serial);

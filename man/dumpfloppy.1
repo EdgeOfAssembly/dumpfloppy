@@ -109,9 +109,17 @@ the following bytes look like a new file; a C banner comment supplies the
 basename (`unused_SHOWOBJ.c`).
 On D64/D71/D81/G64/G71 the host names are the PETSCII listing name plus
 .BR .prg / .seq / .usr / .rel / .del .
+On FAT12/FAT16,
+.B \-x
+keeps subdirectory components, so
+.I RAMTEST/MANUAL.RT
+is written as
+.I dest/RAMTEST/MANUAL.RT .
+A component longer than 255 bytes is shortened to a 240-byte prefix,
+an underscore, and eight hex digits of FNV-1a of that component.
 On ADF, OFS/FFS files are written (directories skipped) with
 .B /
-in Amiga paths flattened to
+in Amiga paths, which stay flattened to
 .BR _ .
 On TRD, TR-DOS files are written as
 .I NAME.C
@@ -176,7 +184,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.33
+.B dumpfloppy 0.34
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

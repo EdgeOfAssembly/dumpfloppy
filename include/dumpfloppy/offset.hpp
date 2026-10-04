@@ -12,6 +12,7 @@
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/fat.hpp"
+#include "dumpfloppy/util.hpp"
 
 #include <cstdint>
 #include <sstream>
@@ -94,6 +95,8 @@ inline fat_offset_owner find_cluster_owner(const analysis& a, uint16_t cluster,
  * `OFFSET sector SECTOR past-end`. @p offset is a byte index into the
  * logical volume (@ref volume_bytes): the image file itself for a raw
  * `.img` / `.ima`, or the assembled CHS buffer when flux was decoded.
+ * The owner name is passed through @ref escape_name so a directory
+ * entry cannot inject raw control bytes into the line.
  *
  * @param[in] a      Analysis with a parsed BPB, FAT summary, and directory.
  * @param[in] offset Byte offset from the start of that volume.
@@ -158,11 +161,11 @@ inline fat_offset_owner find_cluster_owner(const analysis& a, uint16_t cluster,
     }
     else if (!owner.entry->path.empty())
     {
-        line << owner.entry->path;
+        line << escape_name(owner.entry->path);
     }
     else
     {
-        line << owner.entry->name_83;
+        line << escape_name(owner.entry->name_83);
     }
     return line.str();
 }

@@ -125,6 +125,15 @@ inline void put_file_dirent(uint8_t* e, const char* name11, uint16_t first, uint
     }
 }
 
+/** @brief Directory slot (attribute 0x10, size 0) pointing at @p first. */
+inline void put_dir_dirent(uint8_t* e, const char* name11, uint16_t first)
+{
+    put_name11(e, name11);
+    e[11] = 0x10;
+    poke_le16(e + 26, first);
+    poke_le32(e + 28, 0);
+}
+
 /** @brief Distinctive 600-byte live TACTICS.PKG payload for reuse fixtures. */
 inline std::vector<uint8_t> tactics_live_bytes()
 {
@@ -623,6 +632,74 @@ inline std::vector<uint8_t> make_fat12_unused_leftover()
     const char bad[] = "BAD-CLUSTER leftover payload 0123456789\n";
     std::memcpy(img.data() + data + static_cast<size_t>(16u - 2u) * k_bps, bad,
                 sizeof(bad) - 1u);
+    return img;
+}
+
+/**
+ * @brief FAT12 with RAMTEST/MANUAL.RT, SUB/FILE.TXT, SUB/GAME.EXE, and
+ *        a root file SUB_FILE.TXT (the flattened-name collision).
+ *
+ * Cluster 2 is the RAMTEST directory, 3 is MANUAL.RT (`MANUALRT`).
+ * Cluster 4 is SUB, 5 is FILE.TXT (`NESTED!!`), 6 is SUB_FILE.TXT
+ * (`ROOTLEAF`), 7 is GAME.EXE (`MZEXE!!!`).
+ */
+inline std::vector<uint8_t> make_fat12_nested()
+{
+    std::vector<uint8_t> img(static_cast<size_t>(k_total_sec) * k_bps, 0);
+    write_min_fat12_boot(img.data());
+    uint8_t* fat0 = fat12_fat0(img);
+    const size_t fat_len = fat12_fat_len();
+    fat12_init_media(fat0, fat_len);
+    fat12_entry_set(fat0, fat_len, 2, 0xFFF); /* RAMTEST directory */
+    fat12_entry_set(fat0, fat_len, 3, 0xFFF); /* MANUAL.RT */
+    fat12_entry_set(fat0, fat_len, 4, 0xFFF); /* SUB directory */
+    fat12_entry_set(fat0, fat_len, 5, 0xFFF); /* FILE.TXT */
+    fat12_entry_set(fat0, fat_len, 6, 0xFFF); /* SUB_FILE.TXT */
+    fat12_entry_set(fat0, fat_len, 7, 0xFFF); /* GAME.EXE */
+    fat12_mirror_fat1(img);
+
+    uint8_t* root = fat12_root(img);
+    put_dir_dirent(root, "RAMTEST    ", 2);
+    put_dir_dirent(root + 32, "SUB        ", 4);
+    put_file_dirent(root + 64, "SUB_FILETXT", 6, 8);
+
+    uint8_t* data = img.data() + fat12_data_off();
+    auto cluster = [&](uint32_t n) -> uint8_t*
+    {
+        return data + static_cast<size_t>(n - 2u) * k_bps;
+    };
+
+    uint8_t* ram = cluster(2);
+    put_dir_dirent(ram, ".", 2);
+    put_dir_dirent(ram + 32, "..", 0);
+    put_file_dirent(ram + 64, "MANUAL  RT ", 3, 8);
+
+    uint8_t* sub = cluster(4);
+    put_dir_dirent(sub, ".", 4);
+    put_dir_dirent(sub + 32, "..", 0);
+    put_file_dirent(sub + 64, "FILE    TXT", 5, 8);
+    put_file_dirent(sub + 96, "GAME    EXE", 7, 8);
+
+    std::memcpy(cluster(3), "MANUALRT", 8);
+    std::memcpy(cluster(5), "NESTED!!", 8);
+    std::memcpy(cluster(6), "ROOTLEAF", 8);
+    std::memcpy(cluster(7), "MZEXE!!!", 8);
+    return img;
+}
+
+/**
+ * @brief Sample image whose OEM and HELLO 8.3 name contain ESC (0x1B).
+ *
+ * OEM at boot offset 3 is `ESC ] 0 ; O E M BEL` (8 bytes). The live
+ * file's first name byte is ESC, so the directory name is `\x1bELLO.TXT`.
+ */
+inline std::vector<uint8_t> make_fat12_esc_names()
+{
+    std::vector<uint8_t> img = make_fat12_sample();
+    const uint8_t oem[8] = {0x1Bu, ']', '0', ';', 'O', 'E', 'M', 0x07u};
+    std::memcpy(img.data() + 3, oem, sizeof(oem));
+    uint8_t* hello = fat12_root(img) + 32;
+    hello[0] = 0x1Bu;
     return img;
 }
 

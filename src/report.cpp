@@ -173,38 +173,6 @@ std::string field(std::string_view s, size_t width)
 }
 
 /**
- * @brief Escape a directory name so a report row stays one line.
- *
- * Bytes outside printable ASCII (0x20–0x7E) become `\xNN` (lowercase hex).
- * Display only: 8.3, LFN, and path bytes stored on the analysis are unchanged.
- *
- * @param[in] raw Name or path as stored on the directory entry.
- * @return Text with no raw controls, NULs, or bytes above 0x7E.
- */
-std::string escape_name(std::string_view raw)
-{
-    std::string out;
-    out.reserve(raw.size());
-    static constexpr char k_hex[] = "0123456789abcdef";
-    for (const char ch : raw)
-    {
-        const auto c = static_cast<unsigned char>(ch);
-        if (c >= 0x20u && c <= 0x7Eu)
-        {
-            out.push_back(static_cast<char>(c));
-        }
-        else
-        {
-            out.push_back('\\');
-            out.push_back('x');
-            out.push_back(k_hex[c >> 4]);
-            out.push_back(k_hex[c & 0x0Fu]);
-        }
-    }
-    return out;
-}
-
-/**
  * @brief Left-justify an escaped directory name.
  *
  * The column is at least @p width. A name full of controls expands (`\xNN`)
@@ -894,7 +862,7 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     }
     section(out, color, "BOOT");
     kv(out, "Jump", describe_jump(a.bpb.jump));
-    kv(out, "OEM", a.bpb.oem.empty() ? "(none)" : a.bpb.oem);
+    kv(out, "OEM", a.bpb.oem.empty() ? "(none)" : escape_name(a.bpb.oem));
     kv(out, "55 AA", a.boot.has_aa55 ? "yes (offset 510)" : "no");
     kv(out, "Boot class", a.boot.kind_text);
     if (!a.boot.strings.empty())
