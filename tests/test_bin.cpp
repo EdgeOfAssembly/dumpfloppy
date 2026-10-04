@@ -214,14 +214,15 @@ TEST_CASE("binary -x with no image exits 1, not usage", "[cli][bin][extract]")
     REQUIRE(out.find("no image") != std::string::npos);
 }
 
-TEST_CASE("binary -o with -x warns that -o is ignored", "[cli][bin][extract]")
+TEST_CASE("binary -o with -x extracts into that directory", "[cli][bin][extract]")
 {
     const char* bin = bin_or_skip();
     const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
-                     "o-ignored-x";
+                     "o-with-x";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     const auto img = dir / "sample.ima";
+    const auto outdir = dir / "extracted";
     const auto bytes = dumpfloppy_test::make_fat12_sample();
     {
         std::ofstream out(img, std::ios::binary | std::ios::trunc);
@@ -231,14 +232,13 @@ TEST_CASE("binary -o with -x warns that -o is ignored", "[cli][bin][extract]")
     }
     int rc = 0;
     const std::string cmd = std::string("cd \"") + dir.string() + "\" && " + bin +
-                            " -o ignored.txt -x HELLO.TXT \"" + img.string() +
+                            " -o extracted -x HELLO.TXT \"" + img.string() +
                             "\" 2>&1";
     const std::string out = slurp_popen(cmd, rc);
     REQUIRE(rc == 0);
-    REQUIRE(out.find("ignored") != std::string::npos);
-    REQUIRE(out.find("-o") != std::string::npos);
-    REQUIRE_FALSE(std::filesystem::exists(dir / "ignored.txt"));
-    std::ifstream hello(dir / "HELLO.TXT", std::ios::binary);
+    REQUIRE(out.find("ignored") == std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(dir / "HELLO.TXT"));
+    std::ifstream hello(outdir / "HELLO.TXT", std::ios::binary);
     REQUIRE(hello);
 }
 

@@ -9,6 +9,7 @@
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/update.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -28,6 +29,8 @@ struct cli_options
     bool has_output = false;
     extract_options extract{};
     update_options update{};
+    bool has_offset = false; /**< Enable-only `--offset` (default off). */
+    uint64_t offset = 0;     /**< Byte offset when @a has_offset is set. */
     std::vector<std::filesystem::path> inputs{};
 };
 

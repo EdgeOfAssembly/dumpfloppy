@@ -377,7 +377,16 @@ analysis analyse(floppy_image image)
                 }
                 const std::vector<uint8_t> payload =
                     read_file_contents(volume, a.bpb, e);
-                e.xxh64 = xxh64_hex(payload);
+                /* A truncated deleted chain reads as zero bytes. XXH64 of that
+                   empty buffer is ef46db3751d8e999 and is not the file. */
+                if (payload.empty())
+                {
+                    e.xxh64.clear();
+                }
+                else
+                {
+                    e.xxh64 = xxh64_hex(payload);
+                }
                 e.type = identify_type(payload, format_kind::file, e.name_83);
             }
 

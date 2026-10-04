@@ -25,7 +25,7 @@ namespace dumpfloppy
 namespace
 {
 
-std::filesystem::path host_relative(const dir_entry& e)
+std::string fat_host_string(const dir_entry& e)
 {
     std::string rel = e.path.empty() ? e.name_83 : e.path;
     for (char& c : rel)
@@ -35,7 +35,34 @@ std::filesystem::path host_relative(const dir_entry& e)
             c = '/';
         }
     }
-    return std::filesystem::path(rel);
+    return rel;
+}
+
+/** @brief Bytes outside printable ASCII become `_`. `/` and `\\` stay. */
+std::string mask_nonprintable(std::string name)
+{
+    for (char& ch : name)
+    {
+        const auto u = static_cast<unsigned char>(ch);
+        if (u < 0x20u || u > 0x7Eu)
+        {
+            ch = '_';
+        }
+    }
+    return name;
+}
+
+/** @brief Flatten separators that survived the host-name function. */
+std::string flatten_separators(std::string name)
+{
+    for (char& ch : name)
+    {
+        if (ch == '/' || ch == '\\')
+        {
+            ch = '_';
+        }
+    }
+    return name;
 }
 
 /**
@@ -104,6 +131,31 @@ bool path_is_safe(const std::filesystem::path& rel)
         }
     }
     return true;
+}
+
+/**
+ * @brief One relative leaf, or empty when the name must not be created.
+ *
+ * Non-printables are masked before path_is_safe so a dirent of 0xFF
+ * bytes cannot reach the host filesystem. `/` and `\` stay until that
+ * check rejects absolute paths, empty components, `.`, and `..`, then
+ * they are flattened. A printable `?` (deleted 8.3 marker) is kept.
+ */
+std::string host_leaf(std::string host, std::ostream& err)
+{
+    host = mask_nonprintable(std::move(host));
+    if (!path_is_safe(std::filesystem::path(host)))
+    {
+        err << "dumpfloppy: skip unsafe path '" << host << "'\n";
+        return {};
+    }
+    host = flatten_separators(std::move(host));
+    if (host.empty() || !path_is_safe(std::filesystem::path(host)))
+    {
+        err << "dumpfloppy: skip unsafe path '" << host << "'\n";
+        return {};
+    }
+    return host;
 }
 
 std::string dest_key(const std::filesystem::path& p)
@@ -218,13 +270,12 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
             continue;
         }
         ++matched;
-        const std::string host = cbm_host_filename(file);
-        const std::filesystem::path rel(host);
-        if (!path_is_safe(rel))
+        const std::string host = host_leaf(cbm_host_filename(file), err);
+        if (host.empty())
         {
-            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
+        const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
@@ -316,13 +367,12 @@ int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostr
             continue;
         }
         ++matched;
-        const std::string host = amiga_host_filename(file);
-        const std::filesystem::path rel(host);
-        if (!path_is_safe(rel))
+        const std::string host = host_leaf(amiga_host_filename(file), err);
+        if (host.empty())
         {
-            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
+        const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
@@ -410,13 +460,12 @@ int extract_trd_files(const analysis& a, const extract_options& opt, std::ostrea
             continue;
         }
         ++matched;
-        const std::string host = trd_host_filename(file);
-        const std::filesystem::path rel(host);
-        if (!path_is_safe(rel))
+        const std::string host = host_leaf(trd_host_filename(file), err);
+        if (host.empty())
         {
-            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
+        const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
@@ -498,13 +547,12 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
             continue;
         }
         ++matched;
-        const std::string host = apple_host_filename(file);
-        const std::filesystem::path rel(host);
-        if (!path_is_safe(rel))
+        const std::string host = host_leaf(apple_host_filename(file), err);
+        if (host.empty())
         {
-            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
+        const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
@@ -619,20 +667,23 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             continue;
         }
         ++matched;
-        const std::filesystem::path rel = host_relative(e);
-        if (!path_is_safe(rel))
+        const std::string host = host_leaf(fat_host_string(e), err);
+        if (host.empty())
         {
-            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
+        const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
+        /* operator/ discards dest_dir when rel is absolute. host_leaf
+         * already rejected those; keep the guard so a leaf cannot escape. */
         if (preferred.is_absolute() && rel.is_absolute())
         {
             err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
+        const std::string fallback = flatten_separators(mask_nonprintable(e.name_83));
         const std::filesystem::path dest =
-            choose_extract_dest(preferred, e.name_83, used_dests, err);
+            choose_extract_dest(preferred, fallback, used_dests, err);
         if (dest.empty())
         {
             err << "dumpfloppy: extract collision: no unique name for '"
@@ -689,15 +740,15 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             continue;
         }
         ++matched;
-        const std::filesystem::path rel(run.host_name);
-        if (!path_is_safe(rel))
+        const std::string host = host_leaf(run.host_name, err);
+        if (host.empty())
         {
-            err << "dumpfloppy: skip unsafe path '" << rel.string() << "'\n";
             continue;
         }
+        const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
         const std::filesystem::path dest =
-            choose_extract_dest(preferred, run.host_name, used_dests, err);
+            choose_extract_dest(preferred, host, used_dests, err);
         if (dest.empty())
         {
             err << "dumpfloppy: extract collision: no unique name for '"

@@ -7,6 +7,7 @@
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/image.hpp"
+#include "dumpfloppy/offset.hpp"
 #include "dumpfloppy/report.hpp"
 #include "dumpfloppy/update.hpp"
 #include "dumpfloppy/version.hpp"
@@ -145,6 +146,30 @@ int replace_file_atomic(const std::filesystem::path& dest,
     return 0;
 }
 
+/**
+ * @brief Print the FAT offset map, or the non-FAT diagnostic.
+ *
+ * @param[in] a          Analysis of one image.
+ * @param[in] has_offset True when `--offset` was passed.
+ * @param[in] offset     Byte offset from `--offset`.
+ * @return 0 when the line was printed or the flag is off, 1 when the
+ *         image is not FAT12/FAT16.
+ */
+int write_offset_line(const dumpfloppy::analysis& a, bool has_offset, uint64_t offset)
+{
+    if (!has_offset)
+    {
+        return 0;
+    }
+    if (a.kind != dumpfloppy::fat_kind::fat12 && a.kind != dumpfloppy::fat_kind::fat16)
+    {
+        std::cerr << "dumpfloppy: offset map is only implemented for FAT12/FAT16\n";
+        return 1;
+    }
+    std::cout << dumpfloppy::format_fat_offset(a, offset) << '\n';
+    return 0;
+}
+
 } /* namespace */
 
 int main(int argc, char** argv)
@@ -170,7 +195,7 @@ int main(int argc, char** argv)
     const bool mutating = cli.update.enabled || cli.extract.enabled;
     if (cli.inputs.empty())
     {
-        if (mutating)
+        if (mutating || cli.has_offset)
         {
             std::cerr << "dumpfloppy: no image files given\n";
             return 1;
@@ -190,9 +215,20 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    if (cli.has_output && mutating)
+    if (cli.has_output && cli.extract.enabled)
     {
-        std::cerr << "dumpfloppy: warning: -o is ignored with -x/-u (report-only)\n";
+        std::error_code ec{};
+        if (std::filesystem::is_regular_file(cli.output, ec))
+        {
+            std::cerr << "dumpfloppy: -o '" << cli.output.string()
+                      << "' is an existing file, not an extract directory\n";
+            return 1;
+        }
+        cli.extract.dest_dir = cli.output;
+    }
+    else if (cli.has_output && cli.update.enabled)
+    {
+        std::cerr << "dumpfloppy: warning: -o is ignored with -u (report-only)\n";
     }
 
     bool output_is_dir = false;
@@ -259,6 +295,10 @@ int main(int argc, char** argv)
                 rc = 1;
                 continue;
             }
+            if (write_offset_line(a, cli.has_offset, cli.offset) != 0)
+            {
+                rc = 1;
+            }
             if (cli.extract.enabled)
             {
                 if (dumpfloppy::extract_files(a, cli.extract, std::cerr) < 0)
@@ -268,12 +308,20 @@ int main(int argc, char** argv)
             }
             continue;
         }
+        if (write_offset_line(a, cli.has_offset, cli.offset) != 0)
+        {
+            rc = 1;
+        }
         if (cli.extract.enabled)
         {
             if (dumpfloppy::extract_files(a, cli.extract, std::cerr) < 0)
             {
                 rc = 1;
             }
+            continue;
+        }
+        if (cli.has_offset)
+        {
             continue;
         }
         if (cli.has_output)

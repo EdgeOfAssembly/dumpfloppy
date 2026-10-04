@@ -91,7 +91,10 @@ or a decoded WOZ.
 /
 .B \-\-extract
 writes recovered files (deleted directory slots and leftover FAT-free/bad
-clusters included) into the current directory.
+clusters included) into the current directory, or into the directory named
+by
+.B \-o
+when that option is also given.
 Unused leftover runs are written as
 .B unused_cNNNN.c
 /
@@ -173,7 +176,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.32
+.B dumpfloppy 0.33
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -192,6 +195,29 @@ Several inputs with a file
 write
 .I <stem>_<input-stem>.txt
 and warn on stderr.
+With
+.BR \-x ,
+.I PATH
+is the extract directory instead of a report path.
+It is created if missing.
+The default extract directory is the current directory.
+If
+.I PATH
+is an existing regular file,
+.B dumpfloppy
+exits 1 and does not extract into the current directory.
+With
+.B \-u
+and without
+.BR \-x ,
+.I PATH
+is ignored (the image is rewritten in place) and a warning is printed.
+With both
+.B \-u
+and
+.BR \-x ,
+.I PATH
+is still the extract directory and the image is still rewritten in place.
 .TP
 .B \-\-no-color
 Disable ANSI colour (default: colour on, including when stdout is not a
@@ -217,9 +243,25 @@ still writes
 payloads.
 .TP
 .BR \-x ", " \-\-extract " [" \fIGLOB\fR "]"
-Extract files into the current directory by walking FAT cluster chains
+Extract files by walking FAT cluster chains,
 CBMFS file chains, or Amiga OFS/FFS data blocks.
+The directory is
+.B .
+unless
+.BI \-o " DIR"
+selects another one (created if missing).
 No listing is printed (errors stay on stderr).
+Bytes outside printable ASCII, and any slash or backslash that remains in
+an accepted host name, are replaced with
+.B _
+before the file is created.
+Absolute paths,
+.BR . ,
+and
+.B ..
+are still skipped.
+A deleted 8.3 name keeps a printable
+.B ? .
 Deleted 8.3 names and scratched CBM files are included.
 With no
 .I GLOB
@@ -293,6 +335,31 @@ is accepted (same as
 .B \-u FILE ).
 .B \-\-update=\fIFILE\fR
 is unambiguous.
+.TP
+.BI \-\-offset= N
+FAT12/FAT16 only.
+.I N
+is a decimal or
+.B 0x
+hex byte offset into the logical volume (the image file for a raw
+.I .img
+/
+.I .ima ).
+Print one line on stdout: the offset, the sector when the BPB is valid,
+either a cluster number or
+.BR reserved/FAT/root ,
+and the owning file name or one of
+.BR free ,
+.BR slack ,
+or
+.BR past-end .
+No listing is printed.
+Other filesystems write
+.B offset map is only implemented for FAT12/FAT16
+to stderr and exit 1.
+There is no
+.B \-\-no-offset
+switch; the map is off unless this option is given.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -309,6 +376,16 @@ Dump a 720K WinImage floppy:
 Extract every file, including deleted names, into the current directory:
 .RS
 .B dumpfloppy disk1.ima \-x
+.RE
+.PP
+Extract into a chosen directory:
+.RS
+.B dumpfloppy \-x \-o out disk1.ima
+.RE
+.PP
+Map byte 2048 of a FAT12 image:
+.RS
+.B dumpfloppy \-\-offset=2048 disk1.ima
 .RE
 .PP
 List and extract a Commodore 1541 D64:

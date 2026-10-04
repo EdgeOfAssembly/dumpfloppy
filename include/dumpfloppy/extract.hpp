@@ -47,6 +47,11 @@ struct extract_options
  *
  * Unsafe names (absolute paths, root names, empty components, `.`, `..`)
  * are skipped with a diagnostic — they must not escape @p opt.dest_dir.
+ * After each filesystem's host-name function returns, bytes outside
+ * printable ASCII (0x20–0x7E) become `_`. `/` and `\` that remain on a
+ * relative path the unsafe-name check accepted are then flattened to `_`
+ * so they cannot open another directory. A printable deleted-entry `?`
+ * (0x3F) is kept.
  * If two payloads map to the same host path, the later file is written as
  * the 8.3 name (deleted entries keep `?`) or `stem.deleted.ext`; a warning
  * is emitted and the earlier file is left intact.

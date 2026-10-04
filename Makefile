@@ -8,7 +8,11 @@ CXX := $(CXX) -Wl,--as-needed
 
 MAKEFLAGS += --no-print-directory
 
-export PKG_CONFIG_PATH ?= $(HOME)/.local/share/pkgconfig:$(HOME)/.local/lib64/pkgconfig:$(HOME)/.local/lib/pkgconfig:$(PKG_CONFIG_PATH)
+# `?=` would store a recursive value that mentions PKG_CONFIG_PATH. When the
+# variable is unset that expansion errors. Copy any inherited value first.
+_PKG_CONFIG_PATH_IN := $(PKG_CONFIG_PATH)
+PKG_CONFIG_PATH := $(HOME)/.local/share/pkgconfig:$(HOME)/.local/lib64/pkgconfig:$(HOME)/.local/lib/pkgconfig$(if $(_PKG_CONFIG_PATH_IN),:$(_PKG_CONFIG_PATH_IN),)
+export PKG_CONFIG_PATH
 
 LIBSF_INC := /usr/local/include/libsf
 PREFIX    ?= /usr/local
@@ -79,6 +83,8 @@ SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \
             tests/test_format.cpp tests/test_update.cpp tests/test_deleted.cpp \
+            tests/test_names.cpp \
+            tests/test_extract_dest.cpp \
             tests/test_mfm.cpp tests/test_cbm.cpp tests/test_d64.cpp \
             tests/test_amiga.cpp tests/test_d71.cpp tests/test_d81.cpp \
             tests/test_adf.cpp tests/test_gcr.cpp tests/test_g64.cpp \

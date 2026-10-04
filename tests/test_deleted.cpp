@@ -83,7 +83,8 @@ TEST_CASE("deleted TACTICS does not inherit the live FAT chain", "[deleted][tact
         dumpfloppy::read_file_contents(a.image.bytes, a.bpb, *dead);
     REQUIRE(dead_bytes.empty());
     REQUIRE(live->xxh64 == dumpfloppy::xxh64_hex(live_bytes));
-    REQUIRE(dead->xxh64 == dumpfloppy::xxh64_hex(dead_bytes));
+    /* Empty payload is not hashed (XXH64("") is ef46db3751d8e999). */
+    REQUIRE(dead->xxh64.empty());
     REQUIRE(dead->xxh64 != live->xxh64);
 
     const auto dest =

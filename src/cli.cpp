@@ -7,6 +7,7 @@
 #include "dumpfloppy/version.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <sstream>
 #include <system_error>
@@ -46,6 +47,45 @@ bool is_option_token(const std::string& tok)
     return tok.size() >= 2u && tok[0] == '-' && tok != "--";
 }
 
+/**
+ * @brief Parse a decimal or `0x` hex byte offset.
+ *
+ * @param[in]  text  Token after `--offset` or the text after `=`.
+ * @param[out] value Parsed magnitude on success.
+ * @param[out] err   Diagnostic without the `dumpfloppy:` prefix.
+ */
+bool parse_offset_value(const std::string& text, uint64_t& value, std::string& err)
+{
+    value = 0;
+    if (text.empty() || text[0] == '+' || text[0] == '-')
+    {
+        err = "invalid offset '" + text + "'";
+        return false;
+    }
+    int base = 10;
+    const char* begin = text.data();
+    const char* end = begin + text.size();
+    if (text.size() >= 2u && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+    {
+        base = 16;
+        begin += 2;
+        if (begin == end)
+        {
+            err = "invalid offset '" + text + "'";
+            return false;
+        }
+    }
+    uint64_t parsed = 0;
+    const std::from_chars_result got = std::from_chars(begin, end, parsed, base);
+    if (got.ec != std::errc{} || got.ptr != end)
+    {
+        err = "invalid offset '" + text + "'";
+        return false;
+    }
+    value = parsed;
+    return true;
+}
+
 } /* namespace */
 
 std::string usage_text()
@@ -71,14 +111,18 @@ std::string usage_text()
        << "Options:\n"
        << "  -h, --help           Show this help and exit\n"
        << "  -v, --version        Show version and exit\n"
-       << "  -o, --output PATH    Write report to a file or directory (default: stdout)\n"
+       << "  -o, --output PATH    Write the report to a file or directory (default: stdout).\n"
+       << "                       With -x, PATH is the extract directory (default: .).\n"
+       << "                       An existing regular file is an error. Ignored with -u\n"
+       << "                       unless -x is also set.\n"
        << "      --no-color       Disable ANSI colour (default: on)\n"
        << "      --no-hex         Skip boot-sector hex dump (default: dump)\n"
        << "      --no-deleted     Hide deleted directory entries in the listing only\n"
        << "                       (extract still includes them; default: show)\n"
        << "      --no-unused      Hide leftover FAT-free/bad cluster runs in the listing\n"
        << "                       (extract still writes them; default: show)\n"
-       << "  -x, --extract [GLOB] Extract files to the current directory (no listing).\n"
+       << "  -x, --extract [GLOB] Extract files (no listing). Default directory is `.`;\n"
+       << "                       -o DIR selects it and is created if missing.\n"
        << "                       Default: all payloads, deleted and unused included.\n"
        << "                       Quote globs: -x '*.PKD' -x '5??.PKD'\n"
        << "  -u, --update FILE    Overwrite the same-named file in the image.\n"
@@ -88,6 +132,9 @@ std::string usage_text()
        << "                       D64/D71/D81 CBMFS and ADF: same-size in-place only.\n"
        << "                       Accepts -u FILE, -uFILE, and --update=FILE.\n"
        << "                       G64/G71 GCR, REL, TRD, and .86f cannot be updated in this version.\n"
+       << "      --offset=N       FAT12/FAT16: map byte offset N (decimal or 0x hex) to\n"
+       << "                       a sector, a cluster or reserved/FAT/root, and the owning\n"
+       << "                       file, free, slack, or past-end. One line on stdout.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -213,6 +260,34 @@ cli_options parse_cli(int argc, char** argv)
         {
             o.output = arg.substr(2);
             o.has_output = true;
+            continue;
+        }
+        if (!end_opts && (arg == "--offset" || arg.starts_with("--offset=")))
+        {
+            std::string text;
+            if (arg == "--offset")
+            {
+                if (i + 1 >= argc || argv[i + 1] == nullptr)
+                {
+                    o.ok = false;
+                    o.error = "missing N after --offset";
+                    return o;
+                }
+                ++i;
+                text = argv[i];
+            }
+            else
+            {
+                text = arg.substr(9);
+            }
+            uint64_t value = 0;
+            if (!parse_offset_value(text, value, o.error))
+            {
+                o.ok = false;
+                return o;
+            }
+            o.has_offset = true;
+            o.offset = value;
             continue;
         }
         if (!end_opts && !arg.empty() && arg[0] == '-')

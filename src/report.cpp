@@ -172,6 +172,53 @@ std::string field(std::string_view s, size_t width)
     return out;
 }
 
+/**
+ * @brief Escape a directory name so a report row stays one line.
+ *
+ * Bytes outside printable ASCII (0x20–0x7E) become `\xNN` (lowercase hex).
+ * Display only: 8.3, LFN, and path bytes stored on the analysis are unchanged.
+ *
+ * @param[in] raw Name or path as stored on the directory entry.
+ * @return Text with no raw controls, NULs, or bytes above 0x7E.
+ */
+std::string escape_name(std::string_view raw)
+{
+    std::string out;
+    out.reserve(raw.size());
+    static constexpr char k_hex[] = "0123456789abcdef";
+    for (const char ch : raw)
+    {
+        const auto c = static_cast<unsigned char>(ch);
+        if (c >= 0x20u && c <= 0x7Eu)
+        {
+            out.push_back(static_cast<char>(c));
+        }
+        else
+        {
+            out.push_back('\\');
+            out.push_back('x');
+            out.push_back(k_hex[c >> 4]);
+            out.push_back(k_hex[c & 0x0Fu]);
+        }
+    }
+    return out;
+}
+
+/**
+ * @brief Left-justify an escaped directory name.
+ *
+ * The column is at least @p width. A name full of controls expands (`\xNN`)
+ * and is not clipped, so a zeroed or 0xFF name cannot split the row.
+ *
+ * @param[in] raw   Stored 8.3, LFN, or path.
+ * @param[in] width Minimum field width before the two-space gap.
+ */
+std::string name_field(std::string_view raw, size_t width)
+{
+    const std::string escaped = escape_name(raw);
+    return field(escaped, std::max(width, escaped.size()));
+}
+
 /*
  * Inner widths = max(header, content); each field then adds 2 spaces.
  * Name 12, Attributes 10, Size 7 (floppy files), Cluster 7, Modified 19,
@@ -202,7 +249,7 @@ std::string entry_line(const dir_entry& e)
         format_dos_date(e.write_date) + " " + format_dos_time(e.write_time);
     std::ostringstream os;
     os << "  " << field(std::string_view(&mark, 1), k_w_mark)
-       << field(e.name_83, k_w_name) << field(format_attributes(e.attributes), k_w_attr)
+       << name_field(e.name_83, k_w_name) << field(format_attributes(e.attributes), k_w_attr)
        << field(std::to_string(e.size), k_w_size)
        << field(std::to_string(e.first_cluster), k_w_cluster)
        << field(modified, k_w_modified) << field(e.type, k_type_column_width)
@@ -239,7 +286,7 @@ std::string cbm_entry_line(const cbm_file& e, uint32_t size, std::string_view su
        << static_cast<unsigned>(e.first_sector);
     std::ostringstream os;
     os << "  " << field(std::string_view(&mark, 1), k_w_mark)
-       << field(e.name, k_w_cbm_name) << field(cbm_file_kind_name(e.kind), k_w_cbm_type)
+       << name_field(e.name, k_w_cbm_name) << field(cbm_file_kind_name(e.kind), k_w_cbm_type)
        << field(std::to_string(size), k_w_size) << field(ts.str(), k_w_cbm_ts)
        << field(size == 0u ? std::string_view{} : sum, k_w_sum);
     return os.str();
@@ -335,7 +382,7 @@ std::string amiga_entry_line(const amiga_file& e, uint32_t size, std::string_vie
     const std::string size_text = e.is_dir ? std::string{} : std::to_string(size);
     std::ostringstream os;
     os << "  " << field(std::string_view(&mark, 1), k_w_mark)
-       << field(e.path.empty() ? e.name : e.path, k_w_amiga_name)
+       << name_field(e.path.empty() ? e.name : e.path, k_w_amiga_name)
        << field(kind, k_w_amiga_type) << field(size_text, k_w_size)
        << field((e.is_dir || size == 0u) ? std::string_view{} : sum, k_w_sum);
     return os.str();
@@ -412,7 +459,7 @@ std::string trd_entry_line(const trd_file& e, uint32_t size, std::string_view su
        << static_cast<unsigned>(e.start_sector);
     std::ostringstream os;
     os << "  " << field(std::string_view(&mark, 1), k_w_mark)
-       << field(e.name, k_w_trd_name) << field(e.type_name, k_w_trd_type)
+       << name_field(e.name, k_w_trd_name) << field(e.type_name, k_w_trd_type)
        << field(std::to_string(size), k_w_size) << field(ts.str(), k_w_trd_ts)
        << field(size == 0u ? std::string_view{} : sum, k_w_sum);
     return os.str();
@@ -534,7 +581,7 @@ std::string apple_entry_line(const apple_file& e, uint32_t size, std::string_vie
     const char mark = e.deleted ? 'D' : (e.locked ? '*' : ' ');
     std::ostringstream os;
     os << "  " << field(std::string_view(&mark, 1), k_w_mark)
-       << field(e.name, k_w_apple_name) << field(e.type_name, k_w_apple_type)
+       << name_field(e.name, k_w_apple_name) << field(e.type_name, k_w_apple_type)
        << field(std::to_string(size), k_w_size)
        << field(size == 0u ? std::string_view{} : sum, k_w_sum);
     return os.str();
@@ -912,11 +959,11 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     kv(out, "Serial (EBPB)",
        a.volume.serial_text.empty() ? "(none)" : a.volume.serial_text);
     kv(out, "Label (EBPB)",
-       a.volume.label_ebpb.empty() ? "(none)" : a.volume.label_ebpb);
+       a.volume.label_ebpb.empty() ? "(none)" : escape_name(a.volume.label_ebpb));
     kv(out, "Label (root)",
-       a.volume.label_root.empty() ? "(none)" : a.volume.label_root);
+       a.volume.label_root.empty() ? "(none)" : escape_name(a.volume.label_root));
     kv(out, "Label (best)",
-       a.volume.label_best.empty() ? "(none)" : a.volume.label_best);
+       a.volume.label_best.empty() ? "(none)" : escape_name(a.volume.label_best));
     out << '\n';
 
     if (a.bpb.looks_valid &&
