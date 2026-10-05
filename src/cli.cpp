@@ -135,6 +135,11 @@ std::string usage_text()
        << "      --offset=N       FAT12/FAT16: map byte offset N (decimal or 0x hex) to\n"
        << "                       a sector, a cluster or reserved/FAT/root, and the owning\n"
        << "                       file, free, slack, or past-end. One line on stdout.\n"
+       << "      --slack          FAT12/FAT16: unused tail of each live file (default: off).\n"
+       << "      --leaked         FAT12/FAT16: slot-aligned directory entries in slack,\n"
+       << "                       free clusters, and bytes past the filesystem (default: off).\n"
+       << "      --carve          FAT12/FAT16: carve MZ/ZM, GIF, and long ASCII from slack,\n"
+       << "                       free clusters, and bytes past the filesystem (default: off).\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -288,6 +293,21 @@ cli_options parse_cli(int argc, char** argv)
             }
             o.has_offset = true;
             o.offset = value;
+            continue;
+        }
+        if (!end_opts && arg == "--slack")
+        {
+            o.forensics.slack = true;
+            continue;
+        }
+        if (!end_opts && arg == "--leaked")
+        {
+            o.forensics.leaked = true;
+            continue;
+        }
+        if (!end_opts && arg == "--carve")
+        {
+            o.forensics.carve = true;
             continue;
         }
         if (!end_opts && !arg.empty() && arg[0] == '-')

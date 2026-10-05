@@ -12,14 +12,18 @@
 #include "dumpfloppy/util.hpp"
 #include "dumpfloppy/volume.hpp"
 
+#include <cerrno>
 #include <cstdint>
+#include <fcntl.h>
 #include <filesystem>
-#include <fstream>
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
 #include <system_error>
+#include <unistd.h>
 #include <unordered_set>
+#include <vector>
 
 namespace dumpfloppy
 {
@@ -271,7 +275,183 @@ bool dest_taken(const std::filesystem::path& p,
         return true;
     }
     std::error_code ec{};
-    return std::filesystem::exists(p, ec);
+    const std::filesystem::file_status st = std::filesystem::symlink_status(p, ec);
+    if (ec)
+    {
+        return false;
+    }
+    /* symlink_status does not follow. A dangling link is still present. */
+    const std::filesystem::file_type ty = st.type();
+    return ty != std::filesystem::file_type::not_found &&
+           ty != std::filesystem::file_type::none;
+}
+
+/**
+ * @brief True when any existing component of @p path is a symlink.
+ *
+ * Missing components end the walk (parents may still be created). The link
+ * is not followed.
+ */
+bool has_symlink_component(const std::filesystem::path& path)
+{
+    std::filesystem::path cur;
+    for (const std::filesystem::path& part : path)
+    {
+        if (part.empty() || part == ".")
+        {
+            continue;
+        }
+        cur /= part;
+        std::error_code ec{};
+        const std::filesystem::file_status st = std::filesystem::symlink_status(cur, ec);
+        if (ec || st.type() == std::filesystem::file_type::not_found)
+        {
+            return false;
+        }
+        if (std::filesystem::is_symlink(st))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Create missing parents with mkdir. Do not follow symlinks.
+ *
+ * An existing real directory is kept. A symlink component is not an error
+ * here; the caller skips the file. A non-directory existing component fails.
+ *
+ * @return 0 when the directory exists or was created, or when a symlink
+ *         blocked creation. -1 when mkdir fails.
+ */
+int ensure_real_directory(const std::filesystem::path& dir, std::ostream& err)
+{
+    if (dir.empty())
+    {
+        return 0;
+    }
+    std::filesystem::path cur;
+    for (const std::filesystem::path& part : dir)
+    {
+        if (part.empty() || part == ".")
+        {
+            continue;
+        }
+        cur /= part;
+        std::error_code ec{};
+        const std::filesystem::file_status st = std::filesystem::symlink_status(cur, ec);
+        if (!ec && std::filesystem::is_symlink(st))
+        {
+            return 0;
+        }
+        if (!ec && std::filesystem::is_directory(st))
+        {
+            continue;
+        }
+        if (!ec && st.type() != std::filesystem::file_type::not_found &&
+            st.type() != std::filesystem::file_type::none)
+        {
+            err << "dumpfloppy: cannot create '" << cur.string() << "'\n";
+            return -1;
+        }
+        if (::mkdir(cur.c_str(), 0755) != 0)
+        {
+            if (errno == EEXIST)
+            {
+                std::error_code ec2{};
+                const std::filesystem::file_status st2 =
+                    std::filesystem::symlink_status(cur, ec2);
+                if (!ec2 && std::filesystem::is_symlink(st2))
+                {
+                    return 0;
+                }
+                if (!ec2 && std::filesystem::is_directory(st2))
+                {
+                    continue;
+                }
+            }
+            err << "dumpfloppy: cannot create '" << cur.string() << "': "
+                << std::generic_category().message(errno) << '\n';
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * @brief Create @p dest with O_CREAT|O_EXCL|O_NOFOLLOW and write @p bytes.
+ *
+ * A symlink component is skipped (return 0) and not truncated. Hard errors
+ * return -1. Success returns 1.
+ */
+int write_exclusive_bytes(const std::filesystem::path& dest,
+                          const std::vector<uint8_t>& bytes, std::ostream& err)
+{
+    if (has_symlink_component(dest))
+    {
+        err << "dumpfloppy: skip symlink path '" << dest.string() << "'\n";
+        return 0;
+    }
+    if (dest.has_parent_path())
+    {
+        if (ensure_real_directory(dest.parent_path(), err) != 0)
+        {
+            return -1;
+        }
+        if (has_symlink_component(dest))
+        {
+            err << "dumpfloppy: skip symlink path '" << dest.string() << "'\n";
+            return 0;
+        }
+    }
+
+    const int fd = ::open(dest.c_str(), O_CREAT | O_EXCL | O_NOFOLLOW | O_WRONLY, 0644);
+    if (fd < 0)
+    {
+        std::error_code ec{};
+        const std::filesystem::file_status st = std::filesystem::symlink_status(dest, ec);
+        if (!ec && std::filesystem::is_symlink(st))
+        {
+            err << "dumpfloppy: skip symlink path '" << dest.string() << "'\n";
+            return 0;
+        }
+        err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
+        return -1;
+    }
+
+    size_t off = 0;
+    bool ok = true;
+    while (off < bytes.size())
+    {
+        const size_t remain = bytes.size() - off;
+        const ssize_t n = ::write(fd, bytes.data() + off, remain);
+        if (n < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            ok = false;
+            break;
+        }
+        if (n == 0)
+        {
+            ok = false;
+            break;
+        }
+        off += static_cast<size_t>(n);
+    }
+    if (::close(fd) != 0)
+    {
+        ok = false;
+    }
+    if (!ok)
+    {
+        err << "dumpfloppy: short write '" << dest.string() << "'\n";
+        return -1;
+    }
+    return 1;
 }
 
 /**
@@ -351,12 +531,8 @@ bool cbm_extract_matches(const cbm_file& file, const extract_options& opt)
 
 int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostream& err)
 {
-    std::error_code ec{};
-    std::filesystem::create_directories(opt.dest_dir, ec);
-    if (ec)
+    if (ensure_real_directory(opt.dest_dir, err) != 0)
     {
-        err << "dumpfloppy: cannot create '" << opt.dest_dir.string()
-            << "': " << ec.message() << '\n';
         return -1;
     }
 
@@ -377,6 +553,11 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
         }
         const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
+        if (has_symlink_component(preferred))
+        {
+            err << "dumpfloppy: skip symlink path '" << preferred.string() << "'\n";
+            continue;
+        }
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
         if (dest.empty())
@@ -385,33 +566,16 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
                 << preferred.string() << "'\n";
             return -1;
         }
-        if (dest.has_parent_path())
-        {
-            std::filesystem::create_directories(dest.parent_path(), ec);
-            if (ec)
-            {
-                err << "dumpfloppy: cannot create '" << dest.parent_path().string()
-                    << "': " << ec.message() << '\n';
-                return -1;
-            }
-        }
         const std::vector<uint8_t> bytes =
             read_cbm_file(cbm_sector_bytes(a.image.bytes, a.cbm), file);
-        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
-        if (!out)
+        const int placed = write_exclusive_bytes(dest, bytes, err);
+        if (placed < 0)
         {
-            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
             return -1;
         }
-        if (!bytes.empty())
+        if (placed == 0)
         {
-            out.write(reinterpret_cast<const char*>(bytes.data()),
-                      static_cast<std::streamsize>(bytes.size()));
-        }
-        if (!out)
-        {
-            err << "dumpfloppy: short write '" << dest.string() << "'\n";
-            return -1;
+            continue;
         }
         used_dests.insert(dest_key(dest));
         ++written;
@@ -448,12 +612,8 @@ bool amiga_extract_matches(const amiga_file& file, const extract_options& opt)
 
 int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostream& err)
 {
-    std::error_code ec{};
-    std::filesystem::create_directories(opt.dest_dir, ec);
-    if (ec)
+    if (ensure_real_directory(opt.dest_dir, err) != 0)
     {
-        err << "dumpfloppy: cannot create '" << opt.dest_dir.string()
-            << "': " << ec.message() << '\n';
         return -1;
     }
 
@@ -474,6 +634,11 @@ int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostr
         }
         const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
+        if (has_symlink_component(preferred))
+        {
+            err << "dumpfloppy: skip symlink path '" << preferred.string() << "'\n";
+            continue;
+        }
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
         if (dest.empty())
@@ -482,33 +647,16 @@ int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostr
                 << preferred.string() << "'\n";
             return -1;
         }
-        if (dest.has_parent_path())
-        {
-            std::filesystem::create_directories(dest.parent_path(), ec);
-            if (ec)
-            {
-                err << "dumpfloppy: cannot create '" << dest.parent_path().string()
-                    << "': " << ec.message() << '\n';
-                return -1;
-            }
-        }
         const std::vector<uint8_t> bytes = read_amiga_file(
             amiga_volume_bytes(a.image.bytes, a.amiga), a.amiga, file);
-        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
-        if (!out)
+        const int placed = write_exclusive_bytes(dest, bytes, err);
+        if (placed < 0)
         {
-            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
             return -1;
         }
-        if (!bytes.empty())
+        if (placed == 0)
         {
-            out.write(reinterpret_cast<const char*>(bytes.data()),
-                      static_cast<std::streamsize>(bytes.size()));
-        }
-        if (!out)
-        {
-            err << "dumpfloppy: short write '" << dest.string() << "'\n";
-            return -1;
+            continue;
         }
         used_dests.insert(dest_key(dest));
         ++written;
@@ -541,12 +689,8 @@ bool trd_extract_matches(const trd_file& file, const extract_options& opt)
 
 int extract_trd_files(const analysis& a, const extract_options& opt, std::ostream& err)
 {
-    std::error_code ec{};
-    std::filesystem::create_directories(opt.dest_dir, ec);
-    if (ec)
+    if (ensure_real_directory(opt.dest_dir, err) != 0)
     {
-        err << "dumpfloppy: cannot create '" << opt.dest_dir.string()
-            << "': " << ec.message() << '\n';
         return -1;
     }
 
@@ -567,6 +711,11 @@ int extract_trd_files(const analysis& a, const extract_options& opt, std::ostrea
         }
         const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
+        if (has_symlink_component(preferred))
+        {
+            err << "dumpfloppy: skip symlink path '" << preferred.string() << "'\n";
+            continue;
+        }
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
         if (dest.empty())
@@ -576,21 +725,14 @@ int extract_trd_files(const analysis& a, const extract_options& opt, std::ostrea
             continue;
         }
         const std::vector<uint8_t> bytes = read_trd_file(a.image.bytes, file);
-        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
-        if (!out)
+        const int placed = write_exclusive_bytes(dest, bytes, err);
+        if (placed < 0)
         {
-            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
             return -1;
         }
-        if (!bytes.empty())
+        if (placed == 0)
         {
-            out.write(reinterpret_cast<const char*>(bytes.data()),
-                      static_cast<std::streamsize>(bytes.size()));
-        }
-        if (!out)
-        {
-            err << "dumpfloppy: short write '" << dest.string() << "'\n";
-            return -1;
+            continue;
         }
         used_dests.insert(dest_key(dest));
         ++written;
@@ -624,12 +766,8 @@ bool apple_extract_matches(const apple_file& file, const extract_options& opt)
 int extract_apple_files(const analysis& a, const extract_options& opt,
                         std::ostream& err)
 {
-    std::error_code ec{};
-    std::filesystem::create_directories(opt.dest_dir, ec);
-    if (ec)
+    if (ensure_real_directory(opt.dest_dir, err) != 0)
     {
-        err << "dumpfloppy: cannot create '" << opt.dest_dir.string()
-            << "': " << ec.message() << '\n';
         return -1;
     }
 
@@ -654,6 +792,11 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
         }
         const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
+        if (has_symlink_component(preferred))
+        {
+            err << "dumpfloppy: skip symlink path '" << preferred.string() << "'\n";
+            continue;
+        }
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
         if (dest.empty())
@@ -663,21 +806,14 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
             continue;
         }
         const std::vector<uint8_t> bytes = read_apple_file(a.apple, file);
-        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
-        if (!out)
+        const int placed = write_exclusive_bytes(dest, bytes, err);
+        if (placed < 0)
         {
-            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
             return -1;
         }
-        if (!bytes.empty())
+        if (placed == 0)
         {
-            out.write(reinterpret_cast<const char*>(bytes.data()),
-                      static_cast<std::streamsize>(bytes.size()));
-        }
-        if (!out)
-        {
-            err << "dumpfloppy: short write '" << dest.string() << "'\n";
-            return -1;
+            continue;
         }
         used_dests.insert(dest_key(dest));
         ++written;
@@ -747,12 +883,8 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
                "HxC .mfm or an 86F decoder\n";
         return -1;
     }
-    std::error_code ec{};
-    std::filesystem::create_directories(opt.dest_dir, ec);
-    if (ec)
+    if (ensure_real_directory(opt.dest_dir, err) != 0)
     {
-        err << "dumpfloppy: cannot create '" << opt.dest_dir.string()
-            << "': " << ec.message() << '\n';
         return -1;
     }
 
@@ -782,6 +914,11 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             continue;
         }
         const std::string fallback = flatten_separators(mask_nonprintable(e.name_83));
+        if (has_symlink_component(preferred))
+        {
+            err << "dumpfloppy: skip symlink path '" << preferred.string() << "'\n";
+            continue;
+        }
         const std::filesystem::path dest =
             choose_extract_dest(preferred, fallback, used_dests, err);
         if (dest.empty())
@@ -790,33 +927,16 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
                 << preferred.string() << "'\n";
             return -1;
         }
-        if (dest.has_parent_path())
-        {
-            std::filesystem::create_directories(dest.parent_path(), ec);
-            if (ec)
-            {
-                err << "dumpfloppy: cannot create '" << dest.parent_path().string()
-                    << "': " << ec.message() << '\n';
-                return -1;
-            }
-        }
         const std::vector<uint8_t> bytes =
             read_file_contents(store.bytes, a.bpb, e);
-        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
-        if (!out)
+        const int placed = write_exclusive_bytes(dest, bytes, err);
+        if (placed < 0)
         {
-            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
             return -1;
         }
-        if (!bytes.empty())
+        if (placed == 0)
         {
-            out.write(reinterpret_cast<const char*>(bytes.data()),
-                      static_cast<std::streamsize>(bytes.size()));
-        }
-        if (!out)
-        {
-            err << "dumpfloppy: short write '" << dest.string() << "'\n";
-            return -1;
+            continue;
         }
         used_dests.insert(dest_key(dest));
         ++written;
@@ -847,6 +967,11 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
         }
         const std::filesystem::path rel(host);
         const std::filesystem::path preferred = opt.dest_dir / rel;
+        if (has_symlink_component(preferred))
+        {
+            err << "dumpfloppy: skip symlink path '" << preferred.string() << "'\n";
+            continue;
+        }
         const std::filesystem::path dest =
             choose_extract_dest(preferred, host, used_dests, err);
         if (dest.empty())
@@ -855,21 +980,14 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
                 << preferred.string() << "'\n";
             return -1;
         }
-        std::ofstream out(dest, std::ios::binary | std::ios::trunc);
-        if (!out)
+        const int placed = write_exclusive_bytes(dest, run.payload, err);
+        if (placed < 0)
         {
-            err << "dumpfloppy: cannot write '" << dest.string() << "'\n";
             return -1;
         }
-        if (!run.payload.empty())
+        if (placed == 0)
         {
-            out.write(reinterpret_cast<const char*>(run.payload.data()),
-                      static_cast<std::streamsize>(run.payload.size()));
-        }
-        if (!out)
-        {
-            err << "dumpfloppy: short write '" << dest.string() << "'\n";
-            return -1;
+            continue;
         }
         used_dests.insert(dest_key(dest));
         ++written;

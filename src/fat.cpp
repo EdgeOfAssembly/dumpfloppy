@@ -77,8 +77,8 @@ std::vector<uint16_t> walk_chain(std::span<const uint8_t> fat, fat_kind kind,
 
     std::unordered_set<uint16_t> seen;
     uint16_t cur = start;
-    constexpr int k_max_steps = 65536;
-    for (int step = 0; step < k_max_steps; ++step)
+    int step = 0;
+    for (; step < k_max_chain_steps; ++step)
     {
         if (cur < 2u || cur > max_cluster)
         {
@@ -132,6 +132,10 @@ std::vector<uint16_t> walk_chain(std::span<const uint8_t> fat, fat_kind kind,
             }
         }
         cur = next;
+    }
+    if (step == k_max_chain_steps)
+    {
+        notes = "chain capped";
     }
     return chain;
 }

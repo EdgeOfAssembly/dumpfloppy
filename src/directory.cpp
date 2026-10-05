@@ -162,7 +162,7 @@ void note_size_vs_chain(dir_entry& e, uint32_t cluster_bytes)
  */
 void recover_deleted_payloads(std::span<const uint8_t> image, const bpb_info& bpb,
                               fat_kind kind, std::span<const uint8_t> fat,
-                              std::vector<dir_entry>& entries)
+                              std::vector<dir_entry>& entries, bool& capped)
 {
     const uint32_t max_cluster = inclusive_max_cluster(bpb);
     const uint32_t cluster_bytes =
@@ -205,6 +205,12 @@ void recover_deleted_payloads(std::span<const uint8_t> image, const bpb_info& bp
         const char* stop = nullptr;
         for (uint32_t i = 0; i < need; ++i)
         {
+            if (e.cluster_chain.size() >= static_cast<size_t>(k_max_chain_steps))
+            {
+                stop = "chain capped";
+                capped = true;
+                break;
+            }
             if (cl < 2u || cl > max_cluster)
             {
                 stop = "deleted payload truncated (cluster out of range)";
@@ -247,14 +253,32 @@ void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
                      std::span<const uint8_t> dir_bytes, const std::string& dir_path,
                      std::vector<dir_entry>& out,
                      std::unordered_set<uint16_t>& visited_dirs, size_t dir_base_off,
-                     const std::vector<uint16_t>* dir_chain);
+                     const std::vector<uint16_t>* dir_chain, bool& capped,
+                     size_t depth);
+
+/**
+ * @brief Push one entry unless the directory cap is already full.
+ *
+ * @return false when the entry was not stored (@p capped is set).
+ */
+bool push_dir_entry(std::vector<dir_entry>& out, dir_entry entry, bool& capped)
+{
+    if (out.size() >= k_max_dir_entries)
+    {
+        capped = true;
+        return false;
+    }
+    out.push_back(std::move(entry));
+    return true;
+}
 
 void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
                     fat_kind kind, std::span<const uint8_t> fat,
                     std::span<const uint8_t> slot, const std::string& dir_path,
                     std::string& pending_lfn, bool after_term,
                     std::vector<dir_entry>& out,
-                    std::unordered_set<uint16_t>& visited_dirs, size_t slot_vol_off)
+                    std::unordered_set<uint16_t>& visited_dirs, size_t slot_vol_off,
+                    bool& capped, size_t depth)
 {
     const uint8_t first = slot[0];
     const uint8_t attr = slot[11];
@@ -314,7 +338,7 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
 
     if ((attr & k_attr_volume) != 0u && (attr & k_attr_directory) == 0u)
     {
-        out.push_back(std::move(e));
+        push_dir_entry(out, std::move(e), capped);
         return;
     }
 
@@ -326,6 +350,10 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
         if (!chain_notes.empty())
         {
             append_note(e, chain_notes);
+            if (chain_notes == "chain capped")
+            {
+                capped = true;
+            }
         }
         sniff_at_cluster(image, bpb, e, e.first_cluster);
         const uint32_t cluster_bytes =
@@ -333,33 +361,56 @@ void parse_one_slot(std::span<const uint8_t> image, const bpb_info& bpb,
         note_size_vs_chain(e, cluster_bytes);
     }
 
-    out.push_back(e);
+    if (!push_dir_entry(out, e, capped))
+    {
+        return;
+    }
 
     if ((attr & k_attr_directory) != 0u && !is_dot && !deleted &&
         e.first_cluster >= 2u)
     {
-        if (!visited_dirs.insert(e.first_cluster).second)
+        if (capped)
         {
+            return;
+        }
+        if (depth + 1u >= k_max_dir_depth)
+        {
+            capped = true;
             return;
         }
         std::string dummy;
         const std::vector<uint16_t> chain =
             walk_chain(fat, kind, e.first_cluster, max_cluster, dummy);
+        if (dummy == "chain capped")
+        {
+            capped = true;
+        }
         std::vector<uint8_t> sub;
+        std::vector<uint16_t> fresh;
         const uint32_t cluster_bytes =
             static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
-        sub.reserve(chain.size() * cluster_bytes);
+        fresh.reserve(chain.size());
+        sub.reserve(chain.size() * static_cast<size_t>(cluster_bytes));
         for (uint16_t cl : chain)
         {
+            if (!visited_dirs.insert(cl).second)
+            {
+                continue;
+            }
             const size_t off = cluster_offset(bpb, cl);
             if (off >= image.size())
             {
-                break;
+                continue;
             }
             const size_t n = std::min<size_t>(cluster_bytes, image.size() - off);
             sub.insert(sub.end(), image.data() + off, image.data() + off + n);
+            fresh.push_back(cl);
         }
-        parse_dir_bytes(image, bpb, kind, fat, sub, e.path, out, visited_dirs, 0, &chain);
+        if (!fresh.empty())
+        {
+            parse_dir_bytes(image, bpb, kind, fat, sub, e.path, out, visited_dirs, 0,
+                            &fresh, capped, depth + 1u);
+        }
     }
 }
 
@@ -368,8 +419,14 @@ void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
                      std::span<const uint8_t> dir_bytes, const std::string& dir_path,
                      std::vector<dir_entry>& out,
                      std::unordered_set<uint16_t>& visited_dirs, size_t dir_base_off,
-                     const std::vector<uint16_t>* dir_chain)
+                     const std::vector<uint16_t>* dir_chain, bool& capped,
+                     size_t depth)
 {
+    if (depth >= k_max_dir_depth)
+    {
+        capped = true;
+        return;
+    }
     const size_t slots = dir_bytes.size() / 32u;
     const uint32_t cluster_bytes =
         static_cast<uint32_t>(bpb.bytes_per_sector) * bpb.sectors_per_cluster;
@@ -377,6 +434,11 @@ void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
     std::string pending_lfn;
     for (size_t i = 0; i < slots; ++i)
     {
+        if (capped || out.size() >= k_max_dir_entries)
+        {
+            capped = true;
+            break;
+        }
         const std::span<const uint8_t> slot{dir_bytes.data() + i * 32u, 32u};
         const uint8_t first = slot[0];
         if (first == k_dir_end)
@@ -397,7 +459,11 @@ void parse_dir_bytes(std::span<const uint8_t> image, const bpb_info& bpb,
             }
         }
         parse_one_slot(image, bpb, kind, fat, slot, dir_path, pending_lfn, seen_end,
-                       out, visited_dirs, vol_off);
+                       out, visited_dirs, vol_off, capped, depth);
+        if (capped)
+        {
+            break;
+        }
     }
 }
 
@@ -518,14 +584,14 @@ std::string sniff_magic(std::span<const uint8_t> head)
     return {};
 }
 
-std::vector<dir_entry> list_directories(std::span<const uint8_t> image,
-                                        const bpb_info& bpb, fat_kind kind,
-                                        std::span<const uint8_t> fat)
+directory_list list_directories(std::span<const uint8_t> image,
+                                 const bpb_info& bpb, fat_kind kind,
+                                 std::span<const uint8_t> fat)
 {
-    std::vector<dir_entry> out;
+    directory_list result;
     if (!bpb.looks_valid || bpb.bytes_per_sector == 0u)
     {
-        return out;
+        return result;
     }
     const size_t root_off =
         (static_cast<size_t>(bpb.reserved_sectors) +
@@ -535,14 +601,17 @@ std::vector<dir_entry> list_directories(std::span<const uint8_t> image,
         static_cast<size_t>(bpb.root_entry_count) * 32u;
     if (root_off >= image.size())
     {
-        return out;
+        return result;
     }
     const size_t n = std::min(root_bytes, image.size() - root_off);
     const std::span<const uint8_t> root{image.data() + root_off, n};
     std::unordered_set<uint16_t> visited;
-    parse_dir_bytes(image, bpb, kind, fat, root, "", out, visited, root_off, nullptr);
-    recover_deleted_payloads(image, bpb, kind, fat, out);
-    return out;
+    bool capped = false;
+    parse_dir_bytes(image, bpb, kind, fat, root, "", result.entries, visited, root_off,
+                    nullptr, capped, 0u);
+    recover_deleted_payloads(image, bpb, kind, fat, result.entries, capped);
+    result.capped = capped;
+    return result;
 }
 
 bool is_payload_file(const dir_entry& e)

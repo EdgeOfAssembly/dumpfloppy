@@ -15,6 +15,24 @@
 namespace dumpfloppy
 {
 
+/** @brief Maximum directory entries retained by one walk. */
+inline constexpr std::size_t k_max_dir_entries = 4096;
+
+/** @brief Maximum directory nesting, counting the root as depth 0. */
+inline constexpr std::size_t k_max_dir_depth = 32;
+
+/**
+ * @brief Directory walk result.
+ *
+ * @a capped is true when the entry cap, the depth cap, or a cluster-chain
+ * cap stopped the walk. @a entries is never longer than @ref k_max_dir_entries.
+ */
+struct directory_list
+{
+    std::vector<dir_entry> entries{};
+    bool capped = false;
+};
+
 /**
  * @brief Recursively list directories.
  *
@@ -26,12 +44,17 @@ namespace dumpfloppy
  * from @a first_cluster until a live-owned or bad cluster (empty/truncated
  * when the first cluster was reused).
  *
+ * The walk stops at @ref k_max_dir_entries, at depth @ref k_max_dir_depth,
+ * and at @ref k_max_chain_steps clusters per chain (`chain capped`). Every
+ * cluster whose directory bytes are parsed is recorded; a cluster already
+ * recorded is not parsed again.
+ *
  * @param[in] image Whole image.
  * @param[in] bpb   Valid BPB.
  * @param[in] kind  FAT12 or FAT16.
  * @param[in] fat   FAT0 bytes.
  */
-[[nodiscard]] std::vector<dir_entry>
+[[nodiscard]] directory_list
 list_directories(std::span<const uint8_t> image, const bpb_info& bpb,
                  fat_kind kind, std::span<const uint8_t> fat);
 

@@ -59,6 +59,9 @@ struct extract_options
  * If two payloads map to the same host path, the later file is written as
  * the 8.3 name (deleted entries keep `?`) or `stem.deleted.ext`; a warning
  * is emitted and the earlier file is left intact.
+ * A destination component that is a symlink is not followed. The file is
+ * skipped (`dumpfloppy: skip symlink path '...'`) and the link target is
+ * not created or truncated. Missing parents are created with mkdir.
  *
  * @param[in]  a   Analysis with cluster chains.
  * @param[in]  opt Extract flags and destination.

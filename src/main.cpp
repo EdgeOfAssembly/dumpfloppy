@@ -5,6 +5,7 @@
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
 #include "dumpfloppy/extract.hpp"
+#include "dumpfloppy/forensics.hpp"
 #include "dumpfloppy/ibm_mfm.hpp"
 #include "dumpfloppy/image.hpp"
 #include "dumpfloppy/offset.hpp"
@@ -193,9 +194,11 @@ int main(int argc, char** argv)
     }
 
     const bool mutating = cli.update.enabled || cli.extract.enabled;
+    const bool want_forensics =
+        cli.forensics.slack || cli.forensics.leaked || cli.forensics.carve;
     if (cli.inputs.empty())
     {
-        if (mutating || cli.has_offset)
+        if (mutating || cli.has_offset || want_forensics)
         {
             std::cerr << "dumpfloppy: no image files given\n";
             return 1;
@@ -256,6 +259,17 @@ int main(int argc, char** argv)
     }
 
     int rc = 0;
+    auto emit_forensics = [&](const dumpfloppy::analysis& image)
+    {
+        if (!want_forensics)
+        {
+            return;
+        }
+        if (dumpfloppy::write_forensics(image, cli.forensics, std::cout, std::cerr) != 0)
+        {
+            rc = 1;
+        }
+    };
     for (size_t i = 0; i < files.size(); ++i)
     {
         auto loaded = dumpfloppy::load_image(files[i]);
@@ -266,6 +280,13 @@ int main(int argc, char** argv)
             continue;
         }
         dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+        if (a.directory_capped)
+        {
+            std::cerr << "Warning: directory walk stopped at cap\n";
+        }
+        const bool forensics_bad =
+            want_forensics && a.kind != dumpfloppy::fat_kind::fat12 &&
+            a.kind != dumpfloppy::fat_kind::fat16;
         if (cli.update.enabled)
         {
             if (dumpfloppy::update_files(a, cli.update, std::cerr) < 0)
@@ -306,6 +327,7 @@ int main(int argc, char** argv)
                     rc = 1;
                 }
             }
+            emit_forensics(a);
             continue;
         }
         if (write_offset_line(a, cli.has_offset, cli.offset) != 0)
@@ -318,10 +340,12 @@ int main(int argc, char** argv)
             {
                 rc = 1;
             }
+            emit_forensics(a);
             continue;
         }
-        if (cli.has_offset)
+        if (cli.has_offset || forensics_bad)
         {
+            emit_forensics(a);
             continue;
         }
         if (cli.has_output)
@@ -341,6 +365,7 @@ int main(int argc, char** argv)
             }
             dumpfloppy::write_report(a, std::cout, cli.report);
         }
+        emit_forensics(a);
     }
     return rc;
 }

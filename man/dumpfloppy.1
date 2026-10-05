@@ -1,4 +1,4 @@
-.TH DUMPFLOPPY 1 "2026-09-28" "dumpfloppy" "User Commands"
+.TH DUMPFLOPPY 1 "2026-10-05" "dumpfloppy" "User Commands"
 .SH NAME
 dumpfloppy \- expose secrets in FAT12, CBMFS, and Amiga ADF images
 .SH SYNOPSIS
@@ -48,8 +48,9 @@ with a valid CBMFS BAM/header, or a
 .I .g64
 /
 .I .g71
-with a valid GCR-1541/GCR-1571 header, is listed as Commodore (disk name, ID, DOS type,
-PRG/SEQ directory) instead of inventing a FAT BPB from C64 bytes.
+with a valid GCR-1541/GCR-1571 header, is listed as Commodore
+(disk name, ID, DOS type, PRG/SEQ directory) instead of inventing a
+FAT BPB from C64 bytes.
 G64 tracks 1–35 are GCR-decoded onto a 35-track D64 sector map.
 G71 tracks are GCR-decoded onto a 70-track D71 sector map.
 A DD/HD
@@ -184,7 +185,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.34
+.B dumpfloppy 0.35
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -368,6 +369,67 @@ to stderr and exit 1.
 There is no
 .B \-\-no-offset
 switch; the map is off unless this option is given.
+.TP
+.B \-\-slack
+FAT12/FAT16 only.
+For each live payload file, print the unused tail of its last cluster
+under
+.BR "=== Slack ===" .
+Each line is the path, the image byte offset of the tail, the length,
+and the hex of those bytes only.
+Empty tails are omitted.
+The listing is unchanged when this flag is absent.
+Other filesystems write
+.B slack is only implemented for FAT12/FAT16
+to stderr and exit 1.
+There is no
+.B \-\-no-slack
+switch.
+.TP
+.B \-\-leaked
+FAT12/FAT16 only.
+Step by 32 on directory-slot alignment through file slack, free
+clusters, and bytes past the end of the filesystem. A cluster region
+is aligned to that cluster's file offset. Bytes past the filesystem
+are aligned to volume offset 0. A window that starts before the region
+or extends past it is not a hit. Slots that belong to a directory
+table already walked are skipped.
+A hit needs a non-space 8-byte name, a first byte other than 0x00, an
+attribute whose bits lie in
+.B 0x37
+(or attribute
+.BR 0x0F ),
+a cluster of 0 or in
+.BR 2..max ,
+and a size no larger than the volume.
+Print
+.B "=== Leaked directory entries ==="
+with offset, escaped name, attribute, cluster, and size.
+At most 64 hits, then one stderr warning.
+There is no
+.B \-\-no-leaked
+switch.
+Other filesystems write
+.B leaked is only implemented for FAT12/FAT16
+to stderr and exit 1.
+.TP
+.B \-\-carve
+FAT12/FAT16 only.
+Search slack, free clusters, and bytes past the filesystem end
+(not live file payload and not directory tables) for
+.BR MZ / ZM ,
+.BR GIF87a / GIF89a ,
+and a printable ASCII run of at least 16 bytes.
+Print
+.B "=== Carve ==="
+with the decimal offset, kind, length, and at most 48 characters of text.
+At most 64 hits, then one stderr warning.
+There is no
+.B \-\-no-carve
+switch.
+Other filesystems write
+.B carve is only implemented for FAT12/FAT16
+to stderr and exit 1.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -394,6 +456,11 @@ Extract into a chosen directory:
 Map byte 2048 of a FAT12 image:
 .RS
 .B dumpfloppy \-\-offset=2048 disk1.ima
+.RE
+.PP
+Show slack tails, leaked directory slots, and carved signatures:
+.RS
+.B dumpfloppy \-\-slack \-\-leaked \-\-carve disk1.ima
 .RE
 .PP
 List and extract a Commodore 1541 D64:

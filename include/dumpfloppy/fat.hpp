@@ -33,13 +33,21 @@ namespace dumpfloppy
                            uint16_t value);
 
 /**
- * @brief Walk a cluster chain from @p start until EOC, bad, or cycle.
+ * @brief Maximum clusters stored for one chain.
+ *
+ * A longer chain stops, @p notes is `chain capped`, and no further
+ * cluster is appended.
+ */
+inline constexpr int k_max_chain_steps = 8192;
+
+/**
+ * @brief Walk a cluster chain from @p start until EOC, bad, cycle, or cap.
  *
  * @param[in]  fat         One FAT copy.
  * @param[in]  kind        FAT12 or FAT16.
  * @param[in]  start       First cluster (0 means empty file).
  * @param[in]  max_cluster Inclusive last valid data cluster.
- * @param[out] notes       Cycle / bad / truncated remarks.
+ * @param[out] notes       Cycle / bad / truncated / `chain capped` remarks.
  */
 [[nodiscard]] std::vector<uint16_t>
 walk_chain(std::span<const uint8_t> fat, fat_kind kind, uint16_t start,

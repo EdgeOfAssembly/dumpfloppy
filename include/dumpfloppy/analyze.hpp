@@ -48,6 +48,7 @@ struct analysis
     fat_summary fat{};
     volume_info volume{};
     std::vector<dir_entry> entries{};
+    bool directory_capped = false; /**< Walk hit the entry, depth, or chain cap. */
     std::vector<uint16_t> orphan_clusters{};
     std::vector<unused_run> unused{}; /**< FAT-free/bad clusters with leftover bytes. */
     std::vector<std::string> secrets{};

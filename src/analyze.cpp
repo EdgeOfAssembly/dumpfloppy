@@ -354,7 +354,10 @@ analysis analyse(floppy_image image)
         {
             const size_t n = std::min<size_t>(a.fat.fat_bytes, volume.size() - fat0_off);
             const std::span<const uint8_t> fat0{volume.data() + fat0_off, n};
-            a.entries = list_directories(volume, a.bpb, a.kind, fat0);
+            const directory_list listed =
+                list_directories(volume, a.bpb, a.kind, fat0);
+            a.entries = std::move(listed.entries);
+            a.directory_capped = listed.capped;
             for (dir_entry& e : a.entries)
             {
                 if (e.name_83 == "." || e.name_83 == ".." ||
