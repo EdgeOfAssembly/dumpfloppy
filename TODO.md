@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** 0.40 work tree (parent `393511e`) · **version 0.40** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** `9857171` on `/tmp/dumpfloppy`, `/mnt/dumpfloppy`, and GitHub `main` · **version 0.40** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` (this clone's `origin`) · GitHub is the `github` remote  
 **Reviews:** `/mnt/grok/reviews/uasm-json/`  
@@ -46,7 +46,7 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (this tree, 0.38):** `make -s test` 283 cases, 276 passed, 7 skipped, 28077 assertions (exit 0); `make -s verify` exit 0, CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases, not `--sources`.
 
-**Verify last green (this tree, 0.40):** isolated `make -s verify` exit 0: 298 cases, 291 passed, 7 skipped, 28299 assertions. CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases. Harnesses were not edited.
+**Verify last green (this tree, 0.40):** parent `make -s verify` exit 0: 298 cases, 291 passed, 7 skipped, 28299 assertions. CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases. Harnesses were not edited.
 
 ## Still open (2026-10-05)
 
