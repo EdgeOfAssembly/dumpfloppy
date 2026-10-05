@@ -358,6 +358,9 @@ analysis analyse(floppy_image image)
                 list_directories(volume, a.bpb, a.kind, fat0);
             a.entries = std::move(listed.entries);
             a.directory_capped = listed.capped;
+            a.directory_cap_depth = listed.cap_depth;
+            a.directory_cap_entries = listed.cap_entries;
+            a.directory_cap_chain = listed.cap_chain;
             for (dir_entry& e : a.entries)
             {
                 if (e.name_83 == "." || e.name_83 == ".." ||

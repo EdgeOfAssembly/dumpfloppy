@@ -33,10 +33,12 @@ namespace dumpfloppy
                            uint16_t value);
 
 /**
- * @brief Maximum clusters stored for one chain.
+ * @brief Directory-chain step limit.
  *
- * A longer chain stops, @p notes is `chain capped`, and no further
- * cluster is appended.
+ * File chains are not cut here: they run until @c max_cluster (cycle, bad,
+ * free, or EOF still stop them). A directory chain passes this limit so a
+ * directory bomb cannot pull in every cluster on a large volume. Hitting it
+ * sets @p notes to `chain capped`.
  */
 inline constexpr int k_max_chain_steps = 8192;
 
@@ -48,10 +50,13 @@ inline constexpr int k_max_chain_steps = 8192;
  * @param[in]  start       First cluster (0 means empty file).
  * @param[in]  max_cluster Inclusive last valid data cluster.
  * @param[out] notes       Cycle / bad / truncated / `chain capped` remarks.
+ * @param[in]  max_steps   Maximum clusters to store. Zero means
+ *                         @p max_cluster (a file chain). Directory walks
+ *                         pass @ref k_max_chain_steps.
  */
 [[nodiscard]] std::vector<uint16_t>
 walk_chain(std::span<const uint8_t> fat, fat_kind kind, uint16_t start,
-           uint32_t max_cluster, std::string& notes);
+           uint32_t max_cluster, std::string& notes, uint32_t max_steps = 0u);
 
 /**
  * @brief Account free/bad/allocated and compare FAT copies.

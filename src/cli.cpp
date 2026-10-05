@@ -140,6 +140,16 @@ std::string usage_text()
        << "                       free clusters, and bytes past the filesystem (default: off).\n"
        << "      --carve          FAT12/FAT16: carve MZ/ZM, GIF, and long ASCII from slack,\n"
        << "                       free clusters, and bytes past the filesystem (default: off).\n"
+       << "                       On a non-FAT image the listing is still printed, then\n"
+       << "                       stderr says the flag is only implemented for FAT12/FAT16\n"
+       << "                       (same for --slack and --leaked) and the exit status is 1.\n"
+       << "                       A directory walk cap prints\n"
+       << "                       dumpfloppy: '<image>' directory walk hit cap: depth,\n"
+       << "                       entries, and/or chain. Depth 32 skips that subdirectory\n"
+       << "                       only. The entries cap (4096) stops a subdirectory but\n"
+       << "                       still lists later root slots. A directory chain stops at\n"
+       << "                       8192 clusters. A file chain is not cut at 8192. Exit\n"
+       << "                       status stays 0 when only a cap fired.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();

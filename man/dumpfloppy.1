@@ -112,12 +112,27 @@ On D64/D71/D81/G64/G71 the host names are the PETSCII listing name plus
 .BR .prg / .seq / .usr / .rel / .del .
 On FAT12/FAT16,
 .B \-x
-keeps subdirectory components, so
+keeps subdirectory components that come from the directory walk, so
 .I RAMTEST/MANUAL.RT
 is written as
 .I dest/RAMTEST/MANUAL.RT .
+A slash or backslash inside one 8.3 or LFN component becomes
+.B _
+and does not create a host directory.
+An 8.3 name
+.I A/B.TXT
+is one file,
+.IR A_B.TXT .
 A component longer than 255 bytes is shortened to a 240-byte prefix,
 an underscore, and eight hex digits of FNV-1a of that component.
+.B \-o
+is canonicalized once: a symlink the user named is the destination.
+A symlink created under that directory is still skipped.
+If one entry cannot be created (a file and directory name clash, or a
+path past
+.BR PATH_MAX ),
+that entry is skipped, later files are still written, and the exit
+status is 1.
 On ADF, OFS/FFS files are written (directories skipped) with
 .B /
 in Amiga paths, which stay flattened to
@@ -185,7 +200,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.35
+.B dumpfloppy 0.36
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -260,10 +275,12 @@ unless
 .BI \-o " DIR"
 selects another one (created if missing).
 No listing is printed (errors stay on stderr).
-Bytes outside printable ASCII, and any slash or backslash that remains in
-an accepted host name, are replaced with
+Bytes outside printable ASCII are replaced with
 .B _
 before the file is created.
+A slash or backslash that came from the directory walk is a host
+directory; one that was inside a single FAT name is also replaced with
+.BR _ .
 Absolute paths,
 .BR . ,
 and
@@ -375,11 +392,23 @@ FAT12/FAT16 only.
 For each live payload file, print the unused tail of its last cluster
 under
 .BR "=== Slack ===" .
-Each line is the path, the image byte offset of the tail, the length,
+Each line is the escaped path
+(bytes outside printable ASCII are written as
+.BR \exNN ),
+the image byte offset of the tail, the length,
 and the hex of those bytes only.
 Empty tails are omitted.
+Clusters on the file chain after the last byte of the file
+(ceil of size divided by the cluster size),
+and the whole cluster of a zero-length file that owns one, are slack
+too.
+.B fat_slack_bytes(0)
+stays 0; the zero-length case is handled beside that helper.
+The listing notes
+.B chain longer than size
+when the chain extends past the size.
 The listing is unchanged when this flag is absent.
-Other filesystems write
+Other filesystems still print the normal listing, then write
 .B slack is only implemented for FAT12/FAT16
 to stderr and exit 1.
 There is no
@@ -409,7 +438,7 @@ At most 64 hits, then one stderr warning.
 There is no
 .B \-\-no-leaked
 switch.
-Other filesystems write
+Other filesystems still print the normal listing, then write
 .B leaked is only implemented for FAT12/FAT16
 to stderr and exit 1.
 .TP
@@ -427,9 +456,26 @@ At most 64 hits, then one stderr warning.
 There is no
 .B \-\-no-carve
 switch.
-Other filesystems write
+Other filesystems still print the normal listing, then write
 .B carve is only implemented for FAT12/FAT16
 to stderr and exit 1.
+Directory ranges are merged once before the scan.
+.PP
+Directory walk caps are local.
+Depth 32 skips only that subdirectory; later siblings and later root
+slots are still listed and extracted.
+The entry cap of 4096 stops a subdirectory from accepting more names;
+root slots that have not been parsed yet are still parsed.
+A directory cluster chain stops at 8192 clusters
+(chain capped).
+A file chain runs until the last valid cluster
+(a cycle, a bad cluster, a free cluster, or end of file still stops it)
+and is not cut at 8192.
+When a cap fires, stderr gets one line that starts with
+.B dumpfloppy:
+and names the image and the cap kind
+(depth, entries, or chain).
+The exit status stays 0.
 .SH EXIT STATUS
 .TP
 .B 0

@@ -282,11 +282,22 @@ int main(int argc, char** argv)
         dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
         if (a.directory_capped)
         {
-            std::cerr << "Warning: directory walk stopped at cap\n";
+            std::cerr << "dumpfloppy: '" << files[i].string()
+                      << "' directory walk hit cap:";
+            if (a.directory_cap_depth)
+            {
+                std::cerr << " depth";
+            }
+            if (a.directory_cap_entries)
+            {
+                std::cerr << " entries";
+            }
+            if (a.directory_cap_chain)
+            {
+                std::cerr << " chain";
+            }
+            std::cerr << '\n';
         }
-        const bool forensics_bad =
-            want_forensics && a.kind != dumpfloppy::fat_kind::fat12 &&
-            a.kind != dumpfloppy::fat_kind::fat16;
         if (cli.update.enabled)
         {
             if (dumpfloppy::update_files(a, cli.update, std::cerr) < 0)
@@ -343,7 +354,7 @@ int main(int argc, char** argv)
             emit_forensics(a);
             continue;
         }
-        if (cli.has_offset || forensics_bad)
+        if (cli.has_offset)
         {
             emit_forensics(a);
             continue;

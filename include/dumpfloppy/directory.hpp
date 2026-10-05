@@ -24,13 +24,20 @@ inline constexpr std::size_t k_max_dir_depth = 32;
 /**
  * @brief Directory walk result.
  *
- * @a capped is true when the entry cap, the depth cap, or a cluster-chain
- * cap stopped the walk. @a entries is never longer than @ref k_max_dir_entries.
+ * Caps are local. Depth skips one subdirectory. The entry cap stops a
+ * subdirectory from accepting more names; root slots not yet parsed are
+ * still stored, so @a entries may be longer than @ref k_max_dir_entries
+ * by those later root slots. A directory chain cap does not drop siblings.
+ * @a cap_depth, @a cap_entries, and @a cap_chain say which limit fired.
+ * @a capped is true when any of them is set.
  */
 struct directory_list
 {
     std::vector<dir_entry> entries{};
     bool capped = false;
+    bool cap_depth = false;   /**< A subdirectory was not entered (depth 32). */
+    bool cap_entries = false; /**< A subdirectory stopped at the entry cap. */
+    bool cap_chain = false;   /**< A directory cluster chain hit the step cap. */
 };
 
 /**
@@ -44,10 +51,12 @@ struct directory_list
  * from @a first_cluster until a live-owned or bad cluster (empty/truncated
  * when the first cluster was reused).
  *
- * The walk stops at @ref k_max_dir_entries, at depth @ref k_max_dir_depth,
- * and at @ref k_max_chain_steps clusters per chain (`chain capped`). Every
- * cluster whose directory bytes are parsed is recorded; a cluster already
- * recorded is not parsed again.
+ * Depth @ref k_max_dir_depth skips that subdirectory only. The entry cap
+ * @ref k_max_dir_entries stops a subdirectory; later root slots are still
+ * parsed. A directory chain stops at @ref k_max_chain_steps (`chain capped`).
+ * A file chain runs until @c max_cluster. Every cluster whose directory
+ * bytes are parsed is recorded; a cluster already recorded is not parsed
+ * again.
  *
  * @param[in] image Whole image.
  * @param[in] bpb   Valid BPB.

@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** `3e98485` · **version 0.35** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** worktree 0.36 (no git in this tree) · **version 0.36** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -40,11 +40,13 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 - FAT unused-cluster recovery: leftover free/bad clusters → `unused_cNNNN.{c,map,txt,bin}`; listing + `-x`; `--no-unused` listing-only. SQ2 Disk 1 is the example (AGI C + AGI.EXE map in 402K “free” space).
 - Unused text split on DOS Ctrl-Z (`0x1A`) + `/* NAME` banners → `unused_SHOWOBJ.c` (generic; SQ2 yields dozens of AGI .c files).
 
-**Verify last green:** `make -s test` 234 cases / 5050 assertions (4 skipped); `make -s verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2).
+**Verify last green (this tree, 0.36):** `make test` 274 cases, 267 passed, 7 skipped, 27856 assertions; `make verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2 + fat_slack).
 
 ## Still open (2026-10-05)
 
 Shipped in 0.35 and not part of this list: symlink-safe extract, directory-walk caps, `--slack`, `--leaked`, `--carve`.
+
+Shipped in 0.36 (this tree): local depth and entry caps, file chains to `max_cluster`, cap warnings (`dumpfloppy:` plus image and depth/entries/chain), escaped `--slack` paths, merged `--carve` ranges, `-x` continues after a host-path error, symlinked `-o` is the destination, slack past logical EOF, non-FAT forensics still lists, `/` and `\` inside one FAT name become `_`, bare `make` links `dumpfloppy`.
 
 - [ ] **Size column is 7 characters.** `k_w_size = 7` in `src/report.cpp`. A full 32-bit size is cut off (`4294967295` prints as `4294967`). Widen the column without breaking the listing tests.
 - [ ] **Live name collisions are called deleted.** `src/extract.cpp` still writes `stem.deleted.ext` when two live files land on the same host path. That name looks like a deleted directory entry. Pick a collision suffix that is not `.deleted.`.

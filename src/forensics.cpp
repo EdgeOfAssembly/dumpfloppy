@@ -44,30 +44,102 @@ struct carve_hit
     std::string text{};
 };
 
-[[nodiscard]] bool ranges_overlap(std::size_t a, std::size_t an, std::size_t b,
-                                  std::size_t bn)
+/**
+ * @brief Directory byte ranges merged once.
+ *
+ * Carve asks "is this byte inside a directory?" for every free byte.
+ * Walking the directory list per byte is quadratic. Contiguous clusters
+ * collapse to one span. A cursor then advances with the scan.
+ */
+class merged_ranges
 {
-    if (an == 0u || bn == 0u)
+public:
+    explicit merged_ranges(const std::vector<byte_span>& dirs)
     {
-        return false;
-    }
-    const std::size_t ae = a + an;
-    const std::size_t be = b + bn;
-    return a < be && b < ae;
-}
-
-[[nodiscard]] bool overlaps_any(std::size_t off, std::size_t n,
-                                const std::vector<byte_span>& dirs)
-{
-    for (const byte_span& d : dirs)
-    {
-        if (ranges_overlap(off, n, d.off, d.len))
+        spans_.reserve(dirs.size());
+        for (const byte_span& d : dirs)
         {
-            return true;
+            if (d.len == 0u)
+            {
+                continue;
+            }
+            spans_.emplace_back(d.off, d.off + d.len);
         }
+        std::sort(spans_.begin(), spans_.end());
+        std::vector<std::pair<std::size_t, std::size_t>> merged;
+        merged.reserve(spans_.size());
+        for (const auto& sp : spans_)
+        {
+            if (!merged.empty() && sp.first <= merged.back().second)
+            {
+                if (sp.second > merged.back().second)
+                {
+                    merged.back().second = sp.second;
+                }
+            }
+            else
+            {
+                merged.push_back(sp);
+            }
+        }
+        spans_.swap(merged);
     }
-    return false;
-}
+
+    /**
+     * @brief Forward cursor over the merged spans.
+     *
+     * Offsets passed to @ref overlaps must be non-decreasing. One cursor
+     * per region keeps a free-space scan linear in the byte count.
+     */
+    class cursor
+    {
+    public:
+        cursor(const std::vector<std::pair<std::size_t, std::size_t>>& spans, std::size_t off)
+            : spans_(&spans), idx_(0)
+        {
+            while (idx_ < spans_->size() && (*spans_)[idx_].second <= off)
+            {
+                ++idx_;
+            }
+        }
+
+        /**
+         * @brief True when [off, off+n) meets the span under the cursor.
+         *
+         * @p off must be at least the previous query's offset.
+         */
+        [[nodiscard]] bool overlaps(std::size_t off, std::size_t n)
+        {
+            if (n == 0u || spans_->empty())
+            {
+                return false;
+            }
+            while (idx_ < spans_->size() && (*spans_)[idx_].second <= off)
+            {
+                ++idx_;
+            }
+            if (idx_ >= spans_->size())
+            {
+                return false;
+            }
+            return (*spans_)[idx_].first < off + n;
+        }
+
+    private:
+        const std::vector<std::pair<std::size_t, std::size_t>>* spans_;
+        std::size_t idx_;
+    };
+
+    /** @brief Cursor positioned at the first span that can cover @p off. */
+    [[nodiscard]] cursor at(std::size_t off) const
+    {
+        return cursor(spans_, off);
+    }
+
+private:
+    /** @brief Half-open [start, end) directory intervals. */
+    std::vector<std::pair<std::size_t, std::size_t>> spans_{};
+};
 
 [[nodiscard]] uint32_t cluster_bytes_of(const bpb_info& bpb)
 {
@@ -214,6 +286,31 @@ void collect_directory_ranges(const analysis& a, std::span<const uint8_t> vol,
     }
 }
 
+void emit_slack_span(const dir_entry& e, std::size_t slack_off, std::size_t n,
+                     std::size_t align_base, std::span<const uint8_t> vol,
+                     std::vector<byte_span>& regions, std::ostream& out, bool print)
+{
+    if (n == 0u || slack_off >= vol.size())
+    {
+        return;
+    }
+    const std::size_t room = vol.size() - slack_off;
+    const std::size_t take = std::min(n, room);
+    if (take == 0u)
+    {
+        return;
+    }
+    regions.push_back(byte_span{slack_off, take, align_base});
+    if (!print)
+    {
+        return;
+    }
+    const std::string path = e.path.empty() ? e.name_83 : e.path;
+    out << escape_name(path) << ' ' << slack_off << ' ' << take << ' ';
+    append_hex(out, std::span<const uint8_t>(vol.data() + slack_off, take));
+    out << '\n';
+}
+
 void collect_slack(const analysis& a, std::span<const uint8_t> vol,
                    std::vector<byte_span>& regions, std::ostream& out, bool print)
 {
@@ -222,52 +319,54 @@ void collect_slack(const analysis& a, std::span<const uint8_t> vol,
     {
         out << "=== Slack ===\n";
     }
+    if (cluster_bytes == 0u)
+    {
+        return;
+    }
     for (const dir_entry& e : a.entries)
     {
-        if (e.deleted || !is_payload_file(e))
+        if (e.deleted || !is_payload_file(e) || e.cluster_chain.empty())
         {
             continue;
         }
+        /* Partial tail of the last in-size cluster. fat_slack_bytes(0) stays 0;
+         * a zero-length file's cluster is handled with the extra-chain loop. */
         const uint32_t slack = fat_slack_bytes(e.size, cluster_bytes);
-        if (slack == 0u || cluster_bytes == 0u)
+        if (e.size > 0u && slack > 0u)
         {
-            continue;
+            const uint32_t needed = (e.size / cluster_bytes) + 1u;
+            if (e.cluster_chain.size() >= needed)
+            {
+                const uint16_t last = e.cluster_chain[needed - 1u];
+                const std::size_t cl_off = cluster_offset(a.bpb, last);
+                if (cl_off != static_cast<std::size_t>(-1) && cl_off < vol.size())
+                {
+                    const uint32_t used = e.size % cluster_bytes;
+                    const std::size_t slack_off = cl_off + static_cast<std::size_t>(used);
+                    const std::size_t cluster_room =
+                        (cl_off + static_cast<std::size_t>(cluster_bytes) > slack_off)
+                            ? (cl_off + static_cast<std::size_t>(cluster_bytes) - slack_off)
+                            : 0u;
+                    const std::size_t n =
+                        std::min(cluster_room, static_cast<std::size_t>(slack));
+                    emit_slack_span(e, slack_off, n, cl_off, vol, regions, out, print);
+                }
+            }
         }
-        const uint32_t needed = (e.size / cluster_bytes) + 1u;
-        if (e.cluster_chain.size() < needed)
+        /* Clusters past ceil(size / cluster_bytes), including a 0-byte file. */
+        const uint64_t used_clusters =
+            (e.size == 0u)
+                ? 0u
+                : (static_cast<uint64_t>(e.size) + cluster_bytes - 1u) / cluster_bytes;
+        for (std::size_t i = static_cast<std::size_t>(used_clusters);
+             i < e.cluster_chain.size(); ++i)
         {
-            continue;
-        }
-        const uint16_t last = e.cluster_chain[needed - 1u];
-        const std::size_t cl_off = cluster_offset(a.bpb, last);
-        if (cl_off == static_cast<std::size_t>(-1) || cl_off >= vol.size())
-        {
-            continue;
-        }
-        const uint32_t used = e.size % cluster_bytes;
-        const std::size_t slack_off = cl_off + static_cast<std::size_t>(used);
-        if (slack_off >= vol.size())
-        {
-            continue;
-        }
-        const std::size_t room = vol.size() - slack_off;
-        const std::size_t cluster_room =
-            (cl_off + static_cast<std::size_t>(cluster_bytes) > slack_off)
-                ? (cl_off + static_cast<std::size_t>(cluster_bytes) - slack_off)
-                : 0u;
-        const std::size_t n =
-            std::min(room, std::min(cluster_room, static_cast<std::size_t>(slack)));
-        if (n == 0u)
-        {
-            continue;
-        }
-        regions.push_back(byte_span{slack_off, n, cl_off});
-        if (print)
-        {
-            const std::string path = e.path.empty() ? e.name_83 : e.path;
-            out << path << ' ' << slack_off << ' ' << n << ' ';
-            append_hex(out, std::span<const uint8_t>(vol.data() + slack_off, n));
-            out << '\n';
+            const std::size_t cl_off = cluster_offset(a.bpb, e.cluster_chain[i]);
+            if (cl_off == static_cast<std::size_t>(-1) || cl_off >= vol.size())
+            {
+                continue;
+            }
+            emit_slack_span(e, cl_off, cluster_bytes, cl_off, vol, regions, out, print);
         }
     }
 }
@@ -348,8 +447,8 @@ struct leaked_hit
 }
 
 void scan_leaked(std::span<const uint8_t> vol, const std::vector<byte_span>& regions,
-                 const std::vector<byte_span>& dirs, uint32_t max_cluster,
-                 uint64_t volume_size, std::vector<leaked_hit>& hits, bool& truncated)
+                 const merged_ranges& dirs, uint32_t max_cluster, uint64_t volume_size,
+                 std::vector<leaked_hit>& hits, bool& truncated)
 {
     for (const byte_span& region : regions)
     {
@@ -359,10 +458,11 @@ void scan_leaked(std::span<const uint8_t> vol, const std::vector<byte_span>& reg
         }
         const std::size_t end = region.off + region.len;
         std::size_t off = aligned_slot_off(region.off, region.align_base);
+        merged_ranges::cursor dir_at = dirs.at(off);
         while (off >= region.off && end >= off && end - off >= 32u &&
                vol.size() >= off && vol.size() - off >= 32u)
         {
-            if (overlaps_any(off, 32u, dirs))
+            if (dir_at.overlaps(off, 32u))
             {
                 off += 32u;
                 continue;
@@ -392,9 +492,9 @@ void scan_leaked(std::span<const uint8_t> vol, const std::vector<byte_span>& reg
 
 [[nodiscard]] bool bytes_match(std::span<const uint8_t> vol, std::size_t off,
                                const char* lit, std::size_t n,
-                               const std::vector<byte_span>& dirs)
+                               merged_ranges::cursor& dirs)
 {
-    if (off + n > vol.size() || overlaps_any(off, n, dirs))
+    if (off + n > vol.size() || dirs.overlaps(off, n))
     {
         return false;
     }
@@ -429,7 +529,7 @@ void add_carve(std::vector<carve_hit>& hits, bool& truncated, std::size_t off,
 }
 
 void scan_carve_region(std::span<const uint8_t> vol, const byte_span& region,
-                       const std::vector<byte_span>& dirs, std::vector<carve_hit>& hits,
+                       merged_ranges::cursor& dirs, std::vector<carve_hit>& hits,
                        bool& truncated)
 {
     const std::size_t end = std::min(region.off + region.len, vol.size());
@@ -466,7 +566,7 @@ void scan_carve_region(std::span<const uint8_t> vol, const byte_span& region,
         {
             return;
         }
-        if (overlaps_any(off, 1u, dirs))
+        if (dirs.overlaps(off, 1u))
         {
             flush_ascii(off);
             continue;
@@ -534,8 +634,9 @@ int write_forensics(const analysis& a, const forensics_request& req, std::ostrea
     }
 
     const std::span<const uint8_t> vol = volume_bytes(a);
-    std::vector<byte_span> dirs;
-    collect_directory_ranges(a, vol, dirs);
+    std::vector<byte_span> dir_spans;
+    collect_directory_ranges(a, vol, dir_spans);
+    const merged_ranges dirs(dir_spans);
 
     std::vector<byte_span> slack_regions;
     collect_slack(a, vol, slack_regions, out, req.slack);
@@ -586,7 +687,8 @@ int write_forensics(const analysis& a, const forensics_request& req, std::ostrea
             {
                 break;
             }
-            scan_carve_region(vol, region, dirs, hits, truncated);
+            merged_ranges::cursor dir_at = dirs.at(region.off);
+            scan_carve_region(vol, region, dir_at, hits, truncated);
         }
         out << "=== Carve ===\n";
         for (const carve_hit& hit : hits)

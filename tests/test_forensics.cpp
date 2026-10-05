@@ -108,14 +108,18 @@ dumpfloppy::analysis analyse_file(const std::filesystem::path& path)
     return dumpfloppy::analyse(std::move(*loaded));
 }
 
-void require_chains_capped(const dumpfloppy::analysis& a)
+void require_chains_bounded(const dumpfloppy::analysis& a)
 {
+    const std::size_t file_limit = static_cast<std::size_t>(
+        a.fat.max_cluster == 0u ? 1u : a.fat.max_cluster);
     for (const dumpfloppy::dir_entry& e : a.entries)
     {
-        REQUIRE(e.cluster_chain.size() <=
-                static_cast<std::size_t>(dumpfloppy::k_max_chain_steps));
+        const bool is_dir =
+            (e.attributes & dumpfloppy::k_attr_directory) != 0u;
+        const std::size_t limit =
+            is_dir ? static_cast<std::size_t>(dumpfloppy::k_max_chain_steps) : file_limit;
+        REQUIRE(e.cluster_chain.size() <= limit);
     }
-    REQUIRE(a.entries.size() <= dumpfloppy::k_max_dir_entries);
 }
 
 /**
@@ -230,16 +234,17 @@ std::vector<uint8_t> make_entry_cap_image()
 /**
  * @brief FAT16 file whose cluster chain is longer than @ref k_max_chain_steps.
  *
- * 8200 data clusters, one file chained from cluster 2 through 8201.
+ * 9000 data clusters, one file chained from cluster 2 through 9001.
+ * The size field is the full chain so extract must write every byte.
  */
 std::vector<uint8_t> make_chain_cap_image()
 {
     constexpr uint32_t bps = 512;
-    constexpr uint32_t spf = 33;
+    constexpr uint32_t spf = 36;
     constexpr uint32_t reserved = 1;
     constexpr uint32_t fats = 2;
     constexpr uint32_t root_sectors = 1;
-    constexpr uint32_t data_clusters = 8200;
+    constexpr uint32_t data_clusters = 9000;
     constexpr uint32_t first = reserved + fats * spf + root_sectors;
     constexpr uint32_t total = first + data_clusters;
 
@@ -277,7 +282,8 @@ std::vector<uint8_t> make_chain_cap_image()
     std::memcpy(fat0 + fat_len, fat0, fat_len);
 
     const std::size_t root_off = static_cast<std::size_t>(reserved + fats * spf) * bps;
-    dumpfloppy_test::put_file_dirent(img.data() + root_off, "BIG     BIN", 2, 1);
+    const uint32_t full = data_clusters * bps;
+    dumpfloppy_test::put_file_dirent(img.data() + root_off, "BIG     BIN", 2, full);
     return img;
 }
 
@@ -445,7 +451,7 @@ TEST_CASE("multiplying directory clusters stay under the entry cap",
     REQUIRE_FALSE(a.directory_capped);
     REQUIRE(a.entries.size() < 1000u);
     REQUIRE(a.entries.size() >= 60u);
-    require_chains_capped(a);
+    require_chains_bounded(a);
 }
 
 TEST_CASE("visited set keeps a shared later directory cluster once",
@@ -459,7 +465,7 @@ TEST_CASE("visited set keeps a shared later directory cluster once",
     REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
     REQUIRE(a.bpb.looks_valid);
     REQUIRE_FALSE(a.directory_capped);
-    require_chains_capped(a);
+    require_chains_bounded(a);
 
     const dumpfloppy::dir_entry* suba = find_name(a, "SUBA");
     const dumpfloppy::dir_entry* subb = find_name(a, "SUBB");
@@ -497,7 +503,7 @@ TEST_CASE("directory entry cap stops at 4096 and the image still exits 0",
     REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
     REQUIRE(a.directory_capped);
     REQUIRE(a.entries.size() == 4096u);
-    require_chains_capped(a);
+    require_chains_bounded(a);
 
     int rc = 0;
     const std::string err =
@@ -505,24 +511,38 @@ TEST_CASE("directory entry cap stops at 4096 and the image still exits 0",
                         "\" 2>&1 >/dev/null",
                     rc);
     REQUIRE(rc == 0);
-    REQUIRE(err.find("Warning: directory walk stopped at cap") != std::string::npos);
+    REQUIRE(err.find("dumpfloppy:") != std::string::npos);
+    REQUIRE(err.find(img.filename().string()) != std::string::npos);
+    REQUIRE(err.find("entries") != std::string::npos);
+    REQUIRE(err.find("Warning: directory walk stopped at cap") == std::string::npos);
+    REQUIRE(a.directory_cap_entries);
+    REQUIRE_FALSE(a.directory_cap_depth);
 }
 
-TEST_CASE("FAT16 chain longer than 8192 stores 8192 and notes chain capped",
-          "[forensics][directory]")
+TEST_CASE("FAT16 file of 9000 clusters extracts in full", "[forensics][directory]")
 {
+    const char* bin = bin_or_require();
     const auto dir = scratch_root("dir-chain-cap");
     const auto img = dir / "chain.ima";
     write_bytes(img, make_chain_cap_image());
     const dumpfloppy::analysis a = analyse_file(img);
 
     REQUIRE(a.kind == dumpfloppy::fat_kind::fat16);
-    REQUIRE(a.directory_capped);
+    REQUIRE_FALSE(a.directory_capped);
     const dumpfloppy::dir_entry* big = find_name(a, "BIG.BIN");
     REQUIRE(big != nullptr);
-    REQUIRE(big->cluster_chain.size() == 8192u);
-    REQUIRE(big->notes.find("chain capped") != std::string::npos);
-    require_chains_capped(a);
+    REQUIRE(big->cluster_chain.size() == 9000u);
+    REQUIRE(big->notes.find("chain capped") == std::string::npos);
+    require_chains_bounded(a);
+
+    const auto out = dir / "out";
+    int rc = 0;
+    const std::string cmd = std::string("\"") + bin + "\" -x -o \"" + out.string() +
+                            "\" \"" + img.string() + "\" 2>/dev/null";
+    const std::string text = slurp_popen(cmd, rc);
+    (void)text;
+    REQUIRE(rc == 0);
+    REQUIRE(std::filesystem::file_size(out / "BIG.BIN") == 9000u * 512u);
 }
 
 TEST_CASE("slack tail, leaked free-cluster dirent, and MZ carve",
@@ -669,6 +689,10 @@ TEST_CASE("help documents enable-only slack leaked carve", "[forensics][cli]")
     REQUIRE(help.find("--no-slack") == std::string::npos);
     REQUIRE(help.find("--no-leaked") == std::string::npos);
     REQUIRE(help.find("--no-carve") == std::string::npos);
+    REQUIRE(help.find("directory walk hit cap") != std::string::npos);
+    REQUIRE(help.find("depth") != std::string::npos);
+    REQUIRE(help.find("entries") != std::string::npos);
+    REQUIRE(help.find("chain") != std::string::npos);
 }
 
 TEST_CASE("slack leaked carve reject a non-FAT file like offset", "[forensics][cli]")
@@ -696,6 +720,7 @@ TEST_CASE("slack leaked carve reject a non-FAT file like offset", "[forensics][c
             std::string::npos);
     REQUIRE(out.find("=== Slack ===") == std::string::npos);
     REQUIRE(out.find("HELLO") == std::string::npos);
+    REQUIRE(out.find("floppy image secrets") != std::string::npos);
 
     int only = 0;
     const std::string slack_only =
@@ -706,4 +731,5 @@ TEST_CASE("slack leaked carve reject a non-FAT file like offset", "[forensics][c
             std::string::npos);
     REQUIRE(slack_only.find("leaked is only implemented") == std::string::npos);
     REQUIRE(slack_only.find("carve is only implemented") == std::string::npos);
+    REQUIRE(slack_only.find("floppy image secrets") != std::string::npos);
 }

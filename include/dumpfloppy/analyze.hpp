@@ -49,6 +49,9 @@ struct analysis
     volume_info volume{};
     std::vector<dir_entry> entries{};
     bool directory_capped = false; /**< Walk hit the entry, depth, or chain cap. */
+    bool directory_cap_depth = false;   /**< Depth cap skipped a subdirectory. */
+    bool directory_cap_entries = false; /**< Entry cap stopped a subdirectory. */
+    bool directory_cap_chain = false;   /**< Directory chain hit the step cap. */
     std::vector<uint16_t> orphan_clusters{};
     std::vector<unused_run> unused{}; /**< FAT-free/bad clusters with leftover bytes. */
     std::vector<std::string> secrets{};

@@ -61,7 +61,7 @@ bool fat_set(std::span<uint8_t> fat, fat_kind kind, uint32_t cluster, uint16_t v
 
 std::vector<uint16_t> walk_chain(std::span<const uint8_t> fat, fat_kind kind,
                                  uint16_t start, uint32_t max_cluster,
-                                 std::string& notes)
+                                 std::string& notes, uint32_t max_steps)
 {
     std::vector<uint16_t> chain;
     notes.clear();
@@ -75,10 +75,16 @@ std::vector<uint16_t> walk_chain(std::span<const uint8_t> fat, fat_kind kind,
         return chain;
     }
 
+    uint32_t step_limit = (max_cluster == 0u) ? 1u : max_cluster;
+    if (max_steps != 0u && max_steps < step_limit)
+    {
+        step_limit = max_steps;
+    }
+
     std::unordered_set<uint16_t> seen;
     uint16_t cur = start;
-    int step = 0;
-    for (; step < k_max_chain_steps; ++step)
+    uint32_t step = 0;
+    for (; step < step_limit; ++step)
     {
         if (cur < 2u || cur > max_cluster)
         {
@@ -133,7 +139,7 @@ std::vector<uint16_t> walk_chain(std::span<const uint8_t> fat, fat_kind kind,
         }
         cur = next;
     }
-    if (step == k_max_chain_steps)
+    if (step == step_limit)
     {
         notes = "chain capped";
     }

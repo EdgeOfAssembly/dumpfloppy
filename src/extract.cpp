@@ -287,6 +287,62 @@ bool dest_taken(const std::filesystem::path& p,
 }
 
 /**
+ * @brief Canonical destination, following symlinks the user named with `-o`.
+ *
+ * The longest existing prefix is resolved with `canonical`. A dangling
+ * symlink in that prefix is left unchanged so a later check still refuses
+ * to create through it. Components that do not exist yet are appended
+ * after the resolved prefix and are created as real directories.
+ *
+ * @param[in] dest User-supplied extract directory.
+ * @return Absolute directory to write into, or @p dest when resolution fails.
+ */
+std::filesystem::path resolve_user_dest(const std::filesystem::path& dest)
+{
+    std::error_code ec;
+    const std::filesystem::path abs = std::filesystem::absolute(dest, ec);
+    if (ec)
+    {
+        return dest;
+    }
+    std::filesystem::path prefix;
+    std::vector<std::filesystem::path> missing;
+    for (const std::filesystem::path& part : abs)
+    {
+        if (!missing.empty())
+        {
+            missing.push_back(part);
+            continue;
+        }
+        const std::filesystem::path next = prefix / part;
+        std::error_code st_ec;
+        const std::filesystem::file_status st = std::filesystem::symlink_status(next, st_ec);
+        if (st_ec || st.type() == std::filesystem::file_type::not_found ||
+            st.type() == std::filesystem::file_type::none)
+        {
+            missing.push_back(part);
+            continue;
+        }
+        prefix = next;
+    }
+    if (prefix.empty())
+    {
+        return dest;
+    }
+    const std::filesystem::path canon = std::filesystem::canonical(prefix, ec);
+    if (ec)
+    {
+        return dest;
+    }
+    std::filesystem::path out = canon;
+    for (const std::filesystem::path& part : missing)
+    {
+        out /= part;
+    }
+    return out;
+}
+
+/**
  * @brief True when any existing component of @p path is a symlink.
  *
  * Missing components end the walk (parents may still be created). The link
@@ -538,6 +594,7 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
 
     int written = 0;
     int matched = 0;
+    bool failed = false;
     std::unordered_set<std::string> used_dests;
     for (const cbm_file& file : a.cbm.entries)
     {
@@ -564,14 +621,16 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
         {
             err << "dumpfloppy: extract collision: no unique name for '"
                 << preferred.string() << "'\n";
-            return -1;
+            failed = true;
+            continue;
         }
         const std::vector<uint8_t> bytes =
             read_cbm_file(cbm_sector_bytes(a.image.bytes, a.cbm), file);
         const int placed = write_exclusive_bytes(dest, bytes, err);
         if (placed < 0)
         {
-            return -1;
+            failed = true;
+            continue;
         }
         if (placed == 0)
         {
@@ -583,6 +642,10 @@ int extract_cbm_files(const analysis& a, const extract_options& opt, std::ostrea
     if (!opt.patterns.empty() && matched == 0)
     {
         err << "dumpfloppy: no files matched extract pattern\n";
+        return -1;
+    }
+    if (failed)
+    {
         return -1;
     }
     return written;
@@ -619,6 +682,7 @@ int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostr
 
     int written = 0;
     int matched = 0;
+    bool failed = false;
     std::unordered_set<std::string> used_dests;
     for (const amiga_file& file : a.amiga.entries)
     {
@@ -645,14 +709,16 @@ int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostr
         {
             err << "dumpfloppy: extract collision: no unique name for '"
                 << preferred.string() << "'\n";
-            return -1;
+            failed = true;
+            continue;
         }
         const std::vector<uint8_t> bytes = read_amiga_file(
             amiga_volume_bytes(a.image.bytes, a.amiga), a.amiga, file);
         const int placed = write_exclusive_bytes(dest, bytes, err);
         if (placed < 0)
         {
-            return -1;
+            failed = true;
+            continue;
         }
         if (placed == 0)
         {
@@ -664,6 +730,10 @@ int extract_amiga_files(const analysis& a, const extract_options& opt, std::ostr
     if (!opt.patterns.empty() && matched == 0)
     {
         err << "dumpfloppy: no files matched extract pattern\n";
+        return -1;
+    }
+    if (failed)
+    {
         return -1;
     }
     return written;
@@ -696,6 +766,7 @@ int extract_trd_files(const analysis& a, const extract_options& opt, std::ostrea
 
     int written = 0;
     int matched = 0;
+    bool failed = false;
     std::unordered_set<std::string> used_dests;
     for (const trd_file& file : a.trd.entries)
     {
@@ -728,7 +799,8 @@ int extract_trd_files(const analysis& a, const extract_options& opt, std::ostrea
         const int placed = write_exclusive_bytes(dest, bytes, err);
         if (placed < 0)
         {
-            return -1;
+            failed = true;
+            continue;
         }
         if (placed == 0)
         {
@@ -740,6 +812,10 @@ int extract_trd_files(const analysis& a, const extract_options& opt, std::ostrea
     if (!opt.patterns.empty() && matched == 0)
     {
         err << "dumpfloppy: no files matched extract pattern\n";
+        return -1;
+    }
+    if (failed)
+    {
         return -1;
     }
     return written;
@@ -773,6 +849,7 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
 
     int written = 0;
     int matched = 0;
+    bool failed = false;
     std::unordered_set<std::string> used_dests;
     for (const apple_file& file : a.apple.entries)
     {
@@ -809,7 +886,8 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
         const int placed = write_exclusive_bytes(dest, bytes, err);
         if (placed < 0)
         {
-            return -1;
+            failed = true;
+            continue;
         }
         if (placed == 0)
         {
@@ -821,6 +899,10 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
     if (!opt.patterns.empty() && matched == 0)
     {
         err << "dumpfloppy: no files matched extract pattern\n";
+        return -1;
+    }
+    if (failed)
+    {
         return -1;
     }
     return written;
@@ -855,21 +937,23 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     {
         return 0;
     }
+    extract_options rooted = opt;
+    rooted.dest_dir = resolve_user_dest(opt.dest_dir);
     if (a.cbm.present)
     {
-        return extract_cbm_files(a, opt, err);
+        return extract_cbm_files(a, rooted, err);
     }
     if (a.amiga.present)
     {
-        return extract_amiga_files(a, opt, err);
+        return extract_amiga_files(a, rooted, err);
     }
     if (a.trd.present)
     {
-        return extract_trd_files(a, opt, err);
+        return extract_trd_files(a, rooted, err);
     }
     if (a.apple.present)
     {
-        return extract_apple_files(a, opt, err);
+        return extract_apple_files(a, rooted, err);
     }
     if (a.foreign.present && a.flux.assembled_chs.empty())
     {
@@ -883,13 +967,14 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
                "HxC .mfm or an 86F decoder\n";
         return -1;
     }
-    if (ensure_real_directory(opt.dest_dir, err) != 0)
+    if (ensure_real_directory(rooted.dest_dir, err) != 0)
     {
         return -1;
     }
 
     int written = 0;
     int matched = 0;
+    bool failed = false;
     std::unordered_set<std::string> used_dests;
     const sector_store store = make_sector_store(a);
     for (const dir_entry& e : a.entries)
@@ -905,7 +990,7 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             continue;
         }
         const std::filesystem::path rel(host);
-        const std::filesystem::path preferred = opt.dest_dir / rel;
+        const std::filesystem::path preferred = rooted.dest_dir / rel;
         /* operator/ discards dest_dir when rel is absolute. host_fat_path
          * already rejected those; keep the guard so a leaf cannot escape. */
         if (preferred.is_absolute() && rel.is_absolute())
@@ -925,14 +1010,16 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
         {
             err << "dumpfloppy: extract collision: no unique name for '"
                 << preferred.string() << "'\n";
-            return -1;
+            failed = true;
+            continue;
         }
         const std::vector<uint8_t> bytes =
             read_file_contents(store.bytes, a.bpb, e);
         const int placed = write_exclusive_bytes(dest, bytes, err);
         if (placed < 0)
         {
-            return -1;
+            failed = true;
+            continue;
         }
         if (placed == 0)
         {
@@ -966,7 +1053,7 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             continue;
         }
         const std::filesystem::path rel(host);
-        const std::filesystem::path preferred = opt.dest_dir / rel;
+        const std::filesystem::path preferred = rooted.dest_dir / rel;
         if (has_symlink_component(preferred))
         {
             err << "dumpfloppy: skip symlink path '" << preferred.string() << "'\n";
@@ -978,12 +1065,14 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
         {
             err << "dumpfloppy: extract collision: no unique name for '"
                 << preferred.string() << "'\n";
-            return -1;
+            failed = true;
+            continue;
         }
         const int placed = write_exclusive_bytes(dest, run.payload, err);
         if (placed < 0)
         {
-            return -1;
+            failed = true;
+            continue;
         }
         if (placed == 0)
         {
@@ -992,9 +1081,13 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
         used_dests.insert(dest_key(dest));
         ++written;
     }
-    if (!opt.patterns.empty() && matched == 0)
+    if (!rooted.patterns.empty() && matched == 0)
     {
         err << "dumpfloppy: no files matched extract pattern\n";
+        return -1;
+    }
+    if (failed)
+    {
         return -1;
     }
     return written;

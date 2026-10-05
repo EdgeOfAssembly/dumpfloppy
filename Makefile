@@ -68,6 +68,7 @@ LDFLAGS  ?= $(LDFLAGS_DEBUG)
 BUILD_FLAGS := -s V=0 -j$(shell nproc 2>/dev/null || echo 1)
 
 TARGET := dumpfloppy
+.DEFAULT_GOAL := $(TARGET)
 TEST_BIN := tests/run_tests
 
 SRC_C := src/fat12_codec.c src/gcr_codec.c src/apple_gcr_codec.c src/fat_slack.c
@@ -93,7 +94,8 @@ TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_g71.cpp tests/test_unused.cpp \
             tests/test_trd.cpp tests/test_foreign.cpp tests/test_apple.cpp \
             tests/test_apple_gcr.cpp tests/test_analyze_hygiene.cpp \
-            tests/test_forensics.cpp
+            tests/test_forensics.cpp \
+            tests/test_review_036.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)
