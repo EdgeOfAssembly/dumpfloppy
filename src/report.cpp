@@ -663,6 +663,14 @@ std::string filesystem_family(const analysis& a)
     {
         return fat_name(a.kind);
     }
+    if (a.cpm)
+    {
+        return "CP/M";
+    }
+    if (a.imd)
+    {
+        return "ImageDisk";
+    }
     if (a.foreign.present)
     {
         if (!a.foreign.format.empty())
@@ -946,6 +954,26 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         {
             fmt = "ZX TRD / TR-DOS";
         }
+        else if (a.imd && a.bpb.looks_valid)
+        {
+            fmt = std::string("ImageDisk / ") + fat_name(a.kind);
+        }
+        else if (a.dos1)
+        {
+            fmt = std::string("DOS 1.x / ") + fat_name(a.kind);
+        }
+        else if (a.imd && a.cpm)
+        {
+            fmt = "ImageDisk / CP/M";
+        }
+        else if (a.cpm)
+        {
+            fmt = "CP/M";
+        }
+        else if (a.imd)
+        {
+            fmt = "ImageDisk";
+        }
         else if (a.apple.present)
         {
             if (a.foreign.kind == foreign_kind::img2mg)
@@ -1016,6 +1044,14 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
     else if (a.foreign.present)
     {
         kv(out, "Filesystem", a.foreign.platform.empty() ? "(flux)" : a.foreign.platform);
+    }
+    else if (a.cpm)
+    {
+        kv(out, "Filesystem", "CP/M");
+    }
+    else if (a.imd && !a.bpb.looks_valid)
+    {
+        kv(out, "Filesystem", "ImageDisk");
     }
     if (a.image.size_geometry.cylinders != 0u)
     {

@@ -96,6 +96,16 @@ boot_info classify_boot(std::span<const uint8_t> boot, const bpb_info& bpb)
 
     if (!info.has_jump && !info.has_aa55)
     {
+        /* Five-A-Side Soccer starts `mov ax,0` / `mov ds,ax` and has no 55 AA.
+           `8E D0` is `mov ss,ax`, the same prologue shape. */
+        if (boot.size() >= 5u && boot[0] == 0xB8u && boot[3] == 0x8Eu &&
+            (boot[4] == 0xD8u || boot[4] == 0xD0u))
+        {
+            info.kind = boot_class::custom_booter;
+            info.kind_text = "custom booter (sector starts with a mov prologue)";
+            info.is_booter = true;
+            return info;
+        }
         info.kind = boot_class::not_bootable;
         info.kind_text = "not bootable (no JMP, no 55 AA)";
         info.is_booter = false;

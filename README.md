@@ -69,7 +69,14 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.39`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.40`. Options and paths may be interleaved. DOS 1.x 160K
+(media `FE`) and 320K (media `FF`) images with no BPB are listed as FAT12.
+ImageDisk `.imd` is assembled in sector-number order and then listed; a
+header with no sector payload is reported as ImageDisk with an empty
+directory. A boot sector that starts with `mov ax,0` / `mov ds,ax` (or
+`mov ss,ax`) and has no `55 AA` is a custom booter. CP/M 2.2 directory
+names are listed; CP/M file bytes are not extracted. Copy-protected IPF
+tracks stay metadata-only. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
 `*.dsk` / `*.po`.

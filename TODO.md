@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** `ce45460` on `/tmp/dumpfloppy`, `/mnt/dumpfloppy`, and GitHub `main` · **version 0.39** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** 0.40 work tree (parent `393511e`) · **version 0.40** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` (this clone's `origin`) · GitHub is the `github` remote  
 **Reviews:** `/mnt/grok/reviews/uasm-json/`  
@@ -46,7 +46,7 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (this tree, 0.38):** `make -s test` 283 cases, 276 passed, 7 skipped, 28077 assertions (exit 0); `make -s verify` exit 0, CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases, not `--sources`.
 
-**Verify last green (this tree, 0.39):** parent `make -s verify` exit 0: 289 cases, 282 passed, 7 skipped, 28202 assertions. CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases.
+**Verify last green (this tree, 0.40):** isolated `make -s verify` exit 0: 298 cases, 291 passed, 7 skipped, 28299 assertions. CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases. Harnesses were not edited.
 
 ## Still open (2026-10-05)
 
@@ -68,10 +68,10 @@ Shipped in 0.39: enable-only `--json` (no `--no-json`, no TSV). One JSON documen
 ## Next (pick one slice)
 
 - [ ] **IPF copy-protected tracks.** Standard AmigaDOS (`4489`) already lists. Protected tracks stay metadata-only. Fixtures: `/mnt/dumpfloppy-fixtures/amiga/Tetris.ipf`, `AwesomeDemo.ipf`.
-- [ ] **DOS 1.x FAT with no BPB.** Twelve WordStar raw images (160K `feffff`, 320K `ffffff`) have live 8.3 names at sector 3 (`WS.COM` and others). The lister says `Format DATA`, custom booter, and 0 files. Scan: `/mnt/grok/reviews/uasm-json/SCAN-samples.md`.
-- [ ] **ImageDisk `.imd`.** Seventeen sample files are parsed as raw bytes. The `IMD` header is treated as a DOS jump, and the ImageDisk version is shown as the OEM field.
-- [ ] **Boot class.** Five-A-Side Soccer starts with `mov ax,0` (`B8 00 00`) and is called not bootable. The check looks for `EB` or `E9`.
-- [ ] **CP/M directories.** Apple II CP/M-80 is labeled `APPLE DSK` and shows 0 entries. Rainbow and NEC CP/M-86 sit inside undecoded IMD.
+- [x] **DOS 1.x FAT with no BPB.** Done in 0.40. 160K `FE FF FF` and 320K `FF FF FF` with a directory slot at offset 1536 get a synthetic FAT12 BPB. The existing walker and `-x` extract the files.
+- [x] **ImageDisk `.imd`.** Done in 0.40. Sectors are placed by cylinder, head, and sector number. A decoded FAT volume is listed. Magic with no sector payload is `ImageDisk` and lists nothing. The `IMD` header is not a DOS jump and its version is not the OEM field.
+- [x] **Boot class.** Done in 0.40. `mov ax,0` / `mov ds,ax` or `mov ss,ax` (`B8 ?? ?? 8E D8` or `8E D0`) with no `55 AA` is `custom_booter`. An all-zero sector stays not bootable.
+- [x] **CP/M directories.** Done in 0.40. A run of at least two CP/M 2.2 slots is listed (`WS.COM`). Deleted `0xE5` slots stay deleted. File bytes are not extracted. JSON `filesystem` is `CP/M`.
 
 ## Local fixtures (never GitHub)
 

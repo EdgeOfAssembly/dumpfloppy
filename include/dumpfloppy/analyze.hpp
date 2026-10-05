@@ -65,6 +65,9 @@ struct analysis
     trd_disk trd{};     /**< TR-DOS TRD; @a present is false on PC FAT / CBM / ADF. */
     foreign_disk foreign{}; /**< IPF/WOZ/STX/2IMG; skips FAT when present. */
     apple_disk apple{};     /**< DOS 3.3 / ProDOS; 2IMG payload or raw .dsk/.po. */
+    bool cpm = false; /**< CP/M 2.2 directory names. File bytes are not extracted. */
+    bool imd = false; /**< ImageDisk container. Sector bytes replace the image. */
+    bool dos1 = false; /**< Synthetic DOS 1.x FAT12 BPB (no BPB in the boot sector). */
 };
 
 /**

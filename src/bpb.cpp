@@ -196,6 +196,62 @@ bpb_info parse_bpb(std::span<const uint8_t> boot)
     return b;
 }
 
+namespace
+{
+
+bool dos1_directory_slot(uint8_t b)
+{
+    return b == 0x00u || b == 0xE5u || b == 0x05u ||
+           (b >= 0x20u && b <= 0x7Eu);
+}
+
+bool dos1_fat3(std::span<const uint8_t> image, uint8_t a, uint8_t b, uint8_t c)
+{
+    return image.size() >= 515u && image[512] == a && image[513] == b && image[514] == c;
+}
+
+void fill_dos1(bpb_info& bpb, uint8_t spc, uint16_t sectors, uint8_t media, uint16_t heads)
+{
+    bpb.bytes_per_sector = 512;
+    bpb.sectors_per_cluster = spc;
+    bpb.reserved_sectors = 1;
+    bpb.fat_count = 2;
+    bpb.root_entry_count = 64;
+    bpb.total_sectors_16 = sectors;
+    bpb.total_sectors_32 = 0;
+    bpb.total_sectors = sectors;
+    bpb.media_descriptor = media;
+    bpb.sectors_per_fat_16 = 1;
+    bpb.sectors_per_track = 8;
+    bpb.head_count = heads;
+    bpb.hidden_sectors = 0;
+    bpb.looks_valid = true;
+    bpb.invalid_reason.clear();
+}
+
+} /* namespace */
+
+bool apply_dos1_bpb(std::span<const uint8_t> image, bpb_info& bpb)
+{
+    if (bpb.looks_valid || image.size() < 1537u || !dos1_directory_slot(image[1536]))
+    {
+        return false;
+    }
+    if (image.size() >= 327680u && dos1_fat3(image, 0xFFu, 0xFFu, 0xFFu))
+    {
+        fill_dos1(bpb, static_cast<uint8_t>(2), static_cast<uint16_t>(640),
+                  static_cast<uint8_t>(0xFF), static_cast<uint16_t>(2));
+        return true;
+    }
+    if (image.size() >= 163840u && dos1_fat3(image, 0xFEu, 0xFFu, 0xFFu))
+    {
+        fill_dos1(bpb, static_cast<uint8_t>(1), static_cast<uint16_t>(320),
+                  static_cast<uint8_t>(0xFE), static_cast<uint16_t>(1));
+        return true;
+    }
+    return false;
+}
+
 ebpb_info parse_ebpb(std::span<const uint8_t> boot, const bpb_info& bpb)
 {
     ebpb_info e{};

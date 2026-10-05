@@ -21,6 +21,26 @@ namespace dumpfloppy
 [[nodiscard]] bpb_info parse_bpb(std::span<const uint8_t> boot);
 
 /**
+ * @brief Fill a DOS 1.x FAT12 BPB when @p bpb is not already valid.
+ *
+ * Two layouts, and only when offset 1536 is a directory slot
+ * (`0x00`, `0xE5`, `0x05`, or `0x20`–`0x7E`):
+ * - 160K, image at least 163840 bytes, FAT `FE FF FF` at offset 512:
+ *   512 bps, 1 spc, 1 reserved, 2 FATs, 64 root entries, 320 sectors,
+ *   media `0xFE`, 1 sector/FAT, 8 SPT, 1 head.
+ * - 320K, image at least 327680 bytes, FAT `FF FF FF` at offset 512:
+ *   the same with 2 spc, 640 sectors, media `0xFF`, 2 heads.
+ *
+ * Root is sector 3. Cluster 2 is sector 7. Jump and OEM already parsed into
+ * @p bpb are kept. A valid BPB is not rewritten.
+ *
+ * @param[in]     image Whole sector image.
+ * @param[in,out] bpb   Boot-sector parse. Updated only on a match.
+ * @return True when a synthetic BPB was stored.
+ */
+[[nodiscard]] bool apply_dos1_bpb(std::span<const uint8_t> image, bpb_info& bpb);
+
+/**
  * @brief Parse the extended BPB (volume serial, label, FS type).
  *
  * @param[in] boot Boot sector bytes.

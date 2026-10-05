@@ -58,6 +58,32 @@ namespace dumpfloppy
  */
 [[nodiscard]] std::vector<uint8_t> assemble_ipf(std::span<const uint8_t> data);
 
+/**
+ * @brief Decoded ImageDisk (`.imd`) container.
+ *
+ * @a magic is true when the file starts with ASCII `IMD `. @a sectors is the
+ * linear cylinder/head/sector image (sector numbers start at 1). It is empty
+ * when the comment has no track with a sector payload.
+ */
+struct imd_image
+{
+    bool magic = false;
+    std::vector<uint8_t> sectors{};
+};
+
+/**
+ * @brief Assemble an ImageDisk file into sector-number order.
+ *
+ * Head bit 7 and bit 6 select a per-sector cylinder map and head map. The
+ * head number is the low 6 bits. Sector type 0 has no payload. Types 1, 3, 5,
+ * and 7 are raw bytes. Types 2, 4, 6, and 8 repeat one fill byte.
+ *
+ * @param[in] data Whole `.imd` file.
+ * @return Magic flag and the assembled image. A non-matching file has
+ *         @a magic false and an empty vector.
+ */
+[[nodiscard]] imd_image decode_imd(std::span<const uint8_t> data);
+
 } /* namespace dumpfloppy */
 
 #endif /* DUMPFLOPPY_FOREIGN_HPP */

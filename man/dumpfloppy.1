@@ -1,4 +1,4 @@
-.TH DUMPFLOPPY 1 "2026-10-05" "dumpfloppy" "User Commands"
+.TH DUMPFLOPPY 1 "2026-10-06" "dumpfloppy" "User Commands"
 .SH NAME
 dumpfloppy \- expose secrets in FAT12, CBMFS, and Amiga ADF images
 .SH SYNOPSIS
@@ -87,6 +87,30 @@ as OFS/FFS.
 A DOS 3.3 VTOC (track 17 sector 0) or ProDOS volume header (block 2)
 is listed as Apple (catalog names) from a raw 140K image, a 2IMG payload,
 or a decoded WOZ.
+A 160K image whose first FAT bytes are
+.B FE FF FF
+or a 320K image whose first FAT bytes are
+.B FF FF FF
+is listed as DOS 1.x FAT12 when the boot sector has no BPB and sector 3
+is a directory slot.
+ImageDisk
+.I .imd
+files are assembled into that sector image in sector-number order, not
+interleave order, and then listed.
+A file that starts with
+.B IMD
+and has no sector payload is reported as ImageDisk with an empty directory.
+A boot sector that starts with
+.B mov ax,0
+followed by
+.B mov ds,ax
+or
+.B mov ss,ax
+and has no
+.B 55 AA
+is a custom booter.
+A CP/M 2.2 directory of at least two 32-byte entries is listed by name.
+CP/M file bytes are not extracted.
 .PP
 .B \-x
 /
@@ -200,7 +224,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.39
+.B dumpfloppy 0.40
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

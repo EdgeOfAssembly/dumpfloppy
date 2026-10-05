@@ -784,4 +784,192 @@ std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data)
     return image;
 }
 
+imd_image decode_imd(std::span<const uint8_t> data)
+{
+    imd_image out{};
+    if (data.size() < 4u || data[0] != static_cast<uint8_t>('I') ||
+        data[1] != static_cast<uint8_t>('M') || data[2] != static_cast<uint8_t>('D') ||
+        data[3] != static_cast<uint8_t>(' '))
+    {
+        return out;
+    }
+    out.magic = true;
+
+    std::size_t i = 4u;
+    while (i < data.size() && data[i] != 0x1Au)
+    {
+        ++i;
+    }
+    if (i >= data.size())
+    {
+        return out;
+    }
+    ++i;
+
+    struct placed
+    {
+        uint32_t cyl = 0;
+        uint32_t head = 0;
+        uint32_t num = 0;
+        std::vector<uint8_t> bytes{};
+    };
+    std::vector<placed> secs;
+    uint32_t max_cyl = 0;
+    uint32_t max_head = 0;
+    uint32_t max_sec = 0;
+    uint32_t sec_size = 0;
+    bool mixed_size = false;
+
+    while (i + 5u <= data.size())
+    {
+        const uint8_t cyl = data[i + 1u];
+        const uint8_t headb = data[i + 2u];
+        const uint8_t nsec = data[i + 3u];
+        const uint8_t size_code = data[i + 4u];
+        i += 5u;
+        if (size_code > 6u)
+        {
+            break;
+        }
+        const uint32_t ssize = 128u << size_code;
+        if (i + static_cast<std::size_t>(nsec) > data.size())
+        {
+            break;
+        }
+        const std::size_t map_at = i;
+        i += nsec;
+        const bool cyl_map = (headb & 0x80u) != 0u;
+        const bool head_map = (headb & 0x40u) != 0u;
+        std::size_t cyl_at = 0;
+        std::size_t head_at = 0;
+        if (cyl_map)
+        {
+            if (i + static_cast<std::size_t>(nsec) > data.size())
+            {
+                break;
+            }
+            cyl_at = i;
+            i += nsec;
+        }
+        if (head_map)
+        {
+            if (i + static_cast<std::size_t>(nsec) > data.size())
+            {
+                break;
+            }
+            head_at = i;
+            i += nsec;
+        }
+        const uint8_t track_head = static_cast<uint8_t>(headb & 0x3Fu);
+        bool track_ok = true;
+        for (uint8_t s = 0; s < nsec; ++s)
+        {
+            if (i >= data.size())
+            {
+                track_ok = false;
+                break;
+            }
+            const uint8_t typ = data[i];
+            ++i;
+            std::vector<uint8_t> payload;
+            if (typ == 0u)
+            {
+                continue;
+            }
+            if (typ == 1u || typ == 3u || typ == 5u || typ == 7u)
+            {
+                if (i + static_cast<std::size_t>(ssize) > data.size())
+                {
+                    track_ok = false;
+                    break;
+                }
+                payload.assign(data.begin() + static_cast<std::ptrdiff_t>(i),
+                               data.begin() + static_cast<std::ptrdiff_t>(i + ssize));
+                i += ssize;
+            }
+            else if (typ == 2u || typ == 4u || typ == 6u || typ == 8u)
+            {
+                if (i >= data.size())
+                {
+                    track_ok = false;
+                    break;
+                }
+                payload.assign(static_cast<std::size_t>(ssize), data[i]);
+                ++i;
+            }
+            else
+            {
+                track_ok = false;
+                break;
+            }
+            const uint32_t snum = data[map_at + s];
+            if (snum == 0u)
+            {
+                continue;
+            }
+            const uint32_t scyl = cyl_map ? data[cyl_at + s] : cyl;
+            const uint32_t shead =
+                head_map ? static_cast<uint32_t>(data[head_at + s] & 0x3Fu) : track_head;
+            if (sec_size == 0u)
+            {
+                sec_size = ssize;
+            }
+            else if (sec_size != ssize)
+            {
+                mixed_size = true;
+            }
+            if (scyl > max_cyl)
+            {
+                max_cyl = scyl;
+            }
+            if (shead > max_head)
+            {
+                max_head = shead;
+            }
+            if (snum > max_sec)
+            {
+                max_sec = snum;
+            }
+            placed one;
+            one.cyl = scyl;
+            one.head = shead;
+            one.num = snum;
+            one.bytes = std::move(payload);
+            secs.push_back(std::move(one));
+        }
+        if (!track_ok)
+        {
+            break;
+        }
+    }
+
+    if (mixed_size || secs.empty() || sec_size == 0u || max_sec == 0u)
+    {
+        return out;
+    }
+    const uint64_t heads = static_cast<uint64_t>(max_head) + 1u;
+    const uint64_t nbytes = (static_cast<uint64_t>(max_cyl) + 1u) * heads *
+                            static_cast<uint64_t>(max_sec) * sec_size;
+    constexpr uint64_t k_cap = 16ull * 1024ull * 1024ull;
+    if (nbytes == 0u || nbytes > k_cap)
+    {
+        return out;
+    }
+    out.sectors.assign(static_cast<std::size_t>(nbytes), 0u);
+    for (const placed& s : secs)
+    {
+        const uint64_t index =
+            ((static_cast<uint64_t>(s.cyl) * heads) + s.head) * max_sec +
+            (static_cast<uint64_t>(s.num) - 1u);
+        const uint64_t at = index * sec_size;
+        if (at + s.bytes.size() > out.sectors.size())
+        {
+            continue;
+        }
+        std::memcpy(out.sectors.data() + static_cast<std::size_t>(at), s.bytes.data(),
+                    s.bytes.size());
+    }
+    return out;
+}
+
 } /* namespace dumpfloppy */

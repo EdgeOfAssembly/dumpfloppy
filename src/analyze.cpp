@@ -7,6 +7,8 @@
 #include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/bpb.hpp"
 #include "dumpfloppy/catalog.hpp"
+#include "dumpfloppy/cpm.hpp"
+#include "dumpfloppy/geometry.hpp"
 #include "dumpfloppy/cbm.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat.hpp"
@@ -62,6 +64,20 @@ analysis analyse(floppy_image image)
 {
     analysis a{};
     a.image = std::move(image);
+    const imd_image imd = decode_imd(a.image.bytes);
+    if (imd.magic)
+    {
+        a.imd = true;
+        if (imd.sectors.empty())
+        {
+            a.secrets.emplace_back("ImageDisk container has no sector payload");
+            a.image.size_geometry.media_name = "ImageDisk";
+            return a;
+        }
+        a.image.bytes = imd.sectors;
+        a.image.size_geometry = geometry_from_size(a.image.bytes.size());
+        a.secrets.emplace_back("ImageDisk sectors assembled");
+    }
     const std::span<const uint8_t> bytes = a.image.bytes;
     const std::span<const uint8_t> boot =
         bytes.subspan(0, std::min<size_t>(512u, bytes.size()));
@@ -184,6 +200,18 @@ analysis analyse(floppy_image image)
     }
     if (a.apple.present)
     {
+        if (a.apple.entries.empty())
+        {
+            std::vector<dir_entry> cpm_entries = list_cpm_directory(bytes);
+            if (!cpm_entries.empty())
+            {
+                a.apple = apple_disk{};
+                a.entries = std::move(cpm_entries);
+                a.cpm = true;
+                a.image.size_geometry.media_name = "CP/M";
+                return a;
+            }
+        }
         if (a.apple.fs == apple_fs::dos33)
         {
             a.image.size_geometry.cylinders = a.apple.tracks;
@@ -294,6 +322,17 @@ analysis analyse(floppy_image image)
     }
 
     a.bpb = parse_bpb(boot_span);
+    if (!a.bpb.looks_valid)
+    {
+        const std::span<const uint8_t> vol =
+            a.flux.assembled_chs.empty() ? bytes
+                                         : std::span<const uint8_t>(a.flux.assembled_chs);
+        if (apply_dos1_bpb(vol, a.bpb))
+        {
+            a.dos1 = true;
+            a.secrets.emplace_back("DOS 1.x FAT (no BPB); synthetic geometry");
+        }
+    }
     a.ebpb = parse_ebpb(boot_span, a.bpb);
     a.boot = classify_boot(boot_span, a.bpb);
     if (a.flux.present && !a.bpb.looks_valid && !a.flux.boot.empty() &&
@@ -508,6 +547,20 @@ analysis analyse(floppy_image image)
     {
         a.secrets.emplace_back(
             "extended BPB signature 0x29 present but FS type is not FATxx");
+    }
+
+    if (!a.cpm && !a.bpb.looks_valid && !a.apple.present && a.entries.empty())
+    {
+        std::vector<dir_entry> cpm_entries = list_cpm_directory(bytes);
+        if (!cpm_entries.empty())
+        {
+            a.entries = std::move(cpm_entries);
+            a.cpm = true;
+            if (a.image.size_geometry.media_name.empty())
+            {
+                a.image.size_geometry.media_name = "CP/M";
+            }
+        }
     }
 
     return a;

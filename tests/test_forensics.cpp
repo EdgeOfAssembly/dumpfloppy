@@ -1113,7 +1113,7 @@ TEST_CASE("help and version document enable-only sources", "[forensics][sources]
     REQUIRE(usage.find("--sources") != std::string::npos);
     REQUIRE(usage.find("--no-sources") == std::string::npos);
     REQUIRE(usage.find(dumpfloppy::k_version) != std::string::npos);
-    REQUIRE(std::string(dumpfloppy::k_version) == "0.39");
+    REQUIRE(std::string(dumpfloppy::k_version) == "0.40");
 
     const auto on = parse({"disk.ima", "--sources"});
     REQUIRE(on.ok);
@@ -1146,7 +1146,7 @@ TEST_CASE("help and version document enable-only sources", "[forensics][sources]
     int ver_rc = 0;
     const std::string ver = slurp_popen(std::string("\"") + bin + "\" -v", ver_rc);
     REQUIRE(ver_rc == 0);
-    REQUIRE(ver == "dumpfloppy 0.39\n");
+    REQUIRE(ver == "dumpfloppy 0.40\n");
 
     int bare_rc = 0;
     const std::string bare = slurp_popen(std::string("\"") + bin + "\"", bare_rc);
@@ -1167,7 +1167,7 @@ TEST_CASE("help and version document enable-only json", "[cli][json]")
     const std::string usage = dumpfloppy::usage_text();
     REQUIRE(usage.find("--json") != std::string::npos);
     REQUIRE(usage.find("--no-json") == std::string::npos);
-    REQUIRE(std::string(dumpfloppy::k_version) == "0.39");
+    REQUIRE(std::string(dumpfloppy::k_version) == "0.40");
 
     const auto on = parse({"disk.ima", "--json"});
     REQUIRE(on.ok);
@@ -1197,7 +1197,7 @@ TEST_CASE("help and version document enable-only json", "[cli][json]")
     int ver_rc = 0;
     const std::string ver = slurp_popen(std::string("\"") + bin + "\" -v", ver_rc);
     REQUIRE(ver_rc == 0);
-    REQUIRE(ver == "dumpfloppy 0.39\n");
+    REQUIRE(ver == "dumpfloppy 0.40\n");
 
     int bare_rc = 0;
     const std::string bare = slurp_popen(std::string("\"") + bin + "\" --json", bare_rc);
@@ -1223,7 +1223,7 @@ TEST_CASE("json report parses a planted FAT image without ANSI", "[cli][json]")
 
     const nlohmann::json doc = nlohmann::json::parse(got.out);
     REQUIRE(doc.at("tool").get<std::string>() == "dumpfloppy");
-    REQUIRE(doc.at("version").get<std::string>() == "0.39");
+    REQUIRE(doc.at("version").get<std::string>() == "0.40");
     REQUIRE(doc.at("images").size() == 1u);
     const auto& image = doc.at("images").at(0);
     REQUIRE(image.at("path").get<std::string>() == img.string());

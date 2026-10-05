@@ -967,6 +967,11 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     {
         return extract_apple_files(a, rooted, err);
     }
+    if (a.cpm)
+    {
+        err << "dumpfloppy: CP/M directory listing does not extract file bytes\n";
+        return -1;
+    }
     if (a.foreign.present && a.flux.assembled_chs.empty())
     {
         err << "dumpfloppy: cannot extract " << a.foreign.format
