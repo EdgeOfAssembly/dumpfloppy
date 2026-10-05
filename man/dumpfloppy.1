@@ -200,7 +200,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.38
+.B dumpfloppy 0.39
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -265,6 +265,47 @@ This switch is listing-only:
 still writes
 .B unused_cNNNN
 payloads.
+.TP
+.B \-\-json
+Write one JSON document instead of the text report.
+Stdout is that document and nothing else: no ANSI colour, no blank line
+between images, no boot-sector hex dump, and no secrets.
+.B \-o
+keeps the same path rules.
+A directory of reports uses
+.IR <stem>.json .
+Several inputs and one
+.B \-o
+file use
+.IR <outstem>_<instem>.json .
+One input and
+.B \-o
+file writes that exact path.
+Stdout is empty when
+.B \-o
+took the report.
+There is no
+.B \-\-no-json
+switch.
+Combined with
+.BR \-\-slack ,
+.BR \-\-leaked ,
+.BR \-\-carve ,
+or
+.B \-\-sources
+the program exits 2 before analysis.
+Stderr is
+.B "dumpfloppy: --json does not include --slack, --leaked, --carve, or --sources"
+and stdout is empty.
+Combined with
+.BR \-x ,
+.BR \-u ,
+or
+.B \-\-offset
+the program exits 2 before analysis.
+Stderr is
+.B "dumpfloppy: --json does not include -x, -u, or --offset"
+and stdout is empty.
 .TP
 .BR \-x ", " \-\-extract " [" \fIGLOB\fR "]"
 Extract files by walking FAT cluster chains,
@@ -533,6 +574,21 @@ Success, or help/version requested.
 .TP
 .B 1
 Bad arguments, unreadable image, or at least one input failed.
+.TP
+.B 2
+.B \-\-json
+combined with
+.BR \-\-slack ,
+.BR \-\-leaked ,
+.BR \-\-carve ,
+or
+.BR \-\-sources ,
+or with
+.BR \-x ,
+.BR \-u ,
+or
+.BR \-\-offset .
+Analysis does not run.
 .SH EXAMPLES
 Dump a 720K WinImage floppy:
 .RS
@@ -562,6 +618,12 @@ Show slack tails, leaked directory slots, and carved signatures:
 Search slack, free clusters, and bytes past the filesystem for source text:
 .RS
 .B dumpfloppy \-\-sources disk1.ima
+.RE
+.PP
+Machine-readable report (there is no
+.BR \-\-no-json ):
+.RS
+.B dumpfloppy \-\-json disk1.ima
 .RE
 .PP
 List and extract a Commodore 1541 D64:

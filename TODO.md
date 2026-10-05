@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** worktree 0.38 (no git in this tree) · **version 0.38** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** worktree 0.39 (no git in this tree) · **version 0.39** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -46,6 +46,8 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (this tree, 0.38):** `make -s test` 283 cases, 276 passed, 7 skipped, 28077 assertions (exit 0); `make -s verify` exit 0, CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases, not `--sources`.
 
+**Verify last green (this tree, 0.39):** `env -u MAKEFLAGS make -s -j$(nproc) test` 288 cases, 281 passed, 7 skipped, 28189 assertions (exit 0); `env -u MAKEFLAGS make -s -j$(nproc) verify` exit 0, CBMC 6.10.0 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed (each VERIFICATION SUCCESSFUL). The 7 skips are the existing missing-fixture cases. Follow-up `make test` after the `--json`/`-x`/`-u`/`--offset` refusal (CBMC not re-run): 289 cases, 282 passed, 7 skipped, 28202 assertions (exit 0).
+
 ## Still open (2026-10-05)
 
 Shipped in 0.35 and not part of this list: symlink-safe extract, directory-walk caps, `--slack`, `--leaked`, `--carve`.
@@ -56,10 +58,12 @@ Shipped in 0.37: `k_w_size` is 10 so a FAT directory line prints `4294967295` (C
 
 Shipped in 0.38: enable-only `--sources` (no `--no-sources`). Case-sensitive `#include`, `proc near`, `org 100h`, `uses crt`, and BASIC lines in file slack, free clusters, and bytes past the filesystem. Not live file bytes. Cap 64, then `Warning: source scan stopped at cap`. Non-FAT still lists and exits 1.
 
+Shipped in 0.39: enable-only `--json` (no `--no-json`, no TSV). One JSON document on stdout (or `<stem>.json` / `<outstem>_<instem>.json` with `-o`). Combined with `--slack`, `--leaked`, `--carve`, or `--sources` exits 2 before analysis. Combined with `-x`, `-u`, or `--offset` exits 2 before analysis (`dumpfloppy: --json does not include -x, -u, or --offset`). `--sources` still skips needles that sit on a walked directory range. `make release` and `make profile` run `clean` and `all` as two separate `$(MAKE)` lines.
+
 - [x] **Size column is 7 characters.** Done in 0.37. `k_w_size` is 10. `4294967295` is no longer clipped to `4294967`.
 - [x] **Live name collisions are called deleted.** Done in 0.37. Two live files that share a host path write `stem.dup.ext`, then `stem.dup.N.ext`, not `.deleted`.
 - [x] **Strings / source-pattern search.** Done in 0.38. `--sources` reports `#include`, `proc near`, `org 100h`, `uses crt`, and BASIC lines over file slack, free clusters, and bytes past the filesystem. `--slack`, `--leaked`, and `--carve` do not start this scan.
-- [ ] **JSON or TSV report.** Listing output is text only. A machine-readable report for batch runs is not implemented. No `--json` yet. Do not add both `--json` and `--no-json`.
+- [x] **JSON or TSV report.** Done in 0.39 for JSON only. `--json` is enable-only (there is no `--no-json`). One JSON document; TSV is not implemented.
 
 ## Next (pick one slice)
 

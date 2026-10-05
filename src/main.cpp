@@ -51,26 +51,37 @@ int write_one(const dumpfloppy::analysis& a, const dumpfloppy::report_options& o
         std::cerr << "dumpfloppy: cannot write '" << dest.string() << "'\n";
         return 1;
     }
-    dumpfloppy::write_report(a, out, opt);
+    if (opt.json)
+    {
+        dumpfloppy::write_json_begin(out);
+        dumpfloppy::write_json_image(a, out, opt, true);
+        dumpfloppy::write_json_end(out);
+    }
+    else
+    {
+        dumpfloppy::write_report(a, out, opt);
+    }
     return 0;
 }
 
 std::filesystem::path report_path_for(const std::filesystem::path& output,
                                       const std::filesystem::path& input,
-                                      size_t input_count, bool output_is_dir)
+                                      size_t input_count, bool output_is_dir,
+                                      bool as_json)
 {
+    const char* ext = as_json ? ".json" : ".txt";
     if (output_is_dir)
     {
-        return output / (input.stem().string() + ".txt");
+        return output / (input.stem().string() + ext);
     }
     if (input_count == 1u)
     {
         return output;
     }
-    /* Multi-input + file -o: outstem_instem.txt */
+    /* Multi-input + file -o: outstem_instem.txt, or .json when --json. */
     const std::string stem = output.stem().string();
     const auto parent = output.parent_path();
-    const std::filesystem::path name = stem + "_" + input.stem().string() + ".txt";
+    const std::filesystem::path name = stem + "_" + input.stem().string() + ext;
     return parent.empty() ? name : (parent / name);
 }
 
@@ -196,6 +207,17 @@ int main(int argc, char** argv)
     const bool mutating = cli.update.enabled || cli.extract.enabled;
     const bool want_forensics = cli.forensics.slack || cli.forensics.leaked ||
                                 cli.forensics.carve || cli.forensics.sources;
+    if (cli.report.json && want_forensics)
+    {
+        std::cerr << "dumpfloppy: --json does not include --slack, --leaked, "
+                     "--carve, or --sources\n";
+        return 2;
+    }
+    if (cli.report.json && (mutating || cli.has_offset))
+    {
+        std::cerr << "dumpfloppy: --json does not include -x, -u, or --offset\n";
+        return 2;
+    }
     if (cli.inputs.empty())
     {
         if (mutating || cli.has_offset || want_forensics)
@@ -254,11 +276,20 @@ int main(int argc, char** argv)
         {
             std::cerr << "dumpfloppy: warning: multiple inputs with -o file; "
                          "writing "
-                      << cli.output.stem().string() << "_<stem>.txt per image\n";
+                      << cli.output.stem().string()
+                      << (cli.report.json ? "_<stem>.json" : "_<stem>.txt")
+                      << " per image\n";
         }
     }
 
     int rc = 0;
+    const bool json_report = cli.report.json;
+    const bool json_stdout = json_report && !cli.has_output;
+    bool json_first = true;
+    if (json_stdout)
+    {
+        dumpfloppy::write_json_begin(std::cout);
+    }
     auto emit_forensics = [&](const dumpfloppy::analysis& image)
     {
         if (!want_forensics)
@@ -359,10 +390,28 @@ int main(int argc, char** argv)
             emit_forensics(a);
             continue;
         }
+        if (json_report)
+        {
+            if (cli.has_output)
+            {
+                const std::filesystem::path dest = report_path_for(
+                    cli.output, files[i], files.size(), output_is_dir, true);
+                if (write_one(a, cli.report, dest, true) != 0)
+                {
+                    rc = 1;
+                }
+            }
+            else
+            {
+                dumpfloppy::write_json_image(a, std::cout, cli.report, json_first);
+                json_first = false;
+            }
+            continue;
+        }
         if (cli.has_output)
         {
-            const std::filesystem::path dest =
-                report_path_for(cli.output, files[i], files.size(), output_is_dir);
+            const std::filesystem::path dest = report_path_for(
+                cli.output, files[i], files.size(), output_is_dir, false);
             if (write_one(a, cli.report, dest, true) != 0)
             {
                 rc = 1;
@@ -377,6 +426,10 @@ int main(int argc, char** argv)
             dumpfloppy::write_report(a, std::cout, cli.report);
         }
         emit_forensics(a);
+    }
+    if (json_stdout)
+    {
+        dumpfloppy::write_json_end(std::cout);
     }
     return rc;
 }

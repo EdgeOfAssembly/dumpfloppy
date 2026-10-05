@@ -69,7 +69,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.38`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.39`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
 `*.dsk` / `*.po`.
@@ -99,6 +99,8 @@ dumpfloppy game.ipf -x
 dumpfloppy game.stx
 dumpfloppy game.stx -x
 dumpfloppy --no-color --no-hex disk.ima -o report.txt
+dumpfloppy --json disk.ima
+dumpfloppy --json disk.ima -o report.json
 dumpfloppy ./floppies -o ./reports/
 dumpfloppy disk.ima -u HELLO.TXT
 dumpfloppy disk.mfm -u PENGUIN.EXE
@@ -124,6 +126,14 @@ replace; G64/G71 GCR, REL, and TRD are refused.
 | Extract files | `-x` / `--extract` (optional glob) |
 | Update a named file | `-u` / `--update FILE` (repeatable; silent; glued `-uFILE` ok) |
 | Source-pattern search off | `--sources` (FAT12/FAT16 slack, free clusters, past-end) |
+| Text report | `--json` (one JSON document; there is no `--no-json`) |
+
+`--json` is enable-only. Combined with `--slack`, `--leaked`, `--carve`, or
+`--sources` it exits 2 before analysis and writes nothing to stdout.
+Combined with `-x`, `-u`, or `--offset` it exits 2 before analysis. Stderr is
+`dumpfloppy: --json does not include -x, -u, or --offset` and stdout is empty.
+`-o` with `--json` uses `<stem>.json` (or `<outstem>_<instem>.json` when
+several inputs share one file). One input and `-o file` keeps that exact path.
 
 ## Example (Elvira 720K Disk 2)
 

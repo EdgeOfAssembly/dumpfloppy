@@ -662,6 +662,7 @@ struct source_hit
  * CR and LF are outside this range, so a BASIC preview stops on them.
  *
  * @param[in] b Volume byte.
+ * @return True when @p b is in the closed range 0x20..0x7E.
  */
 [[nodiscard]] bool is_printable_ascii(uint8_t b)
 {
@@ -678,6 +679,7 @@ struct source_hit
  * @param[in] region Region being scanned.
  * @param[in] vol    Image bytes that contain @p region.
  * @param[in] off    Candidate offset inside @p region.
+ * @return True at the first byte of @p region, or when the previous byte is CR or LF.
  */
 [[nodiscard]] bool source_line_start(const byte_span& region, std::span<const uint8_t> vol,
                                      std::size_t off)
@@ -744,6 +746,7 @@ void add_source_hit(std::vector<source_hit>& hits, bool& truncated, std::size_t 
  * @param[in] lit        Case-sensitive needle.
  * @param[in] n          Needle length in bytes.
  * @param[in] dir_at     Directory cursor positioned at @p off.
+ * @return True when the needle matches and does not overlap a walked directory.
  */
 [[nodiscard]] bool literal_in_region(std::span<const uint8_t> vol, std::size_t region_end,
                                      std::size_t off, const char* lit, std::size_t n,

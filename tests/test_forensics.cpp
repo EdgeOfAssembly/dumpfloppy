@@ -8,10 +8,18 @@
 #include "dumpfloppy/fat.hpp"
 #include "dumpfloppy/fat_slack.h"
 #include "dumpfloppy/forensics.hpp"
+#include "dumpfloppy/report.hpp"
 #include "dumpfloppy/version.hpp"
 #include "image_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#include <nlohmann/json.hpp>
+#pragma GCC diagnostic pop
 
 #include <cstdint>
 #include <cstdio>
@@ -19,6 +27,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <sys/wait.h>
@@ -459,6 +468,75 @@ std::vector<uint8_t> make_source_cap_image()
         plant_text(img, cluster3 + static_cast<std::size_t>(i) * 8u, "#include");
     }
     return img;
+}
+
+/**
+ * @brief `#include` on a subdirectory cluster the walker records, and another
+ * in the live file's real slack.
+ *
+ * HELLO.TXT (14 bytes, cluster 2) chains through cluster 4, so cluster 4 is
+ * slack. SUB also owns cluster 4, so that range is a walked directory.
+ */
+std::vector<uint8_t> make_source_dir_and_slack_image()
+{
+    std::vector<uint8_t> img = dumpfloppy_test::make_fat12_sample();
+    uint8_t* fat0 = dumpfloppy_test::fat12_fat0(img);
+    const std::size_t fat_len = dumpfloppy_test::fat12_fat_len();
+    REQUIRE(fat12_entry_set(fat0, fat_len, 2u, 4u) == 0);
+    REQUIRE(fat12_entry_set(fat0, fat_len, 4u, 0x0FFFu) == 0);
+    dumpfloppy_test::fat12_mirror_fat1(img);
+
+    dumpfloppy_test::put_dir_dirent(dumpfloppy_test::fat12_root(img) + 96, "SUB        ", 4);
+
+    const std::size_t data = dumpfloppy_test::fat12_data_off();
+    plant_text(img, data + 14u, "#include");
+    plant_text(img, data + 2u * dumpfloppy_test::k_bps, "#include");
+    return img;
+}
+
+struct split_run
+{
+    int rc = -1;
+    std::string out{};
+    std::string err{};
+};
+
+split_run run_split(const std::filesystem::path& dir, const std::string& cmd)
+{
+    const auto out_path = dir / "stdout.txt";
+    const auto err_path = dir / "stderr.txt";
+    std::error_code ec{};
+    std::filesystem::remove(out_path, ec);
+    std::filesystem::remove(err_path, ec);
+    split_run got;
+    const int raw = std::system((cmd + " >\"" + out_path.string() + "\" 2>\"" +
+                                 err_path.string() + "\"")
+                                    .c_str());
+    if (raw != -1 && WIFEXITED(raw))
+    {
+        got.rc = WEXITSTATUS(raw);
+    }
+    auto slurp = [](const std::filesystem::path& path)
+    {
+        std::ifstream in(path);
+        return std::string(std::istreambuf_iterator<char>(in),
+                           std::istreambuf_iterator<char>());
+    };
+    got.out = slurp(out_path);
+    got.err = slurp(err_path);
+    return got;
+}
+
+const nlohmann::json* find_entry(const nlohmann::json& entries, const char* name)
+{
+    for (const auto& entry : entries)
+    {
+        if (entry.at("name").get<std::string>() == name)
+        {
+            return &entry;
+        }
+    }
+    return nullptr;
 }
 
 const dumpfloppy::dir_entry* find_name(const dumpfloppy::analysis& a,
@@ -1035,7 +1113,7 @@ TEST_CASE("help and version document enable-only sources", "[forensics][sources]
     REQUIRE(usage.find("--sources") != std::string::npos);
     REQUIRE(usage.find("--no-sources") == std::string::npos);
     REQUIRE(usage.find(dumpfloppy::k_version) != std::string::npos);
-    REQUIRE(std::string(dumpfloppy::k_version) == "0.38");
+    REQUIRE(std::string(dumpfloppy::k_version) == "0.39");
 
     const auto on = parse({"disk.ima", "--sources"});
     REQUIRE(on.ok);
@@ -1068,7 +1146,7 @@ TEST_CASE("help and version document enable-only sources", "[forensics][sources]
     int ver_rc = 0;
     const std::string ver = slurp_popen(std::string("\"") + bin + "\" -v", ver_rc);
     REQUIRE(ver_rc == 0);
-    REQUIRE(ver == "dumpfloppy 0.38\n");
+    REQUIRE(ver == "dumpfloppy 0.39\n");
 
     int bare_rc = 0;
     const std::string bare = slurp_popen(std::string("\"") + bin + "\"", bare_rc);
@@ -1082,4 +1160,241 @@ TEST_CASE("help and version document enable-only sources", "[forensics][sources]
     REQUIRE(none_rc == 1);
     REQUIRE(none.find("dumpfloppy: no image files given\n") != std::string::npos);
     REQUIRE(none.find("=== Source ===") == std::string::npos);
+}
+
+TEST_CASE("help and version document enable-only json", "[cli][json]")
+{
+    const std::string usage = dumpfloppy::usage_text();
+    REQUIRE(usage.find("--json") != std::string::npos);
+    REQUIRE(usage.find("--no-json") == std::string::npos);
+    REQUIRE(std::string(dumpfloppy::k_version) == "0.39");
+
+    const auto on = parse({"disk.ima", "--json"});
+    REQUIRE(on.ok);
+    REQUIRE(on.report.json);
+    REQUIRE(on.inputs.size() == 1u);
+
+    const auto flipped = parse({"--json", "disk.ima"});
+    REQUIRE(flipped.ok);
+    REQUIRE(flipped.report.json);
+    REQUIRE(flipped.inputs.size() == 1u);
+
+    const auto off = parse({"disk.ima"});
+    REQUIRE(off.ok);
+    REQUIRE_FALSE(off.report.json);
+
+    const auto twin = parse({"--no-json", "disk.ima"});
+    REQUIRE_FALSE(twin.ok);
+    REQUIRE(twin.error.find("unknown option") != std::string::npos);
+
+    const char* bin = bin_or_require();
+    int help_rc = 0;
+    const std::string help = slurp_popen(std::string("\"") + bin + "\" --help", help_rc);
+    REQUIRE(help_rc == 0);
+    REQUIRE(help.find("--json") != std::string::npos);
+    REQUIRE(help.find("--no-json") == std::string::npos);
+
+    int ver_rc = 0;
+    const std::string ver = slurp_popen(std::string("\"") + bin + "\" -v", ver_rc);
+    REQUIRE(ver_rc == 0);
+    REQUIRE(ver == "dumpfloppy 0.39\n");
+
+    int bare_rc = 0;
+    const std::string bare = slurp_popen(std::string("\"") + bin + "\" --json", bare_rc);
+    REQUIRE(bare_rc == 0);
+    REQUIRE(bare.find("Usage:") != std::string::npos);
+    REQUIRE(bare.find("--json") != std::string::npos);
+    REQUIRE(bare.find("--no-json") == std::string::npos);
+}
+
+TEST_CASE("json report parses a planted FAT image without ANSI", "[cli][json]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("json-fat");
+    const auto img = dir / "disk.ima";
+    write_bytes(img, dumpfloppy_test::make_fat12_sample());
+
+    const split_run got =
+        run_split(dir, std::string("\"") + bin + "\" --json \"" + img.string() + "\"");
+    REQUIRE(got.rc == 0);
+    REQUIRE(got.out.find('\x1b') == std::string::npos);
+    REQUIRE(got.out.find("floppy image secrets") == std::string::npos);
+    REQUIRE(got.out.find("=== Slack ===") == std::string::npos);
+
+    const nlohmann::json doc = nlohmann::json::parse(got.out);
+    REQUIRE(doc.at("tool").get<std::string>() == "dumpfloppy");
+    REQUIRE(doc.at("version").get<std::string>() == "0.39");
+    REQUIRE(doc.at("images").size() == 1u);
+    const auto& image = doc.at("images").at(0);
+    REQUIRE(image.at("path").get<std::string>() == img.string());
+    REQUIRE(image.at("bytes").get<uint64_t>() == 64u * 512u);
+    REQUIRE(image.at("filesystem").get<std::string>() == "FAT12");
+    REQUIRE(image.at("label").get<std::string>() == "TESTVOL");
+    REQUIRE(image.at("serial").get<std::string>() == "1234-ABCD");
+    REQUIRE_FALSE(image.at("directory_capped").get<bool>());
+
+    const nlohmann::json* hello = find_entry(image.at("entries"), "HELLO.TXT");
+    REQUIRE(hello != nullptr);
+    REQUIRE(hello->at("size").get<uint32_t>() == 14u);
+    REQUIRE(hello->at("path").get<std::string>() == "HELLO.TXT");
+    REQUIRE_FALSE(hello->at("deleted").get<bool>());
+    REQUIRE_FALSE(hello->at("directory").get<bool>());
+    REQUIRE(hello->at("first_cluster").get<uint32_t>() == 2u);
+    REQUIRE(hello->at("xxh64").get<std::string>().size() == 16u);
+
+    const auto second = dir / "other.ima";
+    write_bytes(second, dumpfloppy_test::make_fat12_sample());
+    const split_run both = run_split(
+        dir, std::string("\"") + bin + "\" --json \"" + second.string() + "\" \"" +
+                 img.string() + "\"");
+    REQUIRE(both.rc == 0);
+    const nlohmann::json two = nlohmann::json::parse(both.out);
+    REQUIRE(two.at("images").size() == 2u);
+    REQUIRE(two.at("images").at(0).at("path").get<std::string>() == second.string());
+    REQUIRE(two.at("images").at(1).at("path").get<std::string>() == img.string());
+
+    const auto exact = dir / "exact-name.txt";
+    const split_run filed = run_split(
+        dir, std::string("\"") + bin + "\" --json -o \"" + exact.string() + "\" \"" +
+                 img.string() + "\"");
+    REQUIRE(filed.rc == 0);
+    REQUIRE(filed.out.empty());
+    std::ifstream saved(exact);
+    const std::string body{std::istreambuf_iterator<char>(saved),
+                           std::istreambuf_iterator<char>()};
+    const nlohmann::json one = nlohmann::json::parse(body);
+    REQUIRE(one.at("images").size() == 1u);
+    REQUIRE(find_entry(one.at("images").at(0).at("entries"), "HELLO.TXT") != nullptr);
+}
+
+TEST_CASE("json refuses slack leaked carve and sources", "[cli][json]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("json-refuse");
+    const auto img = dir / "disk.ima";
+    write_bytes(img, dumpfloppy_test::make_fat12_sample());
+    const char* flags[] = {"--slack", "--leaked", "--carve", "--sources"};
+    for (const char* flag : flags)
+    {
+        const split_run got = run_split(
+            dir, std::string("\"") + bin + "\" --json " + flag + " \"" + img.string() +
+                     "\"");
+        REQUIRE(got.rc == 2);
+        REQUIRE(got.out.empty());
+        REQUIRE(got.err ==
+                "dumpfloppy: --json does not include --slack, --leaked, --carve, or --sources\n");
+    }
+}
+
+TEST_CASE("json refuses extract update and offset", "[cli][json]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("json-refuse-mut");
+    const auto img = dir / "disk.ima";
+    write_bytes(img, dumpfloppy_test::make_fat12_sample());
+    const char* flags[] = {"-x", "-uHOST", "--offset=0"};
+    for (const char* flag : flags)
+    {
+        const split_run got = run_split(
+            dir, std::string("\"") + bin + "\" --json " + flag + " \"" + img.string() +
+                     "\"");
+        REQUIRE(got.rc == 2);
+        REQUIRE(got.out.empty());
+        REQUIRE(got.err ==
+                "dumpfloppy: --json does not include -x, -u, or --offset\n");
+    }
+}
+
+TEST_CASE("json writer escapes quote backslash and controls", "[json]")
+{
+    dumpfloppy::analysis a;
+    a.image.path = "q.img";
+    a.image.bytes.assign(16u, 0);
+    a.kind = dumpfloppy::fat_kind::fat12;
+    a.volume.label_best = std::string("A\"B\\C");
+    a.volume.serial_text = "12\"34";
+    dumpfloppy::dir_entry named;
+    named.path = std::string("A\"B\\C");
+    named.name_83 = named.path;
+    named.size = 3;
+    named.type = "DATA";
+    named.first_cluster = 2;
+    a.entries.push_back(named);
+    dumpfloppy::dir_entry control;
+    control.path = std::string("X\x01Y");
+    control.name_83 = control.path;
+    control.size = 1;
+    control.type = "DATA";
+    a.entries.push_back(control);
+
+    std::ostringstream os;
+    dumpfloppy::report_options opt;
+    dumpfloppy::write_json_begin(os);
+    dumpfloppy::write_json_image(a, os, opt, true);
+    dumpfloppy::write_json_end(os);
+    const std::string text = os.str();
+    REQUIRE(text.find('\x01') == std::string::npos);
+    REQUIRE(text.find("A\\\"B\\\\C") != std::string::npos);
+
+    const nlohmann::json doc = nlohmann::json::parse(text);
+    REQUIRE(doc.at("images").at(0).at("label").get<std::string>() == "A\"B\\C");
+    REQUIRE(doc.at("images").at(0).at("serial").get<std::string>() == "12\"34");
+    const nlohmann::json* hit = find_entry(doc.at("images").at(0).at("entries"), "A\"B\\C");
+    REQUIRE(hit != nullptr);
+    REQUIRE(hit->at("path").get<std::string>() == "A\"B\\C");
+    const nlohmann::json* ctrl = find_entry(doc.at("images").at(0).at("entries"), "X\x01Y");
+    REQUIRE(ctrl != nullptr);
+    REQUIRE(ctrl->at("name").get<std::string>() == std::string("X\x01Y"));
+}
+
+TEST_CASE("sources skips a needle on a walked directory and reports slack",
+          "[forensics][sources]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("sources-dir-range");
+    const auto img = dir / "dir.ima";
+    write_bytes(img, make_source_dir_and_slack_image());
+    const dumpfloppy::analysis a = analyse_file(img);
+
+    const dumpfloppy::dir_entry* sub = find_name(a, "SUB");
+    const dumpfloppy::dir_entry* hello = find_name(a, "HELLO.TXT");
+    REQUIRE(sub != nullptr);
+    REQUIRE(hello != nullptr);
+    REQUIRE((sub->attributes & dumpfloppy::k_attr_directory) != 0u);
+    REQUIRE(sub->first_cluster == 4u);
+    REQUIRE_FALSE(sub->cluster_chain.empty());
+    REQUIRE(sub->cluster_chain.front() == 4u);
+    const std::size_t dir_off = dumpfloppy::cluster_offset(a.bpb, sub->cluster_chain.front());
+    const std::size_t planted_dir =
+        dumpfloppy_test::fat12_data_off() + 2u * dumpfloppy_test::k_bps;
+    REQUIRE(dir_off == planted_dir);
+    REQUIRE_FALSE(hello->cluster_chain.empty());
+    const std::size_t slack_off =
+        dumpfloppy::cluster_offset(a.bpb, hello->cluster_chain.front()) + hello->size;
+    REQUIRE(slack_off != dir_off);
+    const auto vol = dumpfloppy::volume_bytes(a);
+    REQUIRE(dir_off + 8u <= vol.size());
+    REQUIRE(slack_off + 8u <= vol.size());
+    REQUIRE(std::string(reinterpret_cast<const char*>(vol.data() + dir_off), 8) == "#include");
+    REQUIRE(std::string(reinterpret_cast<const char*>(vol.data() + slack_off), 8) ==
+            "#include");
+
+    dumpfloppy::forensics_request req;
+    req.sources = true;
+    std::ostringstream out;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::write_forensics(a, req, out, err) == 0);
+    REQUIRE(err.str().empty());
+    const std::string text = out.str();
+    REQUIRE(text.find(std::to_string(slack_off) + " include #include\n") != std::string::npos);
+    REQUIRE(text.find(std::to_string(dir_off) + " ") == std::string::npos);
+
+    const split_run got = run_split(
+        dir, std::string("\"") + bin + "\" --no-color --no-hex --sources \"" + img.string() +
+                 "\"");
+    REQUIRE(got.rc == 0);
+    const std::string src = section_from(got.out, "=== Source ===\n");
+    REQUIRE(src.find(std::to_string(slack_off) + " include #include\n") != std::string::npos);
+    REQUIRE(src.find(std::to_string(dir_off) + " ") == std::string::npos);
+    REQUIRE(got.err.find("sources is only implemented") == std::string::npos);
 }

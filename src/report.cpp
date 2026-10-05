@@ -593,6 +593,292 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     out << '\n';
 }
 
+/** @brief One JSON directory row. Hashes are copied, never computed here. */
+struct json_row
+{
+    std::string path{};
+    std::string name{};
+    uint32_t size = 0;
+    bool deleted = false;
+    bool directory = false;
+    uint32_t first_cluster = 0;
+    std::string type{};
+    std::string xxh64{};
+};
+
+/**
+ * @brief Write @p s as a JSON string.
+ *
+ * Quotes, backslashes, and bytes below 0x20 are escaped. Other bytes are
+ * copied so a FAT name round-trips through a JSON parser.
+ */
+void json_quote(std::ostream& out, std::string_view s)
+{
+    static constexpr char k_hex[] = "0123456789abcdef";
+    out << '"';
+    for (const char ch : s)
+    {
+        const auto u = static_cast<unsigned char>(ch);
+        if (u == static_cast<unsigned char>('"'))
+        {
+            out << "\\\"";
+        }
+        else if (u == static_cast<unsigned char>('\\'))
+        {
+            out << "\\\\";
+        }
+        else if (u < 0x20u)
+        {
+            out << "\\u00" << k_hex[u >> 4] << k_hex[u & 0x0Fu];
+        }
+        else
+        {
+            out << static_cast<char>(u);
+        }
+    }
+    out << '"';
+}
+
+/** @brief Family name already printed by the text report. Not a second vocabulary. */
+std::string filesystem_family(const analysis& a)
+{
+    if (a.cbm.present)
+    {
+        return "CBM";
+    }
+    if (a.amiga.present)
+    {
+        return "Amiga";
+    }
+    if (a.trd.present)
+    {
+        return "TRD";
+    }
+    if (a.apple.present)
+    {
+        return "Apple";
+    }
+    if (a.kind == fat_kind::fat12 || a.kind == fat_kind::fat16 ||
+        a.kind == fat_kind::fat32)
+    {
+        return fat_name(a.kind);
+    }
+    if (a.foreign.present)
+    {
+        if (!a.foreign.format.empty())
+        {
+            return a.foreign.format;
+        }
+        if (!a.foreign.platform.empty())
+        {
+            return a.foreign.platform;
+        }
+        return "(flux)";
+    }
+    return "unknown";
+}
+
+/**
+ * @brief Volume label and serial the text report already knows.
+ *
+ * Empty when that filesystem has no such field.
+ */
+void json_label_serial(const analysis& a, std::string& label, std::string& serial)
+{
+    label.clear();
+    serial.clear();
+    if (a.cbm.present)
+    {
+        label = a.cbm.disk_name;
+        serial = a.cbm.disk_id;
+        return;
+    }
+    if (a.amiga.present)
+    {
+        label = a.amiga.volume_name;
+        return;
+    }
+    if (a.trd.present)
+    {
+        label = a.trd.label;
+        return;
+    }
+    if (a.apple.present)
+    {
+        label = a.apple.volume_name;
+        return;
+    }
+    if (a.kind == fat_kind::fat12 || a.kind == fat_kind::fat16 ||
+        a.kind == fat_kind::fat32)
+    {
+        label = a.volume.label_best;
+        serial = a.volume.serial_text;
+    }
+}
+
+void push_row(std::vector<json_row>& rows, json_row row)
+{
+    rows.push_back(std::move(row));
+}
+
+void collect_fat_rows(const analysis& a, const report_options& opt,
+                      std::vector<json_row>& rows)
+{
+    for (const dir_entry& e : a.entries)
+    {
+        if (e.deleted && !opt.show_deleted)
+        {
+            continue;
+        }
+        json_row row;
+        row.path = e.path.empty() ? e.name_83 : e.path;
+        row.name = e.name_83.empty() ? row.path : e.name_83;
+        row.size = e.size;
+        row.deleted = e.deleted;
+        row.directory = (e.attributes & k_attr_directory) != 0u;
+        row.first_cluster = e.first_cluster;
+        row.type = e.type.empty() ? "DATA" : e.type;
+        row.xxh64 = e.xxh64;
+        push_row(rows, std::move(row));
+    }
+}
+
+void collect_cbm_rows(const analysis& a, const report_options& opt,
+                      std::vector<json_row>& rows)
+{
+    for (const cbm_file& e : a.cbm.entries)
+    {
+        if (e.deleted && !opt.show_deleted)
+        {
+            continue;
+        }
+        const std::vector<uint8_t> payload =
+            read_cbm_file(cbm_sector_bytes(a.image.bytes, a.cbm), e);
+        json_row row;
+        row.path = e.name;
+        row.name = e.name;
+        row.size = static_cast<uint32_t>(payload.size());
+        row.deleted = e.deleted;
+        row.directory = false;
+        row.type = cbm_file_kind_name(e.kind);
+        push_row(rows, std::move(row));
+    }
+}
+
+void collect_amiga_rows(const analysis& a, std::vector<json_row>& rows)
+{
+    for (const amiga_file& e : a.amiga.entries)
+    {
+        json_row row;
+        row.path = e.path.empty() ? e.name : e.path;
+        row.name = e.name.empty() ? row.path : e.name;
+        row.directory = e.is_dir;
+        if (!e.is_dir)
+        {
+            const std::vector<uint8_t> payload = read_amiga_file(
+                amiga_volume_bytes(a.image.bytes, a.amiga), a.amiga, e);
+            row.size = static_cast<uint32_t>(payload.size());
+        }
+        row.type = e.is_dir ? "DIR" : "FILE";
+        push_row(rows, std::move(row));
+    }
+}
+
+void collect_trd_rows(const analysis& a, const report_options& opt,
+                      std::vector<json_row>& rows)
+{
+    for (const trd_file& e : a.trd.entries)
+    {
+        if (e.deleted && !opt.show_deleted)
+        {
+            continue;
+        }
+        const std::vector<uint8_t> payload = read_trd_file(a.image.bytes, e);
+        json_row row;
+        row.path = e.name;
+        row.name = e.name;
+        row.size = static_cast<uint32_t>(payload.size());
+        row.deleted = e.deleted;
+        row.directory = false;
+        row.type = e.type_name;
+        push_row(rows, std::move(row));
+    }
+}
+
+void collect_apple_rows(const analysis& a, const report_options& opt,
+                        std::vector<json_row>& rows)
+{
+    for (const apple_file& e : a.apple.entries)
+    {
+        if (e.deleted && !opt.show_deleted)
+        {
+            continue;
+        }
+        json_row row;
+        row.path = e.name;
+        row.name = e.name;
+        row.deleted = e.deleted;
+        row.directory = e.type_name == "DIR";
+        if (!row.directory)
+        {
+            const std::vector<uint8_t> payload = read_apple_file(a.apple, e);
+            row.size = static_cast<uint32_t>(payload.size());
+        }
+        row.type = e.type_name;
+        push_row(rows, std::move(row));
+    }
+}
+
+void collect_json_rows(const analysis& a, const report_options& opt,
+                       std::vector<json_row>& rows)
+{
+    if (a.cbm.present)
+    {
+        collect_cbm_rows(a, opt, rows);
+    }
+    else if (a.amiga.present)
+    {
+        collect_amiga_rows(a, rows);
+    }
+    else if (a.trd.present)
+    {
+        collect_trd_rows(a, opt, rows);
+    }
+    else if (a.apple.present)
+    {
+        collect_apple_rows(a, opt, rows);
+    }
+    else
+    {
+        collect_fat_rows(a, opt, rows);
+    }
+}
+
+void write_json_row(std::ostream& out, const json_row& row, bool first)
+{
+    if (!first)
+    {
+        out << ',';
+    }
+    out << "\n        {\n";
+    out << "          \"path\": ";
+    json_quote(out, row.path);
+    out << ",\n";
+    out << "          \"name\": ";
+    json_quote(out, row.name);
+    out << ",\n";
+    out << "          \"size\": " << row.size << ",\n";
+    out << "          \"deleted\": " << (row.deleted ? "true" : "false") << ",\n";
+    out << "          \"directory\": " << (row.directory ? "true" : "false") << ",\n";
+    out << "          \"first_cluster\": " << row.first_cluster << ",\n";
+    out << "          \"type\": ";
+    json_quote(out, row.type);
+    out << ",\n";
+    out << "          \"xxh64\": ";
+    json_quote(out, row.xxh64);
+    out << "\n        }";
+}
+
 } /* namespace */
 
 std::string entry_line(const dir_entry& e)
@@ -1106,6 +1392,69 @@ void write_report(const analysis& a, std::ostream& out, const report_options& op
         hex_dump(out, boot);
         out << '\n';
     }
+}
+
+void write_json_begin(std::ostream& out)
+{
+    out << "{\n";
+    out << "  \"tool\": ";
+    json_quote(out, k_program);
+    out << ",\n";
+    out << "  \"version\": ";
+    json_quote(out, k_version);
+    out << ",\n";
+    out << "  \"images\": [";
+}
+
+void write_json_image(const analysis& a, std::ostream& out, const report_options& opt,
+                      bool first)
+{
+    if (!first)
+    {
+        out << ',';
+    }
+    std::string label;
+    std::string serial;
+    json_label_serial(a, label, serial);
+    out << "\n    {\n";
+    out << "      \"path\": ";
+    json_quote(out, a.image.path.string());
+    out << ",\n";
+    out << "      \"bytes\": " << a.image.bytes.size() << ",\n";
+    out << "      \"filesystem\": ";
+    json_quote(out, filesystem_family(a));
+    out << ",\n";
+    out << "      \"label\": ";
+    json_quote(out, label);
+    out << ",\n";
+    out << "      \"serial\": ";
+    json_quote(out, serial);
+    out << ",\n";
+    out << "      \"directory_capped\": " << (a.directory_capped ? "true" : "false")
+        << ",\n";
+    out << "      \"entries\": [";
+    std::vector<json_row> rows;
+    collect_json_rows(a, opt, rows);
+    bool first_row = true;
+    for (const json_row& row : rows)
+    {
+        write_json_row(out, row, first_row);
+        first_row = false;
+    }
+    if (first_row)
+    {
+        out << "]\n";
+    }
+    else
+    {
+        out << "\n      ]\n";
+    }
+    out << "    }";
+}
+
+void write_json_end(std::ostream& out)
+{
+    out << "\n  ]\n}\n";
 }
 
 } /* namespace dumpfloppy */

@@ -121,6 +121,13 @@ std::string usage_text()
        << "                       (extract still includes them; default: show)\n"
        << "      --no-unused      Hide leftover FAT-free/bad cluster runs in the listing\n"
        << "                       (extract still writes them; default: show)\n"
+       << "      --json           One JSON document instead of the text report.\n"
+       << "                       Enable-only. Stdout is that document and nothing else\n"
+       << "                       (no ANSI, no hex, no secrets). With -o, a directory\n"
+       << "                       gets <stem>.json and several inputs sharing one file\n"
+       << "                       get <outstem>_<instem>.json. Refuses --slack,\n"
+       << "                       --leaked, --carve, and --sources (exit 2, no analysis).\n"
+       << "                       Also refuses -x, -u, and --offset (exit 2, no analysis).\n"
        << "  -x, --extract [GLOB] Extract files (no listing). Default directory is `.`;\n"
        << "                       -o DIR selects it and is created if missing.\n"
        << "                       Default: all payloads, deleted and unused included.\n"
@@ -207,6 +214,11 @@ cli_options parse_cli(int argc, char** argv)
         if (!end_opts && arg == "--no-unused")
         {
             o.report.show_unused = false;
+            continue;
+        }
+        if (!end_opts && arg == "--json")
+        {
+            o.report.json = true;
             continue;
         }
         if (!end_opts && (arg == "-x" || arg == "--extract"))

@@ -151,15 +151,16 @@ verify: test
 	  -I include --bounds-check --pointer-check --unwind 2 \
 	  --unwinding-assertions
 
+# clean and all are separate $(MAKE) lines so -j1 applies only to clean.
 release:
-	$(MAKE) $(BUILD_FLAGS) clean \
-	  CFLAGS="$(CFLAGS_RELEASE)" CXXFLAGS="$(CXXFLAGS_RELEASE)" \
+	$(MAKE) -j1 clean
+	$(MAKE) $(BUILD_FLAGS) CFLAGS="$(CFLAGS_RELEASE)" CXXFLAGS="$(CXXFLAGS_RELEASE)" \
 	  LDFLAGS="$(LDFLAGS_RELEASE)" all
 	@echo "Release binary built: $(TARGET)"
 
 profile:
-	$(MAKE) $(BUILD_FLAGS) clean \
-	  CFLAGS="$(CFLAGS_PROFILE)" CXXFLAGS="$(CXXFLAGS_PROFILE)" \
+	$(MAKE) -j1 clean
+	$(MAKE) $(BUILD_FLAGS) CFLAGS="$(CFLAGS_PROFILE)" CXXFLAGS="$(CXXFLAGS_PROFILE)" \
 	  LDFLAGS="$(LDFLAGS_PROFILE)" all
 	@echo "Profile binary built: $(TARGET)"
 
