@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** worktree 0.36 (no git in this tree) · **version 0.36** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** worktree 0.37 (no git in this tree) · **version 0.37** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -42,14 +42,18 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (this tree, 0.36):** `make test` 274 cases, 267 passed, 7 skipped, 27856 assertions; `make verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2 + fat_slack).
 
+**Verify last green (this tree, 0.37):** `make -s test` 276 cases, 269 passed, 7 skipped, 27880 assertions (exit 0); `make -s verify` exit 0, CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed.
+
 ## Still open (2026-10-05)
 
 Shipped in 0.35 and not part of this list: symlink-safe extract, directory-walk caps, `--slack`, `--leaked`, `--carve`.
 
 Shipped in 0.36 (this tree): local depth and entry caps, file chains to `max_cluster`, cap warnings (`dumpfloppy:` plus image and depth/entries/chain), escaped `--slack` paths, merged `--carve` ranges, `-x` continues after a host-path error, symlinked `-o` is the destination, slack past logical EOF, non-FAT forensics still lists, `/` and `\` inside one FAT name become `_`, bare `make` links `dumpfloppy`.
 
-- [ ] **Size column is 7 characters.** `k_w_size = 7` in `src/report.cpp`. A full 32-bit size is cut off (`4294967295` prints as `4294967`). Widen the column without breaking the listing tests.
-- [ ] **Live name collisions are called deleted.** `src/extract.cpp` still writes `stem.deleted.ext` when two live files land on the same host path. That name looks like a deleted directory entry. Pick a collision suffix that is not `.deleted.`.
+Shipped in 0.37: `k_w_size` is 10 so a FAT directory line prints `4294967295` (CBM, Amiga, TRD, and Apple share that width). Live extract collisions use `stem.dup.ext` then `stem.dup.N.ext` (`FOO.dup.TXT`, `FOO.dup.2.TXT`). A deleted 8.3 name such as `?ACTICS.PKG` stays that name.
+
+- [x] **Size column is 7 characters.** Done in 0.37. `k_w_size` is 10. `4294967295` is no longer clipped to `4294967`.
+- [x] **Live name collisions are called deleted.** Done in 0.37. Two live files that share a host path write `stem.dup.ext`, then `stem.dup.N.ext`, not `.deleted`.
 - [ ] **Strings / source-pattern search.** `--slack`, `--leaked`, and `--carve` do not search for source text. Still wanted: offsets of patterns such as `#include`, `proc near`, `org 100h`, `uses crt`, and BASIC line numbers, over file slack, free clusters, and bytes past the end of the filesystem.
 - [ ] **JSON or TSV report.** Listing output is text only. A machine-readable report for batch runs is not implemented. No `--json` yet. Do not add both `--json` and `--no-json`.
 

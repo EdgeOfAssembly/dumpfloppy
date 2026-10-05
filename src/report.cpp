@@ -189,13 +189,14 @@ std::string name_field(std::string_view raw, size_t width)
 
 /*
  * Inner widths = max(header, content); each field then adds 2 spaces.
- * Name 12, Attributes 10, Size 7 (floppy files), Cluster 7, Modified 19,
+ * Name 12, Attributes 10, Size 10 (full uint32 decimal; FAT, CBM, Amiga,
+ * TRD, and Apple share this width), Cluster 7, Modified 19,
  * Type k_type_column_width (format label, default DATA), XXH64 16 hex.
  */
 constexpr size_t k_w_mark = 1;
 constexpr size_t k_w_name = 12;
 constexpr size_t k_w_attr = 10;
-constexpr size_t k_w_size = 7;
+constexpr size_t k_w_size = 10;
 constexpr size_t k_w_cluster = 7;
 constexpr size_t k_w_modified = 19;
 constexpr size_t k_w_sum = 16;
@@ -207,29 +208,6 @@ std::string directory_header()
        << field("Attributes", k_w_attr) << field("Size", k_w_size)
        << field("Cluster", k_w_cluster) << field("Modified", k_w_modified)
        << field("Type", k_type_column_width) << field("XXH64 Checksum", k_w_sum);
-    return os.str();
-}
-
-std::string entry_line(const dir_entry& e)
-{
-    const char mark = e.deleted ? 'D' : ' ';
-    const std::string modified =
-        format_dos_date(e.write_date) + " " + format_dos_time(e.write_time);
-    std::ostringstream os;
-    os << "  " << field(std::string_view(&mark, 1), k_w_mark)
-       << name_field(e.name_83, k_w_name) << field(format_attributes(e.attributes), k_w_attr)
-       << field(std::to_string(e.size), k_w_size)
-       << field(std::to_string(e.first_cluster), k_w_cluster)
-       << field(modified, k_w_modified) << field(e.type, k_type_column_width)
-       << field(e.size == 0u ? std::string_view{} : e.xxh64, k_w_sum);
-    if (!e.notes.empty())
-    {
-        os << e.notes;
-    }
-    if (e.after_terminator)
-    {
-        os << "after-0x00";
-    }
     return os.str();
 }
 
@@ -616,6 +594,29 @@ void write_apple_sections(const analysis& a, std::ostream& out,
 }
 
 } /* namespace */
+
+std::string entry_line(const dir_entry& e)
+{
+    const char mark = e.deleted ? 'D' : ' ';
+    const std::string modified =
+        format_dos_date(e.write_date) + " " + format_dos_time(e.write_time);
+    std::ostringstream os;
+    os << "  " << field(std::string_view(&mark, 1), k_w_mark)
+       << name_field(e.name_83, k_w_name) << field(format_attributes(e.attributes), k_w_attr)
+       << field(std::to_string(e.size), k_w_size)
+       << field(std::to_string(e.first_cluster), k_w_cluster)
+       << field(modified, k_w_modified) << field(e.type, k_type_column_width)
+       << field(e.size == 0u ? std::string_view{} : e.xxh64, k_w_sum);
+    if (!e.notes.empty())
+    {
+        os << e.notes;
+    }
+    if (e.after_terminator)
+    {
+        os << "after-0x00";
+    }
+    return os.str();
+}
 
 void write_report(const analysis& a, std::ostream& out, const report_options& opt)
 {

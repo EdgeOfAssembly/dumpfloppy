@@ -226,9 +226,16 @@ TEST_CASE("extract collision keeps both payloads and warns", "[extract][collisio
     REQUIRE(err.str().find("collision") != std::string::npos);
     REQUIRE(std::filesystem::exists(dest / "TACTICS.PKG"));
     REQUIRE(std::filesystem::exists(dest / "?ACTICS.PKG"));
+    REQUIRE_FALSE(std::filesystem::exists(dest / "TACTICS.dup.PKG"));
+    REQUIRE_FALSE(std::filesystem::exists(dest / "?ACTICS.dup.PKG"));
+    const std::string kept = (dest / "?ACTICS.PKG").string();
+    REQUIRE(kept.find(".deleted") == std::string::npos);
+    REQUIRE(kept.find(".dup") == std::string::npos);
+    REQUIRE(err.str().find(kept) != std::string::npos);
+    REQUIRE(err.str().find(".deleted") == std::string::npos);
 }
 
-TEST_CASE("extract collision uses stem.deleted.ext when 8.3 also collides",
+TEST_CASE("extract collision uses stem.dup.ext when 8.3 also collides",
           "[extract][collision]")
 {
     dumpfloppy::analysis a{};
@@ -236,12 +243,14 @@ TEST_CASE("extract collision uses stem.deleted.ext when 8.3 also collides",
     first.path = "FOO.TXT";
     first.name_83 = "FOO.TXT";
     first.attributes = dumpfloppy::k_attr_archive;
+    first.deleted = false;
     a.entries.push_back(first);
 
     dumpfloppy::dir_entry second{};
     second.path = "FOO.TXT";
     second.name_83 = "FOO.TXT";
     second.attributes = dumpfloppy::k_attr_archive;
+    second.deleted = false;
     a.entries.push_back(second);
 
     const auto dest =
@@ -255,7 +264,49 @@ TEST_CASE("extract collision uses stem.deleted.ext when 8.3 also collides",
     REQUIRE(dumpfloppy::extract_files(a, opt, err) == 2);
     REQUIRE(err.str().find("collision") != std::string::npos);
     REQUIRE(std::filesystem::exists(dest / "FOO.TXT"));
-    REQUIRE(std::filesystem::exists(dest / "FOO.deleted.TXT"));
+    const auto dup = dest / "FOO.dup.TXT";
+    REQUIRE(std::filesystem::exists(dup));
+    REQUIRE(dup.string().find(".deleted") == std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(dest / "FOO.deleted.TXT"));
+    REQUIRE(err.str().find(dup.string()) != std::string::npos);
+    REQUIRE(err.str().find(".deleted") == std::string::npos);
+}
+
+TEST_CASE("further live collisions use stem.dup.N.ext", "[extract][collision]")
+{
+    dumpfloppy::analysis a{};
+    for (int i = 0; i < 3; ++i)
+    {
+        dumpfloppy::dir_entry e{};
+        e.path = "FOO.TXT";
+        e.name_83 = "FOO.TXT";
+        e.attributes = dumpfloppy::k_attr_archive;
+        e.deleted = false;
+        a.entries.push_back(e);
+    }
+
+    const auto dest =
+        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-col3";
+    std::filesystem::remove_all(dest);
+
+    dumpfloppy::extract_options opt{};
+    opt.enabled = true;
+    opt.dest_dir = dest;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::extract_files(a, opt, err) == 3);
+    REQUIRE(std::filesystem::exists(dest / "FOO.TXT"));
+    const auto dup = dest / "FOO.dup.TXT";
+    const auto dup2 = dest / "FOO.dup.2.TXT";
+    REQUIRE(std::filesystem::exists(dup));
+    REQUIRE(std::filesystem::exists(dup2));
+    REQUIRE_FALSE(std::filesystem::exists(dest / "FOO.dup.1.TXT"));
+    REQUIRE_FALSE(std::filesystem::exists(dest / "FOO.deleted.TXT"));
+    REQUIRE_FALSE(std::filesystem::exists(dest / "FOO.deleted.2.TXT"));
+    REQUIRE(dup.string().find(".deleted") == std::string::npos);
+    REQUIRE(dup2.string().find(".deleted") == std::string::npos);
+    REQUIRE(err.str().find(dup.string()) != std::string::npos);
+    REQUIRE(err.str().find(dup2.string()) != std::string::npos);
+    REQUIRE(err.str().find(".deleted") == std::string::npos);
 }
 
 TEST_CASE("extract refuses 86BOX 86F flux images", "[extract][86f]")

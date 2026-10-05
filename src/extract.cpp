@@ -511,8 +511,19 @@ int write_exclusive_bytes(const std::filesystem::path& dest,
 }
 
 /**
- * @brief Host path for @p preferred; on collision, @p fallback_name or
- *        `stem.deleted.ext` so a prior payload is not trunc-overwritten.
+ * @brief Host path for @p preferred when that path is already taken.
+ *
+ * A distinct @p fallback_name (a deleted 8.3 such as `?ACTICS.PKG`) is
+ * kept and is not rewritten to `.dup`. Live names that still collide
+ * become `stem.dup` plus the extension (`FOO.dup.TXT`), then
+ * `stem.dup.N` (`FOO.dup.2.TXT`). The warning names the path written.
+ *
+ * @param[in]  preferred      First-choice host path.
+ * @param[in]  fallback_name  Alternate leaf, or empty.
+ * @param[in]  used           Destination keys already claimed.
+ * @param[out] err            Collision warning.
+ *
+ * @return A free path, or empty when every candidate is taken.
  */
 std::filesystem::path choose_extract_dest(const std::filesystem::path& preferred,
                                           std::string_view fallback_name,
@@ -546,21 +557,22 @@ std::filesystem::path choose_extract_dest(const std::filesystem::path& preferred
     const std::string ext = preferred.filename().extension().string();
     const std::string base =
         stem.empty() ? preferred.filename().string() : stem;
-    std::filesystem::path as_del = in_parent(base + ".deleted" + ext);
-    if (!dest_taken(as_del, used))
+    /* `.dup` is a live-name collision, not a deleted directory slot. */
+    std::filesystem::path as_dup = in_parent(base + ".dup" + ext);
+    if (!dest_taken(as_dup, used))
     {
         err << "dumpfloppy: extract collision: '" << preferred.string()
-            << "' already exists; writing '" << as_del.string() << "'\n";
-        return as_del;
+            << "' already exists; writing '" << as_dup.string() << "'\n";
+        return as_dup;
     }
     for (int n = 2; n < 10000; ++n)
     {
-        as_del = in_parent(base + ".deleted." + std::to_string(n) + ext);
-        if (!dest_taken(as_del, used))
+        as_dup = in_parent(base + ".dup." + std::to_string(n) + ext);
+        if (!dest_taken(as_dup, used))
         {
             err << "dumpfloppy: extract collision: '" << preferred.string()
-                << "' already exists; writing '" << as_del.string() << "'\n";
-            return as_del;
+                << "' already exists; writing '" << as_dup.string() << "'\n";
+            return as_dup;
         }
     }
     return {};

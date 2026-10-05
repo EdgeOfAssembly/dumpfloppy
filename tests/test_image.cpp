@@ -256,7 +256,7 @@ TEST_CASE("directory table is 8.3 names, left-justified, no cl= prefix", "[image
     }
     REQUIRE_FALSE(hello_line.empty());
     REQUIRE(hello_line.find('\\') == std::string::npos);
-    /* indent 2 + mark 1 + 2-space gap. */
+    /* indent 2 + mark 1 + 2-space gap. Name is before the size column. */
     REQUIRE(hello_line.substr(5, 9) == "HELLO.TXT");
 
     std::string gone_line;
@@ -272,6 +272,21 @@ TEST_CASE("directory table is 8.3 names, left-justified, no cl= prefix", "[image
     REQUIRE_FALSE(gone_line.empty());
     REQUIRE(gone_line.find("  deleted") == std::string::npos);
     REQUIRE(s.find("volume label") == std::string::npos);
+}
+
+TEST_CASE("FAT directory line prints a full 32-bit size", "[report][size]")
+{
+    dumpfloppy::dir_entry e{};
+    e.name_83 = "BIG.BIN";
+    e.attributes = dumpfloppy::k_attr_archive;
+    e.deleted = false;
+    e.size = 4294967295u;
+    e.first_cluster = 2u;
+    e.type = "DATA";
+
+    const std::string line = dumpfloppy::entry_line(e);
+    REQUIRE(line.find("4294967295") != std::string::npos);
+    REQUIRE(line.find("BIG.BIN") != std::string::npos);
 }
 
 TEST_CASE("volume label is 11-char text without a fake 8.3 dot", "[image]")

@@ -57,8 +57,9 @@ struct extract_options
  * Amiga, CBM, TRD, and Apple paths stay flattened (`/` and `\` become
  * `_`) and do not create subdirectories.
  * If two payloads map to the same host path, the later file is written as
- * the 8.3 name (deleted entries keep `?`) or `stem.deleted.ext`; a warning
- * is emitted and the earlier file is left intact.
+ * the 8.3 name (deleted entries keep `?`, not `.dup`) or `stem.dup.ext`
+ * (`FOO.dup.TXT`, then `FOO.dup.2.TXT`). A warning names the path written.
+ * The earlier file is left intact.
  * A destination component that is a symlink is not followed. The file is
  * skipped (`dumpfloppy: skip symlink path '...'`) and the link target is
  * not created or truncated. Missing parents are created with mkdir.
