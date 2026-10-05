@@ -1,10 +1,10 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** worktree 0.39 (no git in this tree) · **version 0.39** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** `ce45460` on `/tmp/dumpfloppy`, `/mnt/dumpfloppy`, and GitHub `main` · **version 0.39** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
-**Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
-**Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
-**Project memory:** `~/.grok/memory/projects/dumpfloppy.md` · pmem `project.dumpfloppy.v015`
+**Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` (this clone's `origin`) · GitHub is the `github` remote  
+**Reviews:** `/mnt/grok/reviews/uasm-json/`  
+**Project memory:** `~/.grok/memory/projects/dumpfloppy.md` · pmem `project.dumpfloppy.v0.39`
 
 After reboot, clone or `rsync -a /mnt/dumpfloppy/ /tmp/dumpfloppy/` (or work in `/mnt/dumpfloppy`). Do **not** treat `/tmp` as the only copy.
 
@@ -46,7 +46,7 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (this tree, 0.38):** `make -s test` 283 cases, 276 passed, 7 skipped, 28077 assertions (exit 0); `make -s verify` exit 0, CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases, not `--sources`.
 
-**Verify last green (this tree, 0.39):** `env -u MAKEFLAGS make -s -j$(nproc) test` 288 cases, 281 passed, 7 skipped, 28189 assertions (exit 0); `env -u MAKEFLAGS make -s -j$(nproc) verify` exit 0, CBMC 6.10.0 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed (each VERIFICATION SUCCESSFUL). The 7 skips are the existing missing-fixture cases. Follow-up `make test` after the `--json`/`-x`/`-u`/`--offset` refusal (CBMC not re-run): 289 cases, 282 passed, 7 skipped, 28202 assertions (exit 0).
+**Verify last green (this tree, 0.39):** parent `make -s verify` exit 0: 289 cases, 282 passed, 7 skipped, 28202 assertions. CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases.
 
 ## Still open (2026-10-05)
 
@@ -67,8 +67,11 @@ Shipped in 0.39: enable-only `--json` (no `--no-json`, no TSV). One JSON documen
 
 ## Next (pick one slice)
 
-1. **Decode next:** IPF copy-protected tracks stay metadata-only. Other flux/container formats as fixtures appear.
-2. One of the still-open items above.
+- [ ] **IPF copy-protected tracks.** Standard AmigaDOS (`4489`) already lists. Protected tracks stay metadata-only. Fixtures: `/mnt/dumpfloppy-fixtures/amiga/Tetris.ipf`, `AwesomeDemo.ipf`.
+- [ ] **DOS 1.x FAT with no BPB.** Twelve WordStar raw images (160K `feffff`, 320K `ffffff`) have live 8.3 names at sector 3 (`WS.COM` and others). The lister says `Format DATA`, custom booter, and 0 files. Scan: `/mnt/grok/reviews/uasm-json/SCAN-samples.md`.
+- [ ] **ImageDisk `.imd`.** Seventeen sample files are parsed as raw bytes. The `IMD` header is treated as a DOS jump, and the ImageDisk version is shown as the OEM field.
+- [ ] **Boot class.** Five-A-Side Soccer starts with `mov ax,0` (`B8 00 00`) and is called not bootable. The check looks for `EB` or `E9`.
+- [ ] **CP/M directories.** Apple II CP/M-80 is labeled `APPLE DSK` and shows 0 entries. Rainbow and NEC CP/M-86 sit inside undecoded IMD.
 
 ## Local fixtures (never GitHub)
 
