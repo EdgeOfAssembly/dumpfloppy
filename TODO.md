@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** (see `git log -1`) · **version 0.32** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** `3e98485` · **version 0.35** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -42,9 +42,19 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green:** `make -s test` 234 cases / 5050 assertions (4 skipped); `make -s verify` CBMC SUCCESS (FAT12 + Commodore GCR + Apple 6-and-2).
 
+## Still open (2026-10-05)
+
+Shipped in 0.35 and not part of this list: symlink-safe extract, directory-walk caps, `--slack`, `--leaked`, `--carve`.
+
+- [ ] **Size column is 7 characters.** `k_w_size = 7` in `src/report.cpp`. A full 32-bit size is cut off (`4294967295` prints as `4294967`). Widen the column without breaking the listing tests.
+- [ ] **Live name collisions are called deleted.** `src/extract.cpp` still writes `stem.deleted.ext` when two live files land on the same host path. That name looks like a deleted directory entry. Pick a collision suffix that is not `.deleted.`.
+- [ ] **Strings / source-pattern search.** `--slack`, `--leaked`, and `--carve` do not search for source text. Still wanted: offsets of patterns such as `#include`, `proc near`, `org 100h`, `uses crt`, and BASIC line numbers, over file slack, free clusters, and bytes past the end of the filesystem.
+- [ ] **JSON or TSV report.** Listing output is text only. A machine-readable report for batch runs is not implemented. No `--json` yet. Do not add both `--json` and `--no-json`.
+
 ## Next (pick one slice)
 
 1. **Decode next:** IPF copy-protected tracks stay metadata-only. Other flux/container formats as fixtures appear.
+2. One of the still-open items above.
 
 ## Local fixtures (never GitHub)
 
