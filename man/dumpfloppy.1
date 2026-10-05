@@ -200,7 +200,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.37
+.B dumpfloppy 0.38
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -460,6 +460,56 @@ Other filesystems still print the normal listing, then write
 .B carve is only implemented for FAT12/FAT16
 to stderr and exit 1.
 Directory ranges are merged once before the scan.
+.TP
+.B \-\-sources
+FAT12/FAT16 only.
+Search the same regions as
+.B \-\-carve
+(file slack, free clusters, and bytes past the filesystem end).
+Live file bytes are not searched.
+A match must lie entirely inside one region.
+Bytes that overlap a walked directory range are skipped.
+Case-sensitive ASCII needles:
+.BR "#include" ,
+.BR "proc near" ,
+.BR "org 100h" ,
+and
+.BR "uses crt" .
+A BASIC line matches at the first byte of a region, or immediately
+after CR or LF: one to five decimal digits, one space, then an ASCII
+letter (A-Z or a-z).
+.B "#INCLUDE"
+does not match
+.BR "#include" .
+Print
+.B "=== Source ==="
+after the other forensic sections, with the decimal offset, the kind,
+and the text.
+Kinds are
+.BR include ,
+.BR proc\-near ,
+.BR org\-100h ,
+.BR uses\-crt ,
+and
+.BR basic .
+Needle text is the needle.
+BASIC text is the digits, the space, and the following printable run,
+cut at 48 characters or at CR/LF.
+One hit per offset and kind.
+At most 64 hits.
+The next hit stops the scan and writes
+.B Warning: source scan stopped at cap
+to stderr.
+The exit status stays 0 for that cap.
+There is no
+.B \-\-no-sources
+switch.
+Other filesystems still print the normal listing, then write
+.B sources is only implemented for FAT12/FAT16
+to stderr and exit 1.
+No
+.B "=== Source ==="
+section is printed in that case.
 .PP
 Directory walk caps are local.
 Depth 32 skips only that subdirectory; later siblings and later root
@@ -507,6 +557,11 @@ Map byte 2048 of a FAT12 image:
 Show slack tails, leaked directory slots, and carved signatures:
 .RS
 .B dumpfloppy \-\-slack \-\-leaked \-\-carve disk1.ima
+.RE
+.PP
+Search slack, free clusters, and bytes past the filesystem for source text:
+.RS
+.B dumpfloppy \-\-sources disk1.ima
 .RE
 .PP
 List and extract a Commodore 1541 D64:

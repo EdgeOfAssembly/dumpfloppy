@@ -32,7 +32,7 @@ struct cli_options
     update_options update{};
     bool has_offset = false; /**< Enable-only `--offset` (default off). */
     uint64_t offset = 0;     /**< Byte offset when @a has_offset is set. */
-    forensics_request forensics{}; /**< `--slack` / `--leaked` / `--carve`. */
+    forensics_request forensics{}; /**< `--slack` / `--leaked` / `--carve` / `--sources`. */
     std::vector<std::filesystem::path> inputs{};
 };
 

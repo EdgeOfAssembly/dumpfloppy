@@ -1,6 +1,6 @@
 /**
  * @file forensics.cpp
- * @brief Slack tails, leaked directory slots, and signature carving.
+ * @brief Slack tails, leaked directory slots, signature carving, and source patterns.
  */
 #include "dumpfloppy/forensics.hpp"
 
@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <ostream>
 #include <span>
 #include <string>
@@ -607,12 +608,293 @@ void scan_carve_region(std::span<const uint8_t> vol, const byte_span& region,
     flush_ascii(end);
 }
 
+constexpr std::size_t k_source_text_max = 48u;
+constexpr std::size_t k_basic_digit_limit = 5u;
+
+struct source_needle
+{
+    const char* text;
+    const char* kind;
+    std::size_t length;
+};
+
+/** @brief Case-sensitive ASCII needles. Lengths are the match width. */
+constexpr source_needle k_source_needles[] = {
+    {"#include", "include", 8u},
+    {"proc near", "proc-near", 9u},
+    {"org 100h", "org-100h", 8u},
+    {"uses crt", "uses-crt", 8u},
+};
+
+struct source_hit
+{
+    std::size_t off = 0;
+    const char* kind = nullptr;
+    std::string text{};
+};
+
+/**
+ * @brief True when @p b is an ASCII letter.
+ *
+ * @param[in] b Volume byte.
+ * @return True for `A-Z` or `a-z`.
+ */
+[[nodiscard]] bool is_ascii_letter(uint8_t b)
+{
+    return (b >= static_cast<uint8_t>('A') && b <= static_cast<uint8_t>('Z')) ||
+           (b >= static_cast<uint8_t>('a') && b <= static_cast<uint8_t>('z'));
+}
+
+/**
+ * @brief True when @p b is an ASCII digit.
+ *
+ * @param[in] b Volume byte.
+ * @return True for `0-9`.
+ */
+[[nodiscard]] bool is_ascii_digit(uint8_t b)
+{
+    return b >= static_cast<uint8_t>('0') && b <= static_cast<uint8_t>('9');
+}
+
+/**
+ * @brief True when @p b is printable ASCII (space through tilde).
+ *
+ * CR and LF are outside this range, so a BASIC preview stops on them.
+ *
+ * @param[in] b Volume byte.
+ */
+[[nodiscard]] bool is_printable_ascii(uint8_t b)
+{
+    return b >= 0x20u && b <= 0x7Eu;
+}
+
+/**
+ * @brief True when a BASIC line may start at @p off.
+ *
+ * The first byte of a region counts even when the previous volume byte
+ * is not a newline. Later bytes count only immediately after CR or LF.
+ * The newline itself may sit in the region; it is not part of the match.
+ *
+ * @param[in] region Region being scanned.
+ * @param[in] vol    Image bytes that contain @p region.
+ * @param[in] off    Candidate offset inside @p region.
+ */
+[[nodiscard]] bool source_line_start(const byte_span& region, std::span<const uint8_t> vol,
+                                     std::size_t off)
+{
+    if (off == region.off)
+    {
+        return true;
+    }
+    if (off == 0u || off < region.off || off > vol.size())
+    {
+        return false;
+    }
+    const uint8_t prev = vol[off - 1u];
+    return prev == static_cast<uint8_t>('\r') || prev == static_cast<uint8_t>('\n');
+}
+
+/**
+ * @brief Record one source hit, or stop at the 64-hit cap.
+ *
+ * The same offset and kind are not recorded twice and do not consume a
+ * slot. The hit that would be number 65 sets @p truncated and is dropped.
+ *
+ * @param[in,out] hits      Hits accepted so far.
+ * @param[in,out] truncated Set when the cap rejects a new hit.
+ * @param[in]     off       Match offset.
+ * @param[in]     kind      Kind token (`include`, `basic`, ...). Not owned.
+ * @param[in]     text      Needle, or the BASIC preview.
+ */
+void add_source_hit(std::vector<source_hit>& hits, bool& truncated, std::size_t off,
+                    const char* kind, std::string text)
+{
+    if (truncated || kind == nullptr)
+    {
+        return;
+    }
+    for (const source_hit& prev : hits)
+    {
+        if (prev.off == off && prev.kind != nullptr && std::strcmp(prev.kind, kind) == 0)
+        {
+            return;
+        }
+    }
+    if (hits.size() >= k_max_hits)
+    {
+        truncated = true;
+        return;
+    }
+    source_hit found;
+    found.off = off;
+    found.kind = kind;
+    found.text = std::move(text);
+    hits.push_back(std::move(found));
+}
+
+/**
+ * @brief True when @p lit matches at @p off entirely inside the region.
+ *
+ * @p dir_at is a copy. Looking ahead must not move the scan cursor, which
+ * only walks forward one byte at a time.
+ *
+ * @param[in] vol        Image bytes.
+ * @param[in] region_end First byte past the region.
+ * @param[in] off        Candidate start.
+ * @param[in] lit        Case-sensitive needle.
+ * @param[in] n          Needle length in bytes.
+ * @param[in] dir_at     Directory cursor positioned at @p off.
+ */
+[[nodiscard]] bool literal_in_region(std::span<const uint8_t> vol, std::size_t region_end,
+                                     std::size_t off, const char* lit, std::size_t n,
+                                     merged_ranges::cursor dir_at)
+{
+    if (lit == nullptr || n == 0u || off >= region_end || region_end - off < n ||
+        off >= vol.size() || vol.size() - off < n)
+    {
+        return false;
+    }
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        if (vol[off + i] != static_cast<uint8_t>(lit[i]))
+        {
+            return false;
+        }
+    }
+    return !dir_at.overlaps(off, n);
+}
+
+/**
+ * @brief BASIC preview at @p off, or empty when @p off is not a BASIC line.
+ *
+ * The core is one to five digits, one space, and an ASCII letter. A sixth
+ * digit is not a line. The core must lie inside the region and outside
+ * walked directories. The preview keeps the following printable run, and
+ * stops at 48 bytes, a non-printable (including CR/LF), the region end,
+ * or a directory byte.
+ *
+ * @param[in] vol        Image bytes.
+ * @param[in] region     Region that must contain the core.
+ * @param[in] off        Candidate start.
+ * @param[in] region_end First byte past the region.
+ * @param[in] dir_at     Directory cursor positioned at @p off (copied).
+ * @return Preview text, or empty when there is no match.
+ */
+[[nodiscard]] std::string basic_line_text(std::span<const uint8_t> vol, const byte_span& region,
+                                          std::size_t off, std::size_t region_end,
+                                          merged_ranges::cursor dir_at)
+{
+    if (!source_line_start(region, vol, off) || off >= region_end || off >= vol.size())
+    {
+        return {};
+    }
+    const std::size_t room = region_end - off;
+    std::size_t digits = 0;
+    while (digits < room && digits <= k_basic_digit_limit &&
+           is_ascii_digit(vol[off + digits]))
+    {
+        ++digits;
+    }
+    if (digits == 0u || digits > k_basic_digit_limit || digits + 2u > room)
+    {
+        return {};
+    }
+    if (vol[off + digits] != static_cast<uint8_t>(' ') ||
+        !is_ascii_letter(vol[off + digits + 1u]))
+    {
+        return {};
+    }
+    const std::size_t core = digits + 2u;
+    if (dir_at.overlaps(off, core))
+    {
+        return {};
+    }
+    std::size_t len = core;
+    while (len < k_source_text_max && len < room)
+    {
+        const uint8_t b = vol[off + len];
+        if (!is_printable_ascii(b))
+        {
+            break;
+        }
+        merged_ranges::cursor step = dir_at;
+        if (step.overlaps(off + len, 1u))
+        {
+            break;
+        }
+        ++len;
+    }
+    std::string text;
+    text.reserve(len);
+    for (std::size_t i = 0; i < len; ++i)
+    {
+        text.push_back(static_cast<char>(vol[off + i]));
+    }
+    return text;
+}
+
+/**
+ * @brief Find source needles and BASIC lines inside one carve region.
+ *
+ * A match that would cross @p region is ignored. Directory bytes are
+ * skipped with the same cursor rule as carve. The 65th hit sets
+ * @p truncated and returns without recording it.
+ *
+ * @param[in]     vol       Image bytes.
+ * @param[in]     region    Slack, free-cluster, or past-end span.
+ * @param[in,out] dirs      Directory cursor at @p region.off.
+ * @param[in,out] hits      Accepted hits.
+ * @param[in,out] truncated Cap flag. Stays set once the scan stops.
+ */
+void scan_source_region(std::span<const uint8_t> vol, const byte_span& region,
+                        merged_ranges::cursor& dirs, std::vector<source_hit>& hits,
+                        bool& truncated)
+{
+    const std::size_t region_end = std::min(region.off + region.len, vol.size());
+    if (region.off >= region_end)
+    {
+        return;
+    }
+    for (std::size_t off = region.off; off < region_end; ++off)
+    {
+        if (truncated)
+        {
+            return;
+        }
+        if (dirs.overlaps(off, 1u))
+        {
+            continue;
+        }
+        for (const source_needle& needle : k_source_needles)
+        {
+            if (truncated)
+            {
+                return;
+            }
+            if (!literal_in_region(vol, region_end, off, needle.text, needle.length, dirs))
+            {
+                continue;
+            }
+            add_source_hit(hits, truncated, off, needle.kind, std::string(needle.text));
+        }
+        if (truncated)
+        {
+            return;
+        }
+        std::string basic = basic_line_text(vol, region, off, region_end, dirs);
+        if (!basic.empty())
+        {
+            add_source_hit(hits, truncated, off, "basic", std::move(basic));
+        }
+    }
+}
+
 } /* namespace */
 
 int write_forensics(const analysis& a, const forensics_request& req, std::ostream& out,
                     std::ostream& err)
 {
-    if (!req.slack && !req.leaked && !req.carve)
+    if (!req.slack && !req.leaked && !req.carve && !req.sources)
     {
         return 0;
     }
@@ -629,6 +911,10 @@ int write_forensics(const analysis& a, const forensics_request& req, std::ostrea
         if (req.carve)
         {
             err << "dumpfloppy: carve is only implemented for FAT12/FAT16\n";
+        }
+        if (req.sources)
+        {
+            err << "dumpfloppy: sources is only implemented for FAT12/FAT16\n";
         }
         return 1;
     }
@@ -699,6 +985,31 @@ int write_forensics(const analysis& a, const forensics_request& req, std::ostrea
         if (truncated)
         {
             err << "Warning: carve scan stopped at cap\n";
+        }
+    }
+
+    if (req.sources)
+    {
+        std::vector<source_hit> hits;
+        hits.reserve(k_max_hits);
+        bool truncated = false;
+        for (const byte_span& region : scan)
+        {
+            if (truncated)
+            {
+                break;
+            }
+            merged_ranges::cursor dir_at = dirs.at(region.off);
+            scan_source_region(vol, region, dir_at, hits, truncated);
+        }
+        out << "=== Source ===\n";
+        for (const source_hit& hit : hits)
+        {
+            out << hit.off << ' ' << hit.kind << ' ' << hit.text << '\n';
+        }
+        if (truncated)
+        {
+            err << "Warning: source scan stopped at cap\n";
         }
     }
     return 0;

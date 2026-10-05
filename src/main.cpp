@@ -194,8 +194,8 @@ int main(int argc, char** argv)
     }
 
     const bool mutating = cli.update.enabled || cli.extract.enabled;
-    const bool want_forensics =
-        cli.forensics.slack || cli.forensics.leaked || cli.forensics.carve;
+    const bool want_forensics = cli.forensics.slack || cli.forensics.leaked ||
+                                cli.forensics.carve || cli.forensics.sources;
     if (cli.inputs.empty())
     {
         if (mutating || cli.has_offset || want_forensics)

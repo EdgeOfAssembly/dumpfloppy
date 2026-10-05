@@ -1,6 +1,6 @@
 # dumpfloppy — continue here (session handoff)
 
-**HEAD:** worktree 0.37 (no git in this tree) · **version 0.37** · GitHub `EdgeOfAssembly/dumpfloppy`  
+**HEAD:** worktree 0.38 (no git in this tree) · **version 0.38** · GitHub `EdgeOfAssembly/dumpfloppy`  
 **Fast tree:** `/tmp/dumpfloppy` (tmpfs — gone after power-off)  
 **Durable:** `/mnt/dumpfloppy` + `/mnt/dumpfloppy.git` + origin  
 **Mailbox / reviews:** `/mnt/grok/worktrees/dumpfloppy-xreview/mailbox/`  
@@ -44,6 +44,8 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (this tree, 0.37):** `make -s test` 276 cases, 269 passed, 7 skipped, 27880 assertions (exit 0); `make -s verify` exit 0, CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed.
 
+**Verify last green (this tree, 0.38):** `make -s test` 283 cases, 276 passed, 7 skipped, 28077 assertions (exit 0); `make -s verify` exit 0, CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases, not `--sources`.
+
 ## Still open (2026-10-05)
 
 Shipped in 0.35 and not part of this list: symlink-safe extract, directory-walk caps, `--slack`, `--leaked`, `--carve`.
@@ -52,9 +54,11 @@ Shipped in 0.36 (this tree): local depth and entry caps, file chains to `max_clu
 
 Shipped in 0.37: `k_w_size` is 10 so a FAT directory line prints `4294967295` (CBM, Amiga, TRD, and Apple share that width). Live extract collisions use `stem.dup.ext` then `stem.dup.N.ext` (`FOO.dup.TXT`, `FOO.dup.2.TXT`). A deleted 8.3 name such as `?ACTICS.PKG` stays that name.
 
+Shipped in 0.38: enable-only `--sources` (no `--no-sources`). Case-sensitive `#include`, `proc near`, `org 100h`, `uses crt`, and BASIC lines in file slack, free clusters, and bytes past the filesystem. Not live file bytes. Cap 64, then `Warning: source scan stopped at cap`. Non-FAT still lists and exits 1.
+
 - [x] **Size column is 7 characters.** Done in 0.37. `k_w_size` is 10. `4294967295` is no longer clipped to `4294967`.
 - [x] **Live name collisions are called deleted.** Done in 0.37. Two live files that share a host path write `stem.dup.ext`, then `stem.dup.N.ext`, not `.deleted`.
-- [ ] **Strings / source-pattern search.** `--slack`, `--leaked`, and `--carve` do not search for source text. Still wanted: offsets of patterns such as `#include`, `proc near`, `org 100h`, `uses crt`, and BASIC line numbers, over file slack, free clusters, and bytes past the end of the filesystem.
+- [x] **Strings / source-pattern search.** Done in 0.38. `--sources` reports `#include`, `proc near`, `org 100h`, `uses crt`, and BASIC lines over file slack, free clusters, and bytes past the filesystem. `--slack`, `--leaked`, and `--carve` do not start this scan.
 - [ ] **JSON or TSV report.** Listing output is text only. A machine-readable report for batch runs is not implemented. No `--json` yet. Do not add both `--json` and `--no-json`.
 
 ## Next (pick one slice)

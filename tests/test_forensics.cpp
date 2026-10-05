@@ -1,6 +1,6 @@
 /**
  * @file test_forensics.cpp
- * @brief Symlink-safe extract, directory-walk caps, and FAT slack/leaked/carve.
+ * @brief Symlink-safe extract, directory-walk caps, and FAT slack/leaked/carve/sources.
  */
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
@@ -8,6 +8,7 @@
 #include "dumpfloppy/fat.hpp"
 #include "dumpfloppy/fat_slack.h"
 #include "dumpfloppy/forensics.hpp"
+#include "dumpfloppy/version.hpp"
 #include "image_builder.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -358,6 +359,105 @@ std::vector<uint8_t> make_shared_cluster_dirs()
 
     const std::size_t data = dumpfloppy_test::fat12_data_off();
     dumpfloppy_test::put_file_dirent(img.data() + data + k_bps, "ONLYC3  TXT", 0, 0);
+    return img;
+}
+
+std::size_t count_substr(const std::string& hay, const std::string& needle)
+{
+    std::size_t count = 0;
+    std::size_t pos = 0;
+    while ((pos = hay.find(needle, pos)) != std::string::npos)
+    {
+        ++count;
+        pos += needle.size();
+    }
+    return count;
+}
+
+std::string section_from(const std::string& text, const char* header)
+{
+    const auto at = text.find(header);
+    if (at == std::string::npos)
+    {
+        return {};
+    }
+    return text.substr(at);
+}
+
+void plant_text(std::vector<uint8_t>& img, std::size_t off, const char* text)
+{
+    const std::size_t n = std::strlen(text);
+    REQUIRE(off + n <= img.size());
+    std::memcpy(img.data() + off, text, n);
+}
+
+/**
+ * @brief `#include` in the live file and again in slack, plus a case and a straddle.
+ *
+ * Cluster 3 is freed so the bytes after the slack tail are their own region.
+ * `#include` planted across that boundary must not match.
+ */
+std::vector<uint8_t> make_source_include_image()
+{
+    std::vector<uint8_t> img = dumpfloppy_test::make_fat12_sample();
+    uint8_t* fat0 = dumpfloppy_test::fat12_fat0(img);
+    const std::size_t fat_len = dumpfloppy_test::fat12_fat_len();
+    REQUIRE(fat12_entry_set(fat0, fat_len, 3u, 0u) == 0);
+    dumpfloppy_test::fat12_mirror_fat1(img);
+
+    const std::size_t data = dumpfloppy_test::fat12_data_off();
+    REQUIRE(data == 2048u);
+    plant_text(img, data, "#include");
+    plant_text(img, data + 14u, "#include");
+    plant_text(img, data + 22u, "#INCLUDE");
+    plant_text(img, data + 512u - 4u, "#include");
+    return img;
+}
+
+/**
+ * @brief Needles in free clusters and past the filesystem, plus BASIC lines.
+ */
+std::vector<uint8_t> make_source_pattern_image()
+{
+    std::vector<uint8_t> img = dumpfloppy_test::make_fat12_sample();
+    const std::size_t data = dumpfloppy_test::fat12_data_off();
+    REQUIRE(data == 2048u);
+    plant_text(img, data + 2u * dumpfloppy_test::k_bps, "proc near");
+    plant_text(img, data + 2u * dumpfloppy_test::k_bps + 9u, "#INCLUDE");
+    plant_text(img, data + 3u * dumpfloppy_test::k_bps, "org 100h");
+    plant_text(img, data + 4u * dumpfloppy_test::k_bps, "\n10 PRINT \"HI\"\nx10 PRINT\n");
+    const std::size_t long_at = data + 5u * dumpfloppy_test::k_bps;
+    plant_text(img, long_at, "10 ");
+    std::memset(img.data() + long_at + 3u, static_cast<int>('A'), 60u);
+    plant_text(img, data + 7u * dumpfloppy_test::k_bps, "\r20 GOTO");
+    const std::size_t volume_end = img.size();
+    REQUIRE(volume_end == 64u * dumpfloppy_test::k_bps);
+    img.resize(volume_end + 16u);
+    plant_text(img, volume_end, "uses crt");
+    return img;
+}
+
+/** @brief 65 copies of `#include` in HELLO slack (tail plus the next chain cluster). */
+std::vector<uint8_t> make_source_cap_image()
+{
+    std::vector<uint8_t> img = dumpfloppy_test::make_fat12_sample();
+    uint8_t* fat0 = dumpfloppy_test::fat12_fat0(img);
+    const std::size_t fat_len = dumpfloppy_test::fat12_fat_len();
+    REQUIRE(fat12_entry_set(fat0, fat_len, 2u, 3u) == 0);
+    dumpfloppy_test::fat12_mirror_fat1(img);
+
+    const std::size_t data = dumpfloppy_test::fat12_data_off();
+    REQUIRE(data == 2048u);
+    const std::size_t slack = data + 14u;
+    for (int i = 0; i < 62; ++i)
+    {
+        plant_text(img, slack + static_cast<std::size_t>(i) * 8u, "#include");
+    }
+    const std::size_t cluster3 = data + dumpfloppy_test::k_bps;
+    for (int i = 0; i < 3; ++i)
+    {
+        plant_text(img, cluster3 + static_cast<std::size_t>(i) * 8u, "#include");
+    }
     return img;
 }
 
@@ -732,4 +832,254 @@ TEST_CASE("slack leaked carve reject a non-FAT file like offset", "[forensics][c
     REQUIRE(slack_only.find("leaked is only implemented") == std::string::npos);
     REQUIRE(slack_only.find("carve is only implemented") == std::string::npos);
     REQUIRE(slack_only.find("floppy image secrets") != std::string::npos);
+}
+
+TEST_CASE("sources keeps slack leaked and carve text and adds its own section",
+          "[forensics][sources]")
+{
+    const auto dir = scratch_root("sources-prefix");
+    const auto img = dir / "plant.ima";
+    write_bytes(img, make_planted_sample());
+    const dumpfloppy::analysis a = analyse_file(img);
+
+    dumpfloppy::forensics_request base;
+    base.slack = true;
+    base.leaked = true;
+    base.carve = true;
+    std::ostringstream plain_out;
+    std::ostringstream plain_err;
+    REQUIRE(dumpfloppy::write_forensics(a, base, plain_out, plain_err) == 0);
+    REQUIRE(plain_err.str().empty());
+
+    dumpfloppy::forensics_request with = base;
+    with.sources = true;
+    std::ostringstream src_out;
+    std::ostringstream src_err;
+    REQUIRE(dumpfloppy::write_forensics(a, with, src_out, src_err) == 0);
+    REQUIRE(src_err.str().empty());
+    const std::string plain = plain_out.str();
+    const std::string both = src_out.str();
+    REQUIRE(both.rfind(plain, 0) == 0);
+    REQUIRE(both.substr(plain.size()) == "=== Source ===\n");
+}
+
+TEST_CASE("sources reports slack include and ignores the live copy",
+          "[forensics][sources]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("sources-include");
+    const auto img = dir / "include.ima";
+    write_bytes(img, make_source_include_image());
+    const dumpfloppy::analysis a = analyse_file(img);
+    REQUIRE(a.kind == dumpfloppy::fat_kind::fat12);
+
+    dumpfloppy::forensics_request req;
+    req.sources = true;
+    std::ostringstream out;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::write_forensics(a, req, out, err) == 0);
+    REQUIRE(err.str().empty());
+    const std::string text = out.str();
+    REQUIRE(text == "=== Source ===\n2062 include #include\n");
+    REQUIRE(text.find("2048 ") == std::string::npos);
+    REQUIRE(text.find("2556 ") == std::string::npos);
+    REQUIRE(text.find("INCLUDE") == std::string::npos);
+
+    int rc = 0;
+    const std::string cli =
+        slurp_popen(std::string("\"") + bin + "\" --no-color --no-hex --sources \"" +
+                        img.string() + "\" 2>&1",
+                    rc);
+    REQUIRE(rc == 0);
+    const std::string src = section_from(cli, "=== Source ===\n");
+    REQUIRE(src.find("2062 include #include\n") != std::string::npos);
+    REQUIRE(src.find("2048 ") == std::string::npos);
+    REQUIRE(src.find("2556 ") == std::string::npos);
+    REQUIRE(src.find("INCLUDE") == std::string::npos);
+    REQUIRE(cli.find("=== Slack ===") == std::string::npos);
+    REQUIRE(cli.find("=== Carve ===") == std::string::npos);
+    REQUIRE(cli.find("=== Leaked directory entries ===") == std::string::npos);
+}
+
+TEST_CASE("sources reports free-space and past-end needles and BASIC lines",
+          "[forensics][sources]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("sources-patterns");
+    const auto img = dir / "patterns.ima";
+    write_bytes(img, make_source_pattern_image());
+    const dumpfloppy::analysis a = analyse_file(img);
+
+    dumpfloppy::forensics_request req;
+    req.sources = true;
+    std::ostringstream out;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::write_forensics(a, req, out, err) == 0);
+    REQUIRE(err.str().empty());
+
+    const std::string long_basic = std::string("10 ") + std::string(45u, 'A');
+    REQUIRE(long_basic.size() == 48u);
+    const std::string expect =
+        "=== Source ===\n"
+        "3072 proc-near proc near\n"
+        "3584 org-100h org 100h\n"
+        "4097 basic 10 PRINT \"HI\"\n"
+        "4608 basic " +
+        long_basic +
+        "\n"
+        "5633 basic 20 GOTO\n"
+        "32768 uses-crt uses crt\n";
+    REQUIRE(out.str() == expect);
+    REQUIRE(out.str().find("x10") == std::string::npos);
+    REQUIRE(out.str().find("INCLUDE") == std::string::npos);
+
+    int rc = 0;
+    const std::string cli =
+        slurp_popen(std::string("\"") + bin + "\" --no-color --no-hex --sources \"" +
+                        img.string() + "\" 2>&1",
+                    rc);
+    REQUIRE(rc == 0);
+    const std::string src = section_from(cli, "=== Source ===\n");
+    REQUIRE(src == expect);
+}
+
+TEST_CASE("slack without sources does not print a source section", "[forensics][sources]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("sources-slack-only");
+    const auto img = dir / "plant.ima";
+    write_bytes(img, make_planted_sample());
+
+    int rc = 0;
+    const std::string cli =
+        slurp_popen(std::string("\"") + bin + "\" --no-color --no-hex --slack \"" +
+                        img.string() + "\" 2>&1",
+                    rc);
+    REQUIRE(rc == 0);
+    REQUIRE(cli.find("=== Slack ===") != std::string::npos);
+    REQUIRE(cli.find("HELLO.TXT 2062 498 4d5a") != std::string::npos);
+    REQUIRE(cli.find("=== Source ===") == std::string::npos);
+}
+
+TEST_CASE("sources on a non-FAT image still lists and returns 1", "[forensics][sources]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("sources-not-fat");
+    const auto txt = dir / "notes.txt";
+    {
+        std::ofstream file(txt, std::ios::binary | std::ios::trunc);
+        REQUIRE(file);
+        file << "not a floppy\n";
+    }
+
+    const dumpfloppy::analysis a = analyse_file(txt);
+    dumpfloppy::forensics_request req;
+    req.sources = true;
+    std::ostringstream out;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::write_forensics(a, req, out, err) == 1);
+    REQUIRE(out.str().empty());
+    REQUIRE(err.str() == "dumpfloppy: sources is only implemented for FAT12/FAT16\n");
+
+    int rc = 0;
+    const std::string cli =
+        slurp_popen(std::string("\"") + bin + "\" --sources \"" + txt.string() + "\" 2>&1",
+                    rc);
+    REQUIRE(rc == 1);
+    REQUIRE(cli.find("dumpfloppy: sources is only implemented for FAT12/FAT16\n") !=
+            std::string::npos);
+    REQUIRE(cli.find("FAT12/FAT16") != std::string::npos);
+    REQUIRE(cli.find("=== Source ===") == std::string::npos);
+    REQUIRE(cli.find("floppy image secrets") != std::string::npos);
+    REQUIRE(cli.find("slack is only implemented") == std::string::npos);
+    REQUIRE(cli.find("leaked is only implemented") == std::string::npos);
+    REQUIRE(cli.find("carve is only implemented") == std::string::npos);
+}
+
+TEST_CASE("sources stops at 64 include hits", "[forensics][sources][cap]")
+{
+    const char* bin = bin_or_require();
+    const auto dir = scratch_root("sources-cap");
+    const auto img = dir / "cap.ima";
+    write_bytes(img, make_source_cap_image());
+    const dumpfloppy::analysis a = analyse_file(img);
+
+    dumpfloppy::forensics_request req;
+    req.sources = true;
+    std::ostringstream out;
+    std::ostringstream err;
+    REQUIRE(dumpfloppy::write_forensics(a, req, out, err) == 0);
+    REQUIRE(err.str() == "Warning: source scan stopped at cap\n");
+    const std::string text = out.str();
+    REQUIRE(count_substr(text, " include #include\n") == 64u);
+    REQUIRE(text.find("2062 include #include\n") != std::string::npos);
+    REQUIRE(text.find("2568 include #include\n") != std::string::npos);
+    REQUIRE(text.find("2576 include #include\n") == std::string::npos);
+    REQUIRE(text.find("=== Slack ===") == std::string::npos);
+
+    int rc = 0;
+    const std::string cli =
+        slurp_popen(std::string("\"") + bin + "\" --no-color --no-hex --sources \"" +
+                        img.string() + "\" 2>&1",
+                    rc);
+    REQUIRE(rc == 0);
+    REQUIRE(cli.find("Warning: source scan stopped at cap") != std::string::npos);
+    const std::string src = section_from(cli, "=== Source ===\n");
+    REQUIRE(count_substr(src, " include #include\n") == 64u);
+    REQUIRE(src.find("2576 include #include\n") == std::string::npos);
+}
+
+TEST_CASE("help and version document enable-only sources", "[forensics][sources][cli]")
+{
+    const std::string usage = dumpfloppy::usage_text();
+    REQUIRE(usage.find("--sources") != std::string::npos);
+    REQUIRE(usage.find("--no-sources") == std::string::npos);
+    REQUIRE(usage.find(dumpfloppy::k_version) != std::string::npos);
+    REQUIRE(std::string(dumpfloppy::k_version) == "0.38");
+
+    const auto on = parse({"disk.ima", "--sources"});
+    REQUIRE(on.ok);
+    REQUIRE(on.forensics.sources);
+    REQUIRE_FALSE(on.forensics.slack);
+    REQUIRE_FALSE(on.forensics.leaked);
+    REQUIRE_FALSE(on.forensics.carve);
+    REQUIRE(on.inputs.size() == 1u);
+
+    const auto flipped = parse({"--sources", "disk.ima"});
+    REQUIRE(flipped.ok);
+    REQUIRE(flipped.forensics.sources);
+    REQUIRE(flipped.inputs.size() == 1u);
+
+    const auto off = parse({"disk.ima"});
+    REQUIRE(off.ok);
+    REQUIRE_FALSE(off.forensics.sources);
+
+    const auto twin = parse({"--no-sources", "disk.ima"});
+    REQUIRE_FALSE(twin.ok);
+    REQUIRE(twin.error.find("unknown option") != std::string::npos);
+
+    const char* bin = bin_or_require();
+    int help_rc = 0;
+    const std::string help = slurp_popen(std::string("\"") + bin + "\" --help", help_rc);
+    REQUIRE(help_rc == 0);
+    REQUIRE(help.find("--sources") != std::string::npos);
+    REQUIRE(help.find("--no-sources") == std::string::npos);
+
+    int ver_rc = 0;
+    const std::string ver = slurp_popen(std::string("\"") + bin + "\" -v", ver_rc);
+    REQUIRE(ver_rc == 0);
+    REQUIRE(ver == "dumpfloppy 0.38\n");
+
+    int bare_rc = 0;
+    const std::string bare = slurp_popen(std::string("\"") + bin + "\"", bare_rc);
+    REQUIRE(bare_rc == 0);
+    REQUIRE(bare.find("Usage:") != std::string::npos);
+    REQUIRE(bare.find("--sources") != std::string::npos);
+
+    int none_rc = 0;
+    const std::string none =
+        slurp_popen(std::string("\"") + bin + "\" --sources 2>&1", none_rc);
+    REQUIRE(none_rc == 1);
+    REQUIRE(none.find("dumpfloppy: no image files given\n") != std::string::npos);
+    REQUIRE(none.find("=== Source ===") == std::string::npos);
 }

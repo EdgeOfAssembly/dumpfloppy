@@ -69,7 +69,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.37`. Options and paths may be interleaved. A directory argument
+`dumpfloppy 0.38`. Options and paths may be interleaved. A directory argument
 expands to `*.img` / `*.ima` / `*.mfm` / `*.86f` / `*.d64` / `*.d71` / `*.d81` /
 `*.adf` / `*.g64` / `*.g71` / `*.trd` / `*.ipf` / `*.woz` / `*.stx` / `*.2mg` /
 `*.dsk` / `*.po`.
@@ -123,6 +123,7 @@ replace; G64/G71 GCR, REL, and TRD are refused.
 | Unused leftover FAT clusters listed | `--no-unused` (listing only; `-x` still extracts unused) |
 | Extract files | `-x` / `--extract` (optional glob) |
 | Update a named file | `-u` / `--update FILE` (repeatable; silent; glued `-uFILE` ok) |
+| Source-pattern search off | `--sources` (FAT12/FAT16 slack, free clusters, past-end) |
 
 ## Example (Elvira 720K Disk 2)
 

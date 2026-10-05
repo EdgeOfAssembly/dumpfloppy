@@ -150,6 +150,18 @@ std::string usage_text()
        << "                       still lists later root slots. A directory chain stops at\n"
        << "                       8192 clusters. A file chain is not cut at 8192. Exit\n"
        << "                       status stays 0 when only a cap fired.\n"
+       << "      --sources        FAT12/FAT16: source patterns in slack, free clusters,\n"
+       << "                       and bytes past the filesystem (default: off).\n"
+       << "                       Case-sensitive: #include, proc near, org 100h, uses crt,\n"
+       << "                       and a BASIC line (one to five digits, a space, then a\n"
+       << "                       letter) at a region start or after CR/LF.\n"
+       << "                       === Source === is offset, kind, and text. Kinds:\n"
+       << "                       include, proc-near, org-100h, uses-crt, basic.\n"
+       << "                       At most 64 hits. The next hit stops the scan and writes\n"
+       << "                       Warning: source scan stopped at cap to stderr.\n"
+       << "                       Exit status stays 0 for that cap. On a non-FAT image the\n"
+       << "                       listing is still printed, stderr says sources is only\n"
+       << "                       implemented for FAT12/FAT16, and the status is 1.\n"
        << "\n"
        << k_program << " " << k_version << "\n";
     return os.str();
@@ -318,6 +330,11 @@ cli_options parse_cli(int argc, char** argv)
         if (!end_opts && arg == "--carve")
         {
             o.forensics.carve = true;
+            continue;
+        }
+        if (!end_opts && arg == "--sources")
+        {
+            o.forensics.sources = true;
             continue;
         }
         if (!end_opts && !arg.empty() && arg[0] == '-')
