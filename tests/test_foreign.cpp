@@ -104,8 +104,8 @@ std::vector<uint8_t> make_2img()
     std::memcpy(img.data() + 4, "B2TR", 4);
     img[8] = 64;
     img[12] = 1; /* ProDOS */
-    put_le32(img, 22, 64u);
-    put_le32(img, 26, 0u);
+    put_le32(img, 0x18, 64u);
+    put_le32(img, 0x1C, 0u);
     return img;
 }
 

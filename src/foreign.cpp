@@ -219,7 +219,7 @@ foreign_disk parse_stx(std::span<const uint8_t> data)
 foreign_disk parse_2img(std::span<const uint8_t> data)
 {
     foreign_disk out{};
-    if (data.size() < 30u || !magic4(data, "2IMG"))
+    if (data.size() < 0x20u || !magic4(data, "2IMG"))
     {
         return out;
     }
@@ -230,9 +230,17 @@ foreign_disk parse_2img(std::span<const uint8_t> data)
     char creator[5]{};
     std::memcpy(creator, data.data() + 4, 4u);
     out.creator = creator;
-    const uint16_t fmt = le16(data, 12);
-    out.data_offset = le32(data, 22);
-    out.data_length = le32(data, 26);
+    /* 2IMG header: +0x0C format (LE32), +0x10 flags, +0x14 ProDOS block
+     * count, +0x18 data offset, +0x1C data length (all LE32). */
+    if (data.size() < 0x20u)
+    {
+        out.note = "2IMG prefix truncated";
+        return out;
+    }
+    const uint32_t fmt = le32(data, 0x0C);
+    out.img2mg_format = fmt;
+    out.data_offset = le32(data, 0x18);
+    out.data_length = le32(data, 0x1C);
     if (fmt == 0u)
     {
         out.note = "2IMG DOS 3.3 payload; catalog not decoded in this version";

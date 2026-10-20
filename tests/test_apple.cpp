@@ -104,8 +104,8 @@ std::vector<uint8_t> make_2img_prodos()
     std::memcpy(img.data() + 4, "TEST", 4);
     img[8] = 64;
     img[12] = 1;
-    put_le32(img, 22, 64u);
-    put_le32(img, 26, static_cast<uint32_t>(vol.size()));
+    put_le32(img, 0x18, 64u);
+    put_le32(img, 0x1C, static_cast<uint32_t>(vol.size()));
     std::copy(vol.begin(), vol.end(), img.begin() + 64);
     return img;
 }

@@ -972,6 +972,12 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
         err << "dumpfloppy: CP/M directory listing does not extract file bytes\n";
         return -1;
     }
+    if (a.foreign.kind == foreign_kind::img2mg && a.foreign.img2mg_format <= 1u)
+    {
+        err << "dumpfloppy: 2IMG " << (a.foreign.img2mg_format == 0u ? "DOS-order" : "ProDOS-order")
+            << " block image has no DOS 3.3 or ProDOS catalog to extract\n";
+        return -1;
+    }
     if (a.foreign.present && a.flux.assembled_chs.empty())
     {
         err << "dumpfloppy: cannot extract " << a.foreign.format

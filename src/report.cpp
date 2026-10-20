@@ -513,22 +513,55 @@ void write_foreign_sections(const analysis& a, std::ostream& out,
 constexpr size_t k_w_apple_name = 16;
 constexpr size_t k_w_apple_type = 4;
 
-std::string apple_directory_header()
+constexpr size_t k_w_apple_aux = 5;
+
+std::string apple_hex(unsigned v, int digits)
+{
+    static constexpr char k_hex[] = "0123456789ABCDEF";
+    std::string s = "$";
+    for (int i = digits - 1; i >= 0; --i)
+    {
+        s.push_back(k_hex[(v >> (4 * i)) & 0x0Fu]);
+    }
+    return s;
+}
+
+/** @brief Name column width: at least 16, wide enough for ProDOS paths. */
+size_t apple_name_width(const apple_disk& d)
+{
+    size_t w = k_w_apple_name;
+    for (const apple_file& e : d.entries)
+    {
+        w = std::max(w, e.name.size());
+    }
+    return std::min<size_t>(w, 64u);
+}
+
+std::string apple_directory_header(bool prodos, size_t name_w)
 {
     std::ostringstream os;
-    os << "  " << field(" ", k_w_mark) << field("Name", k_w_apple_name)
-       << field("Type", k_w_apple_type) << field("Size", k_w_size)
-       << field("XXH64 Checksum", k_w_sum);
+    os << "  " << field(" ", k_w_mark) << field("Name", name_w)
+       << field("Type", k_w_apple_type);
+    if (prodos)
+    {
+        os << field("Raw", 3) << field("Aux", k_w_apple_aux);
+    }
+    os << field("Size", k_w_size) << field("XXH64 Checksum", k_w_sum);
     return os.str();
 }
 
-std::string apple_entry_line(const apple_file& e, uint32_t size, std::string_view sum)
+std::string apple_entry_line(const apple_file& e, uint32_t size, std::string_view sum,
+                             bool prodos, size_t name_w)
 {
     const char mark = e.deleted ? 'D' : (e.locked ? '*' : ' ');
     std::ostringstream os;
     os << "  " << field(std::string_view(&mark, 1), k_w_mark)
-       << name_field(e.name, k_w_apple_name) << field(e.type_name, k_w_apple_type)
-       << field(std::to_string(size), k_w_size)
+       << name_field(e.name, name_w) << field(e.type_name, k_w_apple_type);
+    if (prodos)
+    {
+        os << field(apple_hex(e.type_byte, 2), 3) << field(apple_hex(e.aux_type, 4), k_w_apple_aux);
+    }
+    os << field(std::to_string(size), k_w_size)
        << field(size == 0u ? std::string_view{} : sum, k_w_sum);
     return os.str();
 }
@@ -551,12 +584,19 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     {
         kv(out, "Blocks", std::to_string(a.apple.total_blocks));
     }
+    if (a.apple.fs == apple_fs::prodos)
+    {
+        kv(out, "Sector order", a.apple.dos_order ? "DOS 3.3 (remapped to ProDOS blocks)"
+                                                  : "ProDOS");
+    }
     out << '\n';
 
     section(out, color, "DIRECTORY");
     put_style(out, color, TUI_BOLD);
     put_style(out, color, TUI_WHITE);
-    out << apple_directory_header();
+    const bool prodos = a.apple.fs == apple_fs::prodos;
+    const size_t name_w = apple_name_width(a.apple);
+    out << apple_directory_header(prodos, name_w);
     put_style(out, color, TUI_RESET);
     out << '\n';
     size_t shown = 0;
@@ -574,7 +614,7 @@ void write_apple_sections(const analysis& a, std::ostream& out,
         const std::vector<uint8_t> payload = read_apple_file(a.apple, e);
         const uint32_t size = static_cast<uint32_t>(payload.size());
         const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
-        const std::string line = apple_entry_line(e, size, sum);
+        const std::string line = apple_entry_line(e, size, sum, prodos, name_w);
         if (e.deleted)
         {
             emit_deleted_line(out, color, line);

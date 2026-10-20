@@ -36,6 +36,27 @@ inline constexpr std::size_t k_apple_dos33_140k = 143360u;
  */
 [[nodiscard]] apple_disk parse_apple(std::span<const uint8_t> data);
 
+/** @brief Sector-order hint for @ref parse_apple_ordered. */
+enum class apple_order : uint8_t
+{
+    unknown = 0, /**< Try ProDOS order, then DOS order (raw .dsk). */
+    prodos = 1,  /**< ProDOS block order (.po, 2IMG format 1). */
+    dos = 2      /**< DOS 3.3 sector order (.do, 2IMG format 0). */
+};
+
+/**
+ * @brief Like @ref parse_apple, but also finds ProDOS in a DOS-order image.
+ *
+ * DOS 3.3 is tried first. ProDOS is then tried in @p order first; with
+ * @c unknown both orders are tried. A remapped volume sets
+ * @c apple_disk::dos_order and stores the ProDOS-order copy.
+ *
+ * @param[in] data  Sector/block image, not the 2IMG prefix.
+ * @param[in] order Sector-order hint from the container or extension.
+ */
+[[nodiscard]] apple_disk parse_apple_ordered(std::span<const uint8_t> data,
+                                             apple_order order);
+
 /**
  * @brief Rearrange a 16-sector DOS-order 5.25 image into ProDOS block order.
  *
@@ -60,8 +81,9 @@ inline constexpr std::size_t k_apple_dos33_140k = 143360u;
 /**
  * @brief Read file payload from @a disk.volume.
  *
- * DOS 3.3 follows the T/S list. ProDOS reads seedling and sapling files;
- * tree files return empty.
+ * DOS 3.3 follows the T/S list. ProDOS reads seedling, sapling, and tree
+ * files (sparse pointers read as zeros) and either fork of an extended file;
+ * the result is exactly EOF bytes. Directories return empty.
  *
  * @param[in] disk Parsed volume.
  * @param[in] file Directory slot.

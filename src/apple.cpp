@@ -79,10 +79,16 @@ const char* prodos_type_name(uint8_t type)
 {
     switch (type)
     {
+    case 0x00:
+        return "NON";
+    case 0x01:
+        return "BAD";
     case 0x04:
         return "TXT";
     case 0x06:
         return "BIN";
+    case 0x08:
+        return "FOT";
     case 0x0F:
         return "DIR";
     case 0x19:
@@ -91,10 +97,72 @@ const char* prodos_type_name(uint8_t type)
         return "AWP";
     case 0x1B:
         return "ASP";
+    case 0x50:
+        return "GWP";
+    case 0x5A:
+        return "CFG";
+    case 0xB0:
+        return "SRC";
+    case 0xB1:
+        return "OBJ";
+    case 0xB2:
+        return "LIB";
+    case 0xB3:
+        return "S16";
+    case 0xB4:
+        return "RTL";
+    case 0xB5:
+        return "EXE";
+    case 0xB6:
+        return "PIF";
+    case 0xB7:
+        return "TIF";
+    case 0xB8:
+        return "NDA";
+    case 0xB9:
+        return "CDA";
+    case 0xBA:
+        return "TOL";
+    case 0xBB:
+        return "DVR";
+    case 0xBC:
+        return "LDF";
+    case 0xBD:
+        return "FST";
+    case 0xBF:
+        return "DOC";
+    case 0xC0:
+        return "PNT";
+    case 0xC1:
+        return "PIC";
+    case 0xC8:
+        return "FON";
+    case 0xC9:
+        return "FND";
+    case 0xCA:
+        return "ICN";
+    case 0xD5:
+        return "MUS";
+    case 0xD6:
+        return "INS";
+    case 0xD8:
+        return "SND";
+    case 0xE0:
+        return "LBR";
+    case 0xEF:
+        return "PAS";
+    case 0xF0:
+        return "CMD";
+    case 0xFA:
+        return "INT";
+    case 0xFB:
+        return "IVR";
     case 0xFC:
         return "BAS";
     case 0xFD:
         return "VAR";
+    case 0xFE:
+        return "REL";
     case 0xFF:
         return "SYS";
     default:
@@ -218,6 +286,149 @@ std::span<const uint8_t> prodos_block(std::span<const uint8_t> vol, uint16_t blk
     return vol.subspan(off, k_apple_prodos_block);
 }
 
+/** @brief Apply GS/OS lowercase bits (bit 15 set; bit 14 = char 0). */
+void apply_case_bits(std::string& name, uint16_t bits)
+{
+    if ((bits & 0x8000u) == 0u)
+    {
+        return;
+    }
+    for (std::size_t i = 0; i < name.size() && i < 15u; ++i)
+    {
+        if ((bits & (0x4000u >> i)) != 0u && name[i] >= 'A' && name[i] <= 'Z')
+        {
+            name[i] = static_cast<char>(name[i] - 'A' + 'a');
+        }
+    }
+}
+
+/** @brief Directory entry geometry from a volume/subdirectory header. */
+struct prodos_dir_geom
+{
+    uint8_t entry_len = 0;
+    uint8_t per_block = 0;
+};
+
+bool prodos_geom_ok(uint8_t entry_len, uint8_t per_block)
+{
+    return entry_len >= 0x27u && per_block >= 1u &&
+           4u + static_cast<unsigned>(entry_len) * per_block <= k_apple_prodos_block;
+}
+
+/**
+ * @brief Walk one directory chain and recurse into subdirectories.
+ *
+ * Every block is visited at most once (visited set), and depth is
+ * bounded, so a looping or cross-linked directory cannot hang.
+ */
+void walk_prodos_dir(apple_disk& disk, uint16_t key, const std::string& prefix,
+                     prodos_dir_geom geom, std::vector<bool>& visited, int depth)
+{
+    if (depth > 32)
+    {
+        return;
+    }
+    uint16_t blk = key;
+    bool first_block = true;
+    while (blk != 0u)
+    {
+        if (blk >= visited.size() || visited[blk])
+        {
+            break;
+        }
+        visited[blk] = true;
+        const auto block = prodos_block(disk.volume, blk);
+        if (block.size() < k_apple_prodos_block)
+        {
+            break;
+        }
+        const uint16_t next = le16(block, 2);
+        const int first = first_block ? 1 : 0;
+        first_block = false;
+        for (int i = first; i < static_cast<int>(geom.per_block); ++i)
+        {
+            const std::size_t e = 4u + static_cast<std::size_t>(i) * geom.entry_len;
+            if (e + geom.entry_len > block.size())
+            {
+                break;
+            }
+            const uint8_t st = static_cast<uint8_t>(block[e] >> 4);
+            const uint8_t nlen = static_cast<uint8_t>(block[e] & 0x0Fu);
+            if (st == 0u && nlen == 0u)
+            {
+                continue;
+            }
+            if (st == 0x0Eu || st == 0x0Fu)
+            {
+                continue; /* stray header inside a chain */
+            }
+            apple_file f{};
+            f.deleted = (st == 0u);
+            f.storage = st;
+            std::string leaf;
+            if (nlen >= 1u)
+            {
+                leaf.assign(reinterpret_cast<const char*>(block.data() + e + 1), nlen);
+            }
+            apply_case_bits(leaf, le16(block, e + 0x1Cu));
+            if (f.deleted && !leaf.empty())
+            {
+                leaf[0] = '?';
+            }
+            f.name = prefix + leaf;
+            f.type_byte = block[e + 0x10u];
+            f.type_name = (st == 0x0Du) ? "DIR" : prodos_type_name(f.type_byte);
+            f.key = le16(block, e + 0x11u);
+            f.byte_size = le24(block, e + 0x15u);
+            f.locked = (block[e + 0x1Eu] & 0x02u) == 0u;
+            f.aux_type = le16(block, e + 0x1Fu);
+            if (st == 0x05u && !f.deleted)
+            {
+                /* Extended file: key block holds data and resource fork
+                 * mini-entries at 0x000 and 0x100. */
+                const auto ext = prodos_block(disk.volume, f.key);
+                if (ext.size() == k_apple_prodos_block)
+                {
+                    apple_file data = f;
+                    data.storage = static_cast<uint8_t>(ext[0] & 0x0Fu);
+                    data.key = le16(ext, 1);
+                    data.byte_size = le24(ext, 5);
+                    data.extended = true;
+                    apple_file rsrc = f;
+                    rsrc.storage = static_cast<uint8_t>(ext[0x100] & 0x0Fu);
+                    rsrc.key = le16(ext, 0x101);
+                    rsrc.byte_size = le24(ext, 0x105);
+                    rsrc.extended = true;
+                    rsrc.resource_fork = true;
+                    rsrc.name += ".rsrc";
+                    disk.entries.push_back(std::move(data));
+                    if (rsrc.byte_size != 0u)
+                    {
+                        disk.entries.push_back(std::move(rsrc));
+                    }
+                    continue;
+                }
+            }
+            const bool recurse = (st == 0x0Du) && !f.deleted;
+            const uint16_t sub_key = f.key;
+            const std::string sub_prefix = f.name + "/";
+            disk.entries.push_back(std::move(f));
+            if (recurse)
+            {
+                const auto sk = prodos_block(disk.volume, sub_key);
+                if (sk.size() == k_apple_prodos_block && (sk[4] >> 4) == 0x0Eu &&
+                    prodos_geom_ok(sk[4u + 0x1Fu], sk[4u + 0x20u]))
+                {
+                    walk_prodos_dir(disk, sub_key, sub_prefix,
+                                    {sk[4u + 0x1Fu], sk[4u + 0x20u]}, visited,
+                                    depth + 1);
+                }
+            }
+        }
+        blk = next;
+    }
+}
+
 apple_disk parse_prodos(std::span<const uint8_t> data)
 {
     apple_disk disk{};
@@ -249,64 +460,15 @@ apple_disk parse_prodos(std::span<const uint8_t> data)
     disk.fs = apple_fs::prodos;
     disk.fs_name = "ProDOS";
     disk.volume_name.assign(reinterpret_cast<const char*>(h + 1), namelen);
+    apply_case_bits(disk.volume_name,
+                    static_cast<uint16_t>(h[0x16] | (static_cast<unsigned>(h[0x17]) << 8)));
     disk.total_blocks = le16(key, 4u + 0x25u);
     disk.volume.assign(data.begin(), data.end());
 
-    const uint8_t entry_len = h[0x1F];
-    const uint8_t per_block = h[0x20];
-    uint16_t blk = 2;
-    int hops = 0;
-    while (blk != 0u && hops < 64)
-    {
-        ++hops;
-        const auto block = prodos_block(disk.volume, blk);
-        if (block.size() < k_apple_prodos_block)
-        {
-            break;
-        }
-        const uint16_t next = le16(block, 2);
-        const int first = (blk == 2u) ? 1 : 0;
-        for (int i = first; i < static_cast<int>(per_block); ++i)
-        {
-            const std::size_t e =
-                4u + static_cast<std::size_t>(i) * entry_len;
-            if (e + entry_len > block.size())
-            {
-                break;
-            }
-            const uint8_t st = static_cast<uint8_t>(block[e] >> 4);
-            const uint8_t nlen = static_cast<uint8_t>(block[e] & 0x0Fu);
-            if (st == 0u && nlen == 0u)
-            {
-                continue;
-            }
-            apple_file f{};
-            f.deleted = (st == 0u);
-            f.storage = st;
-            if (nlen >= 1u && nlen <= 15u)
-            {
-                f.name.assign(reinterpret_cast<const char*>(block.data() + e + 1),
-                              nlen);
-            }
-            if (f.deleted && !f.name.empty())
-            {
-                f.name[0] = '?';
-            }
-            f.type_byte = block[e + 0x10u];
-            f.type_name = (st == 0x0Du) ? "DIR" : prodos_type_name(f.type_byte);
-            f.key = le16(block, e + 0x11u);
-            f.byte_size = le24(block, e + 0x15u);
-            disk.entries.push_back(std::move(f));
-        }
-        if (next == blk)
-        {
-            break;
-        }
-        blk = next;
-    }
+    std::vector<bool> visited(disk.volume.size() / k_apple_prodos_block, false);
+    walk_prodos_dir(disk, 2, std::string{}, {h[0x1F], h[0x20]}, visited, 0);
     return disk;
 }
-
 std::vector<uint8_t> read_dos33(const apple_disk& disk, const apple_file& file)
 {
     if (file.ts_track == 0u || file.ts_track == 0xFFu ||
@@ -359,55 +521,135 @@ std::vector<uint8_t> read_dos33(const apple_disk& disk, const apple_file& file)
     return out;
 }
 
+/** @brief Largest EOF a ProDOS fork can address (24-bit). */
+constexpr uint32_t k_prodos_max_eof = 0xFFFFFFu;
+
+uint16_t index_ptr(std::span<const uint8_t> idx, std::size_t i)
+{
+    return static_cast<uint16_t>(static_cast<unsigned>(idx[i]) |
+                                 (static_cast<unsigned>(idx[i + 256u]) << 8));
+}
+
+/**
+ * @brief Copy one data block into @p out at @p off; pointer 0 stays sparse.
+ */
+void place_block(const apple_disk& disk, uint16_t blk, std::size_t off,
+                 std::vector<uint8_t>& out)
+{
+    if (blk == 0u || off >= out.size())
+    {
+        return;
+    }
+    const auto b = prodos_block(disk.volume, blk);
+    if (b.empty())
+    {
+        return;
+    }
+    const std::size_t n = std::min<std::size_t>(b.size(), out.size() - off);
+    std::memcpy(out.data() + off, b.data(), n);
+}
+
+/** @brief Fill @p out from a sapling index block (256 pointers). */
+void place_index(const apple_disk& disk, uint16_t index_blk, std::size_t base,
+                 std::vector<uint8_t>& out)
+{
+    if (index_blk == 0u || base >= out.size())
+    {
+        return;
+    }
+    const auto idx = prodos_block(disk.volume, index_blk);
+    if (idx.size() < k_apple_prodos_block)
+    {
+        return;
+    }
+    for (std::size_t i = 0; i < 256u; ++i)
+    {
+        const std::size_t off = base + i * k_apple_prodos_block;
+        if (off >= out.size())
+        {
+            break;
+        }
+        place_block(disk, index_ptr(idx, i), off, out);
+    }
+}
+
 std::vector<uint8_t> read_prodos(const apple_disk& disk, const apple_file& file)
 {
-    if (file.storage == 0x0Du || file.key == 0u)
+    if (file.storage == 0x0Du || file.key == 0u ||
+        file.byte_size > k_prodos_max_eof)
     {
         return {};
     }
-    auto take_block = [&](uint16_t blk) -> std::span<const uint8_t>
-    { return prodos_block(disk.volume, blk); };
-
-    std::vector<uint8_t> out;
+    if (file.storage < 1u || file.storage > 3u)
+    {
+        return {};
+    }
+    /* Sparse blocks (pointer 0) read as zeros, as ProDOS returns them. */
+    std::vector<uint8_t> out(file.byte_size, 0);
     if (file.storage == 0x01u)
     {
-        const auto b = take_block(file.key);
-        out.assign(b.begin(), b.end());
+        place_block(disk, file.key, 0, out);
     }
     else if (file.storage == 0x02u)
     {
-        const auto idx = take_block(file.key);
-        if (idx.size() < k_apple_prodos_block)
-        {
-            return {};
-        }
-        for (int i = 0; i < 256; ++i)
-        {
-            const uint16_t blk = static_cast<uint16_t>(
-                static_cast<unsigned>(idx[static_cast<std::size_t>(i)]) |
-                (static_cast<unsigned>(
-                     idx[static_cast<std::size_t>(i) + 256u])
-                 << 8));
-            if (blk == 0u)
-            {
-                continue;
-            }
-            const auto b = take_block(blk);
-            out.insert(out.end(), b.begin(), b.end());
-        }
+        place_index(disk, file.key, 0, out);
     }
     else
     {
-        return {};
-    }
-    if (file.byte_size < out.size())
-    {
-        out.resize(file.byte_size);
+        const auto master = prodos_block(disk.volume, file.key);
+        if (master.size() < k_apple_prodos_block)
+        {
+            return {};
+        }
+        constexpr std::size_t k_span = 256u * k_apple_prodos_block;
+        for (std::size_t i = 0; i < 128u; ++i)
+        {
+            const std::size_t base = i * k_span;
+            if (base >= out.size())
+            {
+                break;
+            }
+            place_index(disk, index_ptr(master, i), base, out);
+        }
     }
     return out;
 }
-
 } /* namespace */
+
+apple_disk parse_apple_ordered(std::span<const uint8_t> data, apple_order order)
+{
+    auto remapped = [&]() -> apple_disk
+    {
+        const std::vector<uint8_t> po = apple_dos_order_to_prodos(data);
+        if (po.empty())
+        {
+            return {};
+        }
+        apple_disk d = parse_prodos(po);
+        if (d.present)
+        {
+            d.dos_order = true;
+            d.fs_name = "ProDOS";
+        }
+        return d;
+    };
+    apple_disk dos = parse_dos33(data);
+    if (dos.present)
+    {
+        return dos;
+    }
+    if (order == apple_order::dos)
+    {
+        apple_disk d = remapped();
+        return d.present ? d : parse_prodos(data);
+    }
+    apple_disk d = parse_prodos(data);
+    if (d.present || order == apple_order::prodos)
+    {
+        return d;
+    }
+    return remapped();
+}
 
 apple_disk parse_apple(std::span<const uint8_t> data)
 {

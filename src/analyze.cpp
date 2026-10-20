@@ -58,6 +58,29 @@ std::string label_from_root(const std::vector<dir_entry>& entries)
     return {};
 }
 
+/**
+ * @brief Sector-order hint from a raw image's extension.
+ *
+ * `.do`/`.dsk` may hold ProDOS in DOS 3.3 sector order, so both orders are
+ * tried; `.po` and everything else stay ProDOS order only.
+ */
+apple_order raw_apple_order(const std::string& path)
+{
+    std::string lower = path;
+    for (char& c : lower)
+    {
+        if (c >= 'A' && c <= 'Z')
+        {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    if (lower.ends_with(".do") || lower.ends_with(".dsk"))
+    {
+        return apple_order::unknown;
+    }
+    return apple_order::prodos;
+}
+
 } /* namespace */
 
 analysis analyse(floppy_image image)
@@ -192,11 +215,23 @@ analysis analyse(floppy_image image)
         {
             len = remain;
         }
-        a.apple = parse_apple(bytes.subspan(a.foreign.data_offset, len));
+        const apple_order order = a.foreign.img2mg_format == 0u   ? apple_order::dos
+                                  : a.foreign.img2mg_format == 1u ? apple_order::prodos
+                                                                  : apple_order::unknown;
+        if (a.foreign.img2mg_format <= 1u)
+        {
+            a.apple = parse_apple_ordered(bytes.subspan(a.foreign.data_offset, len), order);
+            if (a.apple.present)
+            {
+                a.foreign.note = std::string("2IMG ") +
+                                 (a.foreign.img2mg_format == 0u ? "DOS-order" : "ProDOS-order") +
+                                 " block image; " + a.apple.fs_name + " catalog decoded";
+            }
+        }
     }
-    if (!a.apple.present)
+    if (!a.apple.present && a.foreign.kind != foreign_kind::img2mg)
     {
-        a.apple = parse_apple(bytes);
+        a.apple = parse_apple_ordered(bytes, raw_apple_order(a.image.path.string()));
     }
     if (a.apple.present)
     {

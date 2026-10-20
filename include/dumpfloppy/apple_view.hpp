@@ -32,9 +32,12 @@ struct apple_file
     bool locked = false;
     uint32_t byte_size = 0;  /**< DOS sector-count×256 or ProDOS EOF. */
     uint16_t key = 0;        /**< DOS T/S list packed, or ProDOS key block. */
-    uint8_t storage = 0;     /**< ProDOS storage type 1–3 / 0xD; 0 on DOS 3.3. */
+    uint8_t storage = 0;     /**< ProDOS storage type 1–3 / 0xD (fork's type for 5); 0 on DOS 3.3. */
     uint8_t ts_track = 0;    /**< DOS 3.3 track/sector list. */
     uint8_t ts_sector = 0;
+    uint16_t aux_type = 0;      /**< ProDOS aux type (load address, record length, …). */
+    bool extended = false;      /**< ProDOS storage type 5 (forked) file. */
+    bool resource_fork = false; /**< This slot is the resource fork of an extended file. */
 };
 
 /**
@@ -53,6 +56,7 @@ struct apple_disk
     uint16_t total_blocks = 0; /**< ProDOS total_blocks. */
     uint8_t tracks = 0;
     uint8_t sectors_per_track = 0;
+    bool dos_order = false;    /**< ProDOS volume read from a DOS-order (.do/.dsk) image. */
     std::vector<apple_file> entries{};
     std::vector<uint8_t> volume{};
 };

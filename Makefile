@@ -85,7 +85,7 @@ SRC_MAIN := src/main.cpp
 TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_image.cpp tests/test_bin.cpp tests/test_extract.cpp \
             tests/test_format.cpp tests/test_update.cpp tests/test_deleted.cpp \
-            tests/test_names.cpp \
+            tests/test_names.cpp tests/test_prodos.cpp \
             tests/test_extract_dest.cpp \
             tests/test_fat_host.cpp \
             tests/test_mfm.cpp tests/test_cbm.cpp tests/test_d64.cpp \
