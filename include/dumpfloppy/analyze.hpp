@@ -55,6 +55,7 @@ struct analysis
     std::vector<uint16_t> orphan_clusters{};
     std::vector<unused_run> unused{}; /**< FAT-free/bad clusters with leftover bytes. */
     std::vector<std::string> secrets{};
+    std::string unsupported{}; /**< Recognised but undecodable media; CLI exits nonzero. */
     uint64_t volume_bytes = 0;
     uint64_t trailing_bytes = 0;
     bool truncated = false;

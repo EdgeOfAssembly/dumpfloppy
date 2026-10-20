@@ -1,6 +1,7 @@
 /**
  * @file woz_builder.hpp
- * @brief Encode a DOS-order 140K Apple volume into a WOZ2 for Catch2 tests.
+ * @brief Encode a DOS-order 140K Apple volume into a WOZ2 for Catch2 tests
+ *        (address fields carry physical sector numbers).
  */
 #ifndef DUMPFLOPPY_TEST_WOZ_BUILDER_HPP
 #define DUMPFLOPPY_TEST_WOZ_BUILDER_HPP
@@ -76,20 +77,43 @@ inline void put_4n4(woz_bit_writer& w, uint8_t value)
     w.put_byte(even);
 }
 
-inline woz_bit_writer encode_dos_track(const std::vector<uint8_t>& dos, uint8_t track)
+/**
+ * @brief DOS 3.3 logical sector -> physical sector, by the RWTS skew formula
+ *        (13L mod 15, sector 15 fixed). Written independently of src/apple.cpp.
+ */
+inline uint8_t dos_logical_to_physical(uint8_t logical)
+{
+    return logical == 15u ? 15u : static_cast<uint8_t>((13u * logical) % 15u);
+}
+
+/**
+ * @brief One 6-and-2 track (or a 13-sector `D5 AA B5` track when @p thirteen).
+ *
+ * Sectors are written in physical order; each address field carries the
+ * physical sector number, as on a real disk, and holds DOS logical sector
+ * L where dos_logical_to_physical(L) is that number.
+ */
+inline woz_bit_writer encode_dos_track(const std::vector<uint8_t>& dos, uint8_t track,
+                                       bool thirteen = false)
 {
     woz_bit_writer w{};
     constexpr uint8_t vol = 254;
-    for (uint8_t s = 0; s < 16u; ++s)
+    const uint8_t spt = thirteen ? 13u : 16u;
+    for (uint8_t s = 0; s < spt; ++s)
     {
-        const std::size_t off = (static_cast<std::size_t>(track) * 16u + s) * 256u;
+        uint8_t logical = 0;
+        while (!thirteen && dos_logical_to_physical(logical) != s)
+        {
+            ++logical;
+        }
+        const std::size_t off = (static_cast<std::size_t>(track) * 16u + logical) * 256u;
         for (unsigned i = 0; i < 20u; ++i)
         {
             w.put_byte(0xFFu);
         }
         w.put_byte(0xD5);
         w.put_byte(0xAA);
-        w.put_byte(0x96);
+        w.put_byte(thirteen ? 0xB5 : 0x96);
         put_4n4(w, vol);
         put_4n4(w, track);
         put_4n4(w, s);
@@ -104,11 +128,21 @@ inline woz_bit_writer encode_dos_track(const std::vector<uint8_t>& dos, uint8_t 
         w.put_byte(0xD5);
         w.put_byte(0xAA);
         w.put_byte(0xAD);
-        uint8_t nib[APPLE_GCR_NIBBLE_BYTES] = {};
-        apple_gcr_encode_sector(dos.data() + off, nib);
-        for (uint8_t b : nib)
+        if (thirteen)
         {
-            w.put_byte(b);
+            for (unsigned i = 0; i < 411u; ++i)
+            {
+                w.put_byte(0xABu); /* valid 5-and-3 disk nibble */
+            }
+        }
+        else
+        {
+            uint8_t nib[APPLE_GCR_NIBBLE_BYTES] = {};
+            apple_gcr_encode_sector(dos.data() + off, nib);
+            for (uint8_t b : nib)
+            {
+                w.put_byte(b);
+            }
         }
         w.put_byte(0xDE);
         w.put_byte(0xAA);
@@ -127,7 +161,7 @@ inline woz_bit_writer encode_dos_track(const std::vector<uint8_t>& dos, uint8_t 
  *
  * @param[in] dos 143360-byte DOS 3.3 (or DOS-order ProDOS) volume.
  */
-inline std::vector<uint8_t> dos_to_woz2(const std::vector<uint8_t>& dos)
+inline std::vector<uint8_t> dos_to_woz2(const std::vector<uint8_t>& dos, bool thirteen = false)
 {
     constexpr std::size_t k_need = dumpfloppy::k_apple_dos33_140k;
     if (dos.size() < k_need)
@@ -140,7 +174,7 @@ inline std::vector<uint8_t> dos_to_woz2(const std::vector<uint8_t>& dos)
     std::size_t max_blocks = 0;
     for (uint8_t t = 0; t < 35u; ++t)
     {
-        tracks.push_back(encode_dos_track(dos, t));
+        tracks.push_back(encode_dos_track(dos, t, thirteen));
         const std::size_t blocks = (tracks.back().bytes.size() + 511u) / 512u;
         if (blocks > max_blocks)
         {

@@ -37,15 +37,28 @@ namespace dumpfloppy
 [[nodiscard]] flux_disk assemble_stx(std::span<const uint8_t> data);
 
 /**
- * @brief Decode WOZ 5.25 6-and-2 tracks into a DOS-order 140K/160K image.
- *
- * Integer TMAP slots 0–39 are scanned for `D5 AA 96` / `D5 AA AD`. Address
- * field T/S is stored as DOS 3.3 order (track×16+sector)×256. 3.5-inch WOZ
- * and empty TMAP yield an empty vector.
- *
- * @param[in] data Whole WOZ1/WOZ2 file.
+ * @brief Address-field prolog counts seen while assembling a WOZ.
  */
-[[nodiscard]] std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data);
+struct woz_scan
+{
+    uint32_t addr16 = 0; /**< `D5 AA 96` (16-sector, 6-and-2). */
+    uint32_t addr13 = 0; /**< `D5 AA B5` (13-sector DOS 3.2, 5-and-3). */
+};
+
+/**
+ * @brief Decode WOZ 5.25 6-and-2 tracks into a physical-order 140K/160K image.
+ *
+ * Integer TMAP slots 0–39 are scanned for `D5 AA 96` / `D5 AA AD`. The
+ * address-field sector number is the physical sector, so the image is
+ * (track×16+physical)×256; use @ref apple_physical_order_to_dos or
+ * @ref apple_physical_order_to_prodos before parsing. 3.5-inch WOZ and an
+ * empty TMAP yield an empty vector.
+ *
+ * @param[in]  data Whole WOZ1/WOZ2 file.
+ * @param[out] scan Optional prolog counts (13-sector detection).
+ */
+[[nodiscard]] std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data,
+                                                woz_scan* scan = nullptr);
 
 /**
  * @brief Decode standard AmigaDOS sectors from an SPS IPF into a DD/HD ADF.

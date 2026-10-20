@@ -219,7 +219,7 @@ foreign_disk parse_stx(std::span<const uint8_t> data)
 foreign_disk parse_2img(std::span<const uint8_t> data)
 {
     foreign_disk out{};
-    if (data.size() < 30u || !magic4(data, "2IMG"))
+    if (data.size() < 0x20u || !magic4(data, "2IMG"))
     {
         return out;
     }
@@ -230,9 +230,47 @@ foreign_disk parse_2img(std::span<const uint8_t> data)
     char creator[5]{};
     std::memcpy(creator, data.data() + 4, 4u);
     out.creator = creator;
-    const uint16_t fmt = le16(data, 12);
-    out.data_offset = le32(data, 22);
-    out.data_length = le32(data, 26);
+    /* 2IMG header: +0x0C format (LE32), +0x10 flags, +0x14 ProDOS block
+     * count, +0x18 data offset, +0x1C data length (all LE32). */
+    if (data.size() < 0x20u)
+    {
+        out.note = "2IMG prefix truncated";
+        return out;
+    }
+    const uint32_t fmt = le32(data, 0x0C);
+    out.img2mg_format = fmt;
+    out.data_offset = le32(data, 0x18);
+    out.data_length = le32(data, 0x1C);
+    const unsigned hdr_len = le16(data, 0x08);
+    if (hdr_len < 0x40u || hdr_len > out.data_offset)
+    {
+        out.problems.push_back("2IMG header length " + std::to_string(hdr_len) +
+                               " is invalid (must be >= 64 and <= data offset " +
+                               std::to_string(out.data_offset) + ")");
+    }
+    if (out.data_offset > data.size())
+    {
+        out.problems.push_back("2IMG data offset " + std::to_string(out.data_offset) +
+                               " is past the end of the file");
+    }
+    else if (out.data_length == 0u ||
+             out.data_length > data.size() - out.data_offset)
+    {
+        out.problems.push_back("2IMG data length " + std::to_string(out.data_length) +
+                               " does not fit the file (" +
+                               std::to_string(data.size() - out.data_offset) +
+                               " bytes after the offset); payload truncated");
+    }
+    if (fmt == 1u)
+    {
+        const uint32_t blocks = le32(data, 0x14);
+        if (blocks != 0u && static_cast<uint64_t>(blocks) * 512u != out.data_length)
+        {
+            out.problems.push_back("2IMG block count " + std::to_string(blocks) +
+                                   " disagrees with data length " +
+                                   std::to_string(out.data_length));
+        }
+    }
     if (fmt == 0u)
     {
         out.note = "2IMG DOS 3.3 payload; catalog not decoded in this version";
@@ -501,6 +539,7 @@ namespace
 
 constexpr uint8_t k_woz_addr_pro[3] = {0xD5u, 0xAAu, 0x96u};
 constexpr uint8_t k_woz_data_pro[3] = {0xD5u, 0xAAu, 0xADu};
+constexpr uint8_t k_woz_addr_13[3] = {0xD5u, 0xAAu, 0xB5u};
 constexpr uint8_t k_woz_max_track = 40u;
 constexpr uint8_t k_woz_spt = 16u;
 constexpr std::size_t k_woz1_track_bytes = 6656u;
@@ -646,7 +685,36 @@ void decode_woz_gcr_track(std::span<const uint8_t> bits, std::size_t nbits,
 
 } /* namespace */
 
-std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data)
+namespace
+{
+
+/** @brief Count 13- and 16-sector address prologs over one revolution. */
+void scan_woz_prologs(std::span<const uint8_t> bits, std::size_t nbits, woz_scan& scan)
+{
+    if (bits.empty() || nbits < 48u || (nbits + 7u) / 8u > bits.size())
+    {
+        return;
+    }
+    for (std::size_t b = 0; b < nbits; ++b)
+    {
+        if (!woz_track_bit(bits, nbits, b))
+        {
+            continue; /* a nibble starts with a 1 bit */
+        }
+        if (woz_match3(bits, nbits, b, k_woz_addr_13))
+        {
+            ++scan.addr13;
+        }
+        else if (woz_match3(bits, nbits, b, k_woz_addr_pro))
+        {
+            ++scan.addr16;
+        }
+    }
+}
+
+} /* namespace */
+
+std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data, woz_scan* scan)
 {
     if (data.size() < 16u)
     {
@@ -753,6 +821,10 @@ std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data)
                 continue;
             }
             bits = std::span<const uint8_t>(rec, need);
+        }
+        if (scan != nullptr)
+        {
+            scan_woz_prologs(bits, nbits, *scan);
         }
         decode_woz_gcr_track(bits, nbits, image, have_ok);
     }

@@ -16,6 +16,8 @@
 #include "ipf_builder.hpp"
 #include "woz_builder.hpp"
 
+#include "prodos_builder.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
@@ -104,8 +106,8 @@ std::vector<uint8_t> make_2img()
     std::memcpy(img.data() + 4, "B2TR", 4);
     img[8] = 64;
     img[12] = 1; /* ProDOS */
-    put_le32(img, 22, 64u);
-    put_le32(img, 26, 0u);
+    put_le32(img, 0x18, 64u);
+    put_le32(img, 0x1C, 0u);
     return img;
 }
 
@@ -194,27 +196,6 @@ std::vector<uint8_t> make_dos33_140k()
     img[data + 1u] = 'I';
     img[data + 2u] = '!';
     return img;
-}
-
-std::vector<uint8_t> prodos_to_dos_order(const std::vector<uint8_t>& po)
-{
-    constexpr std::size_t k_track = 16u * 256u;
-    static constexpr uint8_t k_prodos_from_dos[16] = {
-        0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
-    std::vector<uint8_t> dos(po.size(), 0);
-    const std::size_t tracks = po.size() / k_track;
-    for (std::size_t t = 0; t < tracks; ++t)
-    {
-        const std::size_t base = t * k_track;
-        for (unsigned s = 0; s < 16u; ++s)
-        {
-            const std::size_t src = base + static_cast<std::size_t>(s) * 256u;
-            const std::size_t dst =
-                base + static_cast<std::size_t>(k_prodos_from_dos[s]) * 256u;
-            std::memcpy(dos.data() + dst, po.data() + src, 256u);
-        }
-    }
-    return dos;
 }
 
 std::vector<uint8_t> make_prodos_140k()
@@ -433,7 +414,7 @@ TEST_CASE("update refuses WOZ Apple volumes", "[foreign][woz][update]")
 TEST_CASE("WOZ 6-and-2 ProDOS lists seedling HELLO", "[foreign][woz][prodos]")
 {
     const auto po = make_prodos_140k();
-    const auto dos = prodos_to_dos_order(po);
+    const auto dos = prodos_test::to_dos_order(po);
     const auto woz = dumpfloppy_test::dos_to_woz2(dos);
     const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(woz, "t.woz"));
     REQUIRE(a.apple.present);
