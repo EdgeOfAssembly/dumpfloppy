@@ -311,6 +311,15 @@ int main(int argc, char** argv)
             continue;
         }
         dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
+        if (!a.unsupported.empty())
+        {
+            if (!cli.extract.enabled)
+            {
+                std::cerr << "dumpfloppy: '" << files[i].string()
+                          << "': unsupported: " << a.unsupported << '\n';
+            }
+            rc = 1;
+        }
         if (a.directory_capped)
         {
             std::cerr << "dumpfloppy: '" << files[i].string()

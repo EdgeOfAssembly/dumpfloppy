@@ -539,6 +539,7 @@ namespace
 
 constexpr uint8_t k_woz_addr_pro[3] = {0xD5u, 0xAAu, 0x96u};
 constexpr uint8_t k_woz_data_pro[3] = {0xD5u, 0xAAu, 0xADu};
+constexpr uint8_t k_woz_addr_13[3] = {0xD5u, 0xAAu, 0xB5u};
 constexpr uint8_t k_woz_max_track = 40u;
 constexpr uint8_t k_woz_spt = 16u;
 constexpr std::size_t k_woz1_track_bytes = 6656u;
@@ -684,7 +685,36 @@ void decode_woz_gcr_track(std::span<const uint8_t> bits, std::size_t nbits,
 
 } /* namespace */
 
-std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data)
+namespace
+{
+
+/** @brief Count 13- and 16-sector address prologs over one revolution. */
+void scan_woz_prologs(std::span<const uint8_t> bits, std::size_t nbits, woz_scan& scan)
+{
+    if (bits.empty() || nbits < 48u || (nbits + 7u) / 8u > bits.size())
+    {
+        return;
+    }
+    for (std::size_t b = 0; b < nbits; ++b)
+    {
+        if (!woz_track_bit(bits, nbits, b))
+        {
+            continue; /* a nibble starts with a 1 bit */
+        }
+        if (woz_match3(bits, nbits, b, k_woz_addr_13))
+        {
+            ++scan.addr13;
+        }
+        else if (woz_match3(bits, nbits, b, k_woz_addr_pro))
+        {
+            ++scan.addr16;
+        }
+    }
+}
+
+} /* namespace */
+
+std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data, woz_scan* scan)
 {
     if (data.size() < 16u)
     {
@@ -791,6 +821,10 @@ std::vector<uint8_t> assemble_woz(std::span<const uint8_t> data)
                 continue;
             }
             bits = std::span<const uint8_t>(rec, need);
+        }
+        if (scan != nullptr)
+        {
+            scan_woz_prologs(bits, nbits, *scan);
         }
         decode_woz_gcr_track(bits, nbits, image, have_ok);
     }

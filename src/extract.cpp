@@ -1022,6 +1022,11 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
             << " block image has no DOS 3.3 or ProDOS catalog to extract\n";
         return -1;
     }
+    if (!a.unsupported.empty())
+    {
+        err << "dumpfloppy: cannot extract: " << a.unsupported << '\n';
+        return -1;
+    }
     if (a.foreign.present && a.flux.assembled_chs.empty())
     {
         err << "dumpfloppy: cannot extract " << a.foreign.format

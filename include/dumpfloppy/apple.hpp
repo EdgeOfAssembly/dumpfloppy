@@ -88,6 +88,15 @@ enum class apple_order : uint8_t
     std::span<const uint8_t> physical);
 
 /**
+ * @brief Rearrange a physical-sector-order image into DOS 3.3 sector order:
+ *        DOS logical sector L is physical {0,13,11,9,7,5,3,1,14,12,10,8,6,4,2,15}[L].
+ *
+ * @param[in] physical Image whose size is a multiple of 16×256.
+ */
+[[nodiscard]] std::vector<uint8_t> apple_physical_order_to_dos(
+    std::span<const uint8_t> physical);
+
+/**
  * @brief Host extract name (spaces stripped; `/` flattened).
  *
  * @param[in] file Directory slot.

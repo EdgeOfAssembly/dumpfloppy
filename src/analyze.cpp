@@ -282,17 +282,24 @@ analysis analyse(floppy_image image)
     }
     if (a.foreign.kind == foreign_kind::woz)
     {
-        const std::vector<uint8_t> vol = assemble_woz(bytes);
-        if (!vol.empty())
+        woz_scan scan{};
+        const std::vector<uint8_t> vol = assemble_woz(bytes, &scan);
+        if (scan.addr13 != 0u && scan.addr16 == 0u)
         {
-            a.apple = parse_apple(vol);
-            if (!a.apple.present)
+            a.unsupported = "13-sector DOS 3.2 disk (D5 AA B5 address fields, 5-and-3 GCR); "
+                            "not decoded in this version";
+            a.foreign.note = "5.25-inch Apple II WOZ; " + a.unsupported;
+            a.foreign.problems.push_back(a.unsupported);
+        }
+        else if (!vol.empty())
+        {
+            /* WOZ address fields carry physical sector numbers. */
+            const std::vector<uint8_t> dos = apple_physical_order_to_dos(vol);
+            a.apple = parse_apple(dos);
+            if (!a.apple.present || a.apple.fs != apple_fs::dos33)
             {
                 const std::vector<uint8_t> po = apple_physical_order_to_prodos(vol);
-                if (!po.empty())
-                {
-                    a.apple = parse_apple(po);
-                }
+                a.apple = po.empty() ? apple_disk{} : parse_apple(po);
             }
             if (a.apple.present)
             {

@@ -752,6 +752,15 @@ std::vector<uint8_t> apple_dos_order_to_prodos(std::span<const uint8_t> dos_orde
     return remap_tracks(dos_order, k_prodos_from_dos);
 }
 
+std::vector<uint8_t> apple_physical_order_to_dos(std::span<const uint8_t> physical)
+{
+    /* DOS 3.3 logical sector L sits at physical sector 13L mod 15 (L<15), 15:
+     * {0,13,11,9,7,5,3,1,14,12,10,8,6,4,2,15} (Beneath Apple DOS). */
+    static constexpr uint8_t k_dos_from_phys[16] = {
+        0, 13, 11, 9, 7, 5, 3, 1, 14, 12, 10, 8, 6, 4, 2, 15};
+    return remap_tracks(physical, k_dos_from_phys);
+}
+
 std::vector<uint8_t> apple_physical_order_to_prodos(std::span<const uint8_t> physical)
 {
     /* ProDOS logical sector s sits at physical sector 2s mod 15 (odd after 7). */
