@@ -58,6 +58,7 @@ struct apple_disk
     uint8_t sectors_per_track = 0;
     bool dos_order = false;    /**< ProDOS volume read from a DOS-order (.do/.dsk) image. */
     std::vector<apple_file> entries{};
+    std::vector<std::string> problems{}; /**< Volume damage (truncated payload…); -x exits nonzero. */
     std::vector<uint8_t> volume{};
 };
 

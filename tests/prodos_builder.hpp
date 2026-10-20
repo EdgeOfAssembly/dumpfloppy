@@ -309,17 +309,30 @@ private:
     std::vector<dir_info> dirs_{};
 };
 
-/** @brief Inverse of dumpfloppy::apple_dos_order_to_prodos (ProDOS → DOS order). */
+/**
+ * @brief ProDOS-order image to DOS 3.3 sector order.
+ *
+ * Derived independently of src/apple.cpp from the two physical skews:
+ * DOS 3.3 logical d sits at physical {0,13,11,9,7,5,3,1,14,12,10,8,6,4,2,15}[d]
+ * (Beneath Apple DOS), ProDOS logical p at physical 2p mod 15 (p<15), 15.
+ * DOS sector d therefore holds the ProDOS sector with the same physical slot.
+ */
 inline std::vector<uint8_t> to_dos_order(const std::vector<uint8_t>& po)
 {
-    static constexpr uint8_t k_map[16] = {0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+    static constexpr uint8_t k_dos_phys[16] = {0, 13, 11, 9, 7, 5, 3, 1, 14, 12, 10, 8, 6, 4, 2, 15};
+    auto prodos_phys = [](unsigned p) -> unsigned { return p == 15u ? 15u : (2u * p) % 15u; };
     std::vector<uint8_t> dos(po.size(), 0);
     for (std::size_t base = 0; base + 4096u <= po.size(); base += 4096u)
     {
-        for (unsigned s = 0; s < 16u; ++s)
+        for (unsigned d = 0; d < 16u; ++d)
         {
-            std::memcpy(dos.data() + base + static_cast<std::size_t>(k_map[s]) * 256u,
-                        po.data() + base + static_cast<std::size_t>(s) * 256u, 256u);
+            unsigned p = 0;
+            while (prodos_phys(p) != k_dos_phys[d])
+            {
+                ++p;
+            }
+            std::memcpy(dos.data() + base + static_cast<std::size_t>(d) * 256u,
+                        po.data() + base + static_cast<std::size_t>(p) * 256u, 256u);
         }
     }
     return dos;

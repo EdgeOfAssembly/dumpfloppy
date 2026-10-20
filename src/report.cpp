@@ -507,6 +507,10 @@ void write_foreign_sections(const analysis& a, std::ostream& out,
     {
         kv(out, "Note", a.foreign.note);
     }
+    for (const std::string& m : a.foreign.problems)
+    {
+        kv(out, "Warning", m);
+    }
     out << '\n';
 }
 
@@ -584,6 +588,10 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     {
         kv(out, "Blocks", std::to_string(a.apple.total_blocks));
     }
+    for (const std::string& m : a.apple.problems)
+    {
+        kv(out, "Warning", m);
+    }
     if (a.apple.fs == apple_fs::prodos)
     {
         kv(out, "Sector order", a.apple.dos_order ? "DOS 3.3 (remapped to ProDOS blocks)"
@@ -601,6 +609,7 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     out << '\n';
     size_t shown = 0;
     size_t deleted_n = 0;
+    size_t damaged_n = 0;
     for (const apple_file& e : a.apple.entries)
     {
         if (e.deleted)
@@ -611,7 +620,9 @@ void write_apple_sections(const analysis& a, std::ostream& out,
                 continue;
             }
         }
-        const std::vector<uint8_t> payload = read_apple_file(a.apple, e);
+        apple_read_issues issues{};
+        const std::vector<uint8_t> payload = read_apple_file(a.apple, e, &issues);
+        damaged_n += issues.errors.empty() ? 0u : 1u;
         const uint32_t size = static_cast<uint32_t>(payload.size());
         const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
         const std::string line = apple_entry_line(e, size, sum, prodos, name_w);
@@ -630,6 +641,11 @@ void write_apple_sections(const analysis& a, std::ostream& out,
         out << "  (no Apple directory entries)\n";
     }
     out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
+    if (damaged_n != 0u)
+    {
+        out << "  Warning: " << damaged_n
+            << " file(s) reference blocks past the end of the volume (read as zeros)\n";
+    }
     out << '\n';
 }
 

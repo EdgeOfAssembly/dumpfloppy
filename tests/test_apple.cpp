@@ -232,8 +232,10 @@ TEST_CASE("DOS-order to ProDOS-order exposes block-2 header", "[apple][prodos]")
     REQUIRE(dumpfloppy::parse_apple(po).fs == dumpfloppy::apple_fs::prodos);
 
     std::vector<uint8_t> dos(po.size(), 0);
+    /* Inverse of the ProDOS<-DOS table, written out by hand:
+     * ProDOS sector s is DOS sector {0,14,13,...,1,15}[s]. */
     static constexpr uint8_t k_map[16] = {
-        0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+        0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 15};
     constexpr std::size_t k_track = 16u * 256u;
     const std::size_t tracks = po.size() / k_track;
     for (std::size_t t = 0; t < tracks; ++t)

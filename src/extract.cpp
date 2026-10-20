@@ -833,6 +833,9 @@ int extract_trd_files(const analysis& a, const extract_options& opt, std::ostrea
     return written;
 }
 
+/** @brief Apple -x stops once output reaches this many times the volume size. */
+constexpr std::size_t k_extract_budget_factor = 4u;
+
 bool apple_extract_matches(const apple_file& file, const extract_options& opt)
 {
     if (opt.patterns.empty())
@@ -863,6 +866,20 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
     int matched = 0;
     bool failed = false;
     std::unordered_set<std::string> used_dests;
+    bool damaged = false;
+    for (const std::string& m : a.foreign.problems)
+    {
+        err << "dumpfloppy: warning: " << m << '\n';
+        damaged = true;
+    }
+    for (const std::string& m : a.apple.problems)
+    {
+        err << "dumpfloppy: warning: " << m << '\n';
+        damaged = true;
+    }
+    /* Legitimate files never share blocks, so the sum of all outputs cannot
+     * exceed the volume; a generous multiple still stops cross-link bombs. */
+    std::size_t budget = k_extract_budget_factor * std::max<std::size_t>(a.apple.volume.size(), 1u) + 1u;
     for (const apple_file& file : a.apple.entries)
     {
         if (file.storage == 0x0Du)
@@ -894,7 +911,25 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
                 << host << "'\n";
             continue;
         }
-        const std::vector<uint8_t> bytes = read_apple_file(a.apple, file);
+        apple_read_issues issues{};
+        const std::vector<uint8_t> bytes = read_apple_file(a.apple, file, &issues);
+        for (const std::string& m : issues.errors)
+        {
+            err << "dumpfloppy: warning: " << file.name << ": " << m << '\n';
+            damaged = true;
+        }
+        for (const std::string& m : issues.notes)
+        {
+            err << "dumpfloppy: note: " << file.name << ": " << m << '\n';
+        }
+        budget = bytes.size() > budget ? 0u : budget - bytes.size();
+        if (budget == 0u)
+        {
+            err << "dumpfloppy: warning: extract output exceeds " << k_extract_budget_factor
+                << "x the image size; stopping at '" << file.name << "'\n";
+            damaged = true;
+            break;
+        }
         const int placed = write_exclusive_bytes(dest, bytes, err);
         if (placed < 0)
         {
@@ -915,6 +950,11 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
     }
     if (failed)
     {
+        return -1;
+    }
+    if (damaged)
+    {
+        err << "dumpfloppy: " << written << " file(s) written from a damaged Apple volume\n";
         return -1;
     }
     return written;
@@ -974,6 +1014,10 @@ int extract_files(const analysis& a, const extract_options& opt, std::ostream& e
     }
     if (a.foreign.kind == foreign_kind::img2mg && a.foreign.img2mg_format <= 1u)
     {
+        for (const std::string& m : a.foreign.problems)
+        {
+            err << "dumpfloppy: warning: " << m << '\n';
+        }
         err << "dumpfloppy: 2IMG " << (a.foreign.img2mg_format == 0u ? "DOS-order" : "ProDOS-order")
             << " block image has no DOS 3.3 or ProDOS catalog to extract\n";
         return -1;

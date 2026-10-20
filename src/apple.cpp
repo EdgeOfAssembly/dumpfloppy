@@ -451,7 +451,8 @@ apple_disk parse_prodos(std::span<const uint8_t> data)
     {
         return disk;
     }
-    if (h[0x1F] != 0x27u || h[0x20] != 0x0Du)
+    /* Volume directory key block: prev pointer 0, entry length $27, 13 per block. */
+    if (le16(key, 0) != 0u || h[0x1F] != 0x27u || h[0x20] != 0x0Du)
     {
         return disk;
     }
@@ -531,89 +532,142 @@ uint16_t index_ptr(std::span<const uint8_t> idx, std::size_t i)
 }
 
 /**
- * @brief Copy one data block into @p out at @p off; pointer 0 stays sparse.
+ * @brief One fork read: tracks the end of real data and bad pointers.
+ *
+ * Output is never larger than the volume itself, and trailing sparse
+ * space past the last allocated block is trimmed, so a hostile EOF
+ * cannot amplify a small image into gigabytes on -x.
  */
-void place_block(const apple_disk& disk, uint16_t blk, std::size_t off,
-                 std::vector<uint8_t>& out)
+struct prodos_reader
 {
-    if (blk == 0u || off >= out.size())
-    {
-        return;
-    }
-    const auto b = prodos_block(disk.volume, blk);
-    if (b.empty())
-    {
-        return;
-    }
-    const std::size_t n = std::min<std::size_t>(b.size(), out.size() - off);
-    std::memcpy(out.data() + off, b.data(), n);
-}
+    const apple_disk& disk;
+    std::vector<uint8_t>& out;
+    std::size_t hi = 0;        /* end of last present data block */
+    unsigned bad_ptrs = 0;     /* pointers past the end of the volume */
+    unsigned bad_index = 0;    /* index blocks past the end */
 
-/** @brief Fill @p out from a sapling index block (256 pointers). */
-void place_index(const apple_disk& disk, uint16_t index_blk, std::size_t base,
-                 std::vector<uint8_t>& out)
-{
-    if (index_blk == 0u || base >= out.size())
+    [[nodiscard]] std::size_t blocks() const
     {
-        return;
+        return disk.volume.size() / k_apple_prodos_block;
     }
-    const auto idx = prodos_block(disk.volume, index_blk);
-    if (idx.size() < k_apple_prodos_block)
+
+    void data(uint16_t blk, std::size_t off)
     {
-        return;
-    }
-    for (std::size_t i = 0; i < 256u; ++i)
-    {
-        const std::size_t off = base + i * k_apple_prodos_block;
-        if (off >= out.size())
+        if (blk == 0u || off >= out.size())
         {
-            break;
+            return;
         }
-        place_block(disk, index_ptr(idx, i), off, out);
+        if (blk >= blocks())
+        {
+            ++bad_ptrs;
+            return;
+        }
+        const auto b = prodos_block(disk.volume, blk);
+        const std::size_t n = std::min<std::size_t>(b.size(), out.size() - off);
+        std::memcpy(out.data() + off, b.data(), n);
+        hi = std::max(hi, off + n);
     }
-}
 
-std::vector<uint8_t> read_prodos(const apple_disk& disk, const apple_file& file)
+    void index(uint16_t index_blk, std::size_t base)
+    {
+        if (index_blk == 0u || base >= out.size())
+        {
+            return;
+        }
+        if (index_blk >= blocks())
+        {
+            ++bad_index;
+            return;
+        }
+        const auto idx = prodos_block(disk.volume, index_blk);
+        for (std::size_t i = 0; i < 256u; ++i)
+        {
+            const std::size_t off = base + i * k_apple_prodos_block;
+            if (off >= out.size())
+            {
+                break;
+            }
+            data(index_ptr(idx, i), off);
+        }
+    }
+};
+
+std::vector<uint8_t> read_prodos(const apple_disk& disk, const apple_file& file,
+                                 apple_read_issues* issues)
 {
-    if (file.storage == 0x0Du || file.key == 0u ||
-        file.byte_size > k_prodos_max_eof)
+    auto error = [&](std::string msg)
+    {
+        if (issues != nullptr)
+        {
+            issues->errors.push_back(std::move(msg));
+        }
+    };
+    auto note = [&](std::string msg)
+    {
+        if (issues != nullptr)
+        {
+            issues->notes.push_back(std::move(msg));
+        }
+    };
+    if (file.storage == 0x0Du || file.key == 0u)
     {
         return {};
     }
     if (file.storage < 1u || file.storage > 3u)
     {
+        if (!file.deleted)
+        {
+            error("unsupported storage type " + std::to_string(file.storage));
+        }
         return {};
     }
-    /* Sparse blocks (pointer 0) read as zeros, as ProDOS returns them. */
-    std::vector<uint8_t> out(file.byte_size, 0);
+    const std::size_t vol_bytes = disk.volume.size();
+    if (file.key >= vol_bytes / k_apple_prodos_block)
+    {
+        error("key block " + std::to_string(file.key) + " is past the end of the volume (" +
+              std::to_string(vol_bytes / k_apple_prodos_block) + " blocks)");
+        return {};
+    }
+    std::size_t want = std::min<std::size_t>(file.byte_size, k_prodos_max_eof);
+    if (want > vol_bytes)
+    {
+        error("EOF " + std::to_string(file.byte_size) + " exceeds the volume size " +
+              std::to_string(vol_bytes) + "; output capped");
+        want = vol_bytes;
+    }
+    std::vector<uint8_t> out(want, 0);
+    prodos_reader r{disk, out};
     if (file.storage == 0x01u)
     {
-        place_block(disk, file.key, 0, out);
+        r.data(file.key, 0);
     }
     else if (file.storage == 0x02u)
     {
-        place_index(disk, file.key, 0, out);
+        r.index(file.key, 0);
     }
     else
     {
         const auto master = prodos_block(disk.volume, file.key);
-        if (master.size() < k_apple_prodos_block)
-        {
-            return {};
-        }
         constexpr std::size_t k_span = 256u * k_apple_prodos_block;
-        for (std::size_t i = 0; i < 128u; ++i)
+        for (std::size_t i = 0; i < 128u && i * k_span < out.size(); ++i)
         {
-            const std::size_t base = i * k_span;
-            if (base >= out.size())
-            {
-                break;
-            }
-            place_index(disk, index_ptr(master, i), base, out);
+            r.index(index_ptr(master, i), i * k_span);
         }
+    }
+    if (r.bad_ptrs != 0u || r.bad_index != 0u)
+    {
+        error(std::to_string(r.bad_ptrs) + " data and " + std::to_string(r.bad_index) +
+              " index block pointer(s) are out of range; those bytes read as zeros");
+    }
+    if (r.hi < out.size())
+    {
+        note("EOF " + std::to_string(file.byte_size) +
+             " runs past the last allocated block; trimmed to " + std::to_string(r.hi));
+        out.resize(r.hi);
     }
     return out;
 }
+
 } /* namespace */
 
 apple_disk parse_apple_ordered(std::span<const uint8_t> data, apple_order order)
@@ -629,7 +683,6 @@ apple_disk parse_apple_ordered(std::span<const uint8_t> data, apple_order order)
         if (d.present)
         {
             d.dos_order = true;
-            d.fs_name = "ProDOS";
         }
         return d;
     };
@@ -638,13 +691,16 @@ apple_disk parse_apple_ordered(std::span<const uint8_t> data, apple_order order)
     {
         return dos;
     }
+    /* A 140K image's extension is not trusted: both orders are tried and the
+     * one whose block 2 is a valid volume directory header wins. */
+    const bool both = order == apple_order::unknown || data.size() == k_apple_dos33_140k;
     if (order == apple_order::dos)
     {
         apple_disk d = remapped();
-        return d.present ? d : parse_prodos(data);
+        return (d.present || !both) ? d : parse_prodos(data);
     }
     apple_disk d = parse_prodos(data);
-    if (d.present || order == apple_order::prodos)
+    if (d.present || !both)
     {
         return d;
     }
@@ -661,30 +717,47 @@ apple_disk parse_apple(std::span<const uint8_t> data)
     return parse_prodos(data);
 }
 
-std::vector<uint8_t> apple_dos_order_to_prodos(std::span<const uint8_t> dos_order)
+namespace
+{
+
+/** @brief po[s] = in[map[s]] for each 16-sector track. */
+std::vector<uint8_t> remap_tracks(std::span<const uint8_t> in, const uint8_t (&map)[16])
 {
     constexpr std::size_t k_track = 16u * k_apple_dos_sector;
-    /* ProDOS block 0 is DOS S0+S2; even DOS sectors then odds. */
-    static constexpr uint8_t k_prodos_from_dos[16] = {
-        0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
-    if (dos_order.size() < k_track || (dos_order.size() % k_track) != 0u)
+    if (in.size() < k_track || (in.size() % k_track) != 0u)
     {
         return {};
     }
-    std::vector<uint8_t> po(dos_order.size(), 0);
-    const std::size_t tracks = dos_order.size() / k_track;
-    for (std::size_t t = 0; t < tracks; ++t)
+    std::vector<uint8_t> po(in.size(), 0);
+    for (std::size_t base = 0; base < in.size(); base += k_track)
     {
-        const std::size_t base = t * k_track;
         for (unsigned s = 0; s < 16u; ++s)
         {
-            const std::size_t src = base + static_cast<std::size_t>(k_prodos_from_dos[s]) *
-                                               k_apple_dos_sector;
-            const std::size_t dst = base + static_cast<std::size_t>(s) * k_apple_dos_sector;
-            std::memcpy(po.data() + dst, dos_order.data() + src, k_apple_dos_sector);
+            std::memcpy(po.data() + base + static_cast<std::size_t>(s) * k_apple_dos_sector,
+                        in.data() + base + static_cast<std::size_t>(map[s]) * k_apple_dos_sector,
+                        k_apple_dos_sector);
         }
     }
     return po;
+}
+
+} /* namespace */
+
+std::vector<uint8_t> apple_dos_order_to_prodos(std::span<const uint8_t> dos_order)
+{
+    /* ProDOS-order sector s of a track is DOS-order sector k[s]: block 0 is
+     * DOS sectors 0+14, block 7 is DOS 1+15 (Beneath Apple ProDOS). */
+    static constexpr uint8_t k_prodos_from_dos[16] = {
+        0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 15};
+    return remap_tracks(dos_order, k_prodos_from_dos);
+}
+
+std::vector<uint8_t> apple_physical_order_to_prodos(std::span<const uint8_t> physical)
+{
+    /* ProDOS logical sector s sits at physical sector 2s mod 15 (odd after 7). */
+    static constexpr uint8_t k_prodos_from_phys[16] = {
+        0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15};
+    return remap_tracks(physical, k_prodos_from_phys);
 }
 
 std::string apple_host_filename(const apple_file& file)
@@ -700,7 +773,8 @@ std::string apple_host_filename(const apple_file& file)
     return stem;
 }
 
-std::vector<uint8_t> read_apple_file(const apple_disk& disk, const apple_file& file)
+std::vector<uint8_t> read_apple_file(const apple_disk& disk, const apple_file& file,
+                                     apple_read_issues* issues)
 {
     if (disk.fs == apple_fs::dos33)
     {
@@ -708,7 +782,7 @@ std::vector<uint8_t> read_apple_file(const apple_disk& disk, const apple_file& f
     }
     if (disk.fs == apple_fs::prodos)
     {
-        return read_prodos(disk, file);
+        return read_prodos(disk, file, issues);
     }
     return {};
 }

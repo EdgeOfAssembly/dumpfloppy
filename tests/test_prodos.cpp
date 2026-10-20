@@ -14,7 +14,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -261,7 +263,7 @@ TEST_CASE("ProDOS directory loops and bad pointers stay bounded", "[prodos][robu
     REQUIRE(d.present);
     REQUIRE(d.entries.size() == 2u);
 
-    /* A file whose key/index point past the volume reads as zeros, not OOB. */
+    /* A key block past the volume is reported, never read out of bounds. */
     prodos_test::volume w(280, "BAD");
     w.add_file(w.root(), "BIG", 0x06, 0, pattern(3000, 2));
     auto bad = w.image();
@@ -270,6 +272,194 @@ TEST_CASE("ProDOS directory loops and bad pointers stay bounded", "[prodos][robu
     bad[e + 0x12u] = 0xFF;
     const auto bd = dumpfloppy::parse_apple(bad);
     REQUIRE(bd.entries.size() == 1u);
-    const auto p = dumpfloppy::read_apple_file(bd, bd.entries[0]);
-    REQUIRE(p.size() == 3000u);
+    dumpfloppy::apple_read_issues iss{};
+    const auto p = dumpfloppy::read_apple_file(bd, bd.entries[0], &iss);
+    REQUIRE(p.empty());
+    REQUIRE_FALSE(iss.errors.empty());
+}
+
+namespace
+{
+
+/** @brief Small 140K volume used by the review repros. */
+std::vector<uint8_t> make_140k()
+{
+    prodos_test::volume v(280, "SMALL");
+    v.add_file(v.root(), "HELLO", 0x04, 0, pattern(700, 21));
+    const int sub = v.add_subdir(v.root(), "DOCS");
+    v.add_file(sub, "NOTE", 0x04, 0, pattern(9000, 22));
+    return v.image();
+}
+
+int extract_to(const dumpfloppy::analysis& a, const char* leaf, std::string& err_out)
+{
+    const auto dest = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / leaf;
+    std::filesystem::remove_all(dest);
+    std::filesystem::create_directories(dest);
+    dumpfloppy::extract_options opt{};
+    opt.enabled = true;
+    opt.dest_dir = dest;
+    std::ostringstream err;
+    const int rc = dumpfloppy::extract_files(a, opt, err);
+    err_out = err.str();
+    return rc;
+}
+
+std::uintmax_t dir_bytes(const char* leaf)
+{
+    std::uintmax_t n = 0;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(
+             std::filesystem::temp_directory_path() / "dumpfloppy-tests" / leaf))
+    {
+        if (e.is_regular_file())
+        {
+            n += e.file_size();
+        }
+    }
+    return n;
+}
+
+} /* namespace */
+
+TEST_CASE("review repro dos_order_prodos: DOS-order 140K ProDOS decodes", "[prodos][order][review]")
+{
+    const auto po = make_140k();
+    const auto dos = prodos_test::to_dos_order(po);
+    /* Known layout, stated without any table: ProDOS block 0 is DOS
+     * sectors 0 and 14 of track 0; block 7 is DOS sectors 1 and 15. */
+    REQUIRE(std::equal(po.begin() + 256, po.begin() + 512, dos.begin() + 14 * 256));
+    REQUIRE(std::equal(po.begin() + 7 * 512, po.begin() + 7 * 512 + 256, dos.begin() + 256));
+    REQUIRE(std::equal(po.begin() + 7 * 512 + 256, po.begin() + 8 * 512, dos.begin() + 15 * 256));
+    /* Block 2 (volume dir) is DOS sectors 11 and 10 of track 0. */
+    REQUIRE(std::equal(po.begin() + 1024, po.begin() + 1280, dos.begin() + 11 * 256));
+    REQUIRE(std::equal(po.begin() + 1280, po.begin() + 1536, dos.begin() + 10 * 256));
+
+    for (const char* name : {"t.do", "t.dsk", "t.po", "t.img"})
+    {
+        INFO(name);
+        const auto a = dumpfloppy::analyse(wrap(dos, name));
+        REQUIRE(a.apple.present);
+        REQUIRE(a.apple.dos_order);
+        const auto* note = find(a.apple, "DOCS/NOTE");
+        REQUIRE(note != nullptr);
+        REQUIRE(dumpfloppy::read_apple_file(a.apple, *note) == pattern(9000, 22));
+    }
+    /* A ProDOS-order image named .dsk/.do is not remapped. */
+    for (const char* name : {"t.dsk", "t.do"})
+    {
+        const auto a = dumpfloppy::analyse(wrap(po, name));
+        REQUIRE(a.apple.present);
+        REQUIRE_FALSE(a.apple.dos_order);
+    }
+    const auto mg = dumpfloppy::analyse(wrap(prodos_test::wrap_2img(dos, 0), "t.2mg"));
+    REQUIRE(mg.apple.present);
+    REQUIRE(mg.apple.dos_order);
+    std::string err;
+    REQUIRE(extract_to(mg, "prodos-do", err) == 2);
+    REQUIRE(slurp(std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "prodos-do" /
+                  "DOCS_NOTE") == pattern(9000, 22));
+}
+
+TEST_CASE("review repro eof_amplification: huge EOFs cannot amplify -x", "[prodos][extract][review]")
+{
+    /* Like the reviewer's amp.py: every entry is a seedling, key 7, EOF $FFFFFF. */
+    std::vector<uint8_t> d(280u * 512u, 0);
+    const uint16_t chain[4] = {2, 3, 4, 5};
+    for (int bi = 0; bi < 4; ++bi)
+    {
+        uint8_t* b = d.data() + chain[bi] * 512u;
+        b[0] = static_cast<uint8_t>(bi == 0 ? 0 : chain[bi - 1]);
+        b[2] = static_cast<uint8_t>(bi == 3 ? 0 : chain[bi + 1]);
+        for (int i = 0; i < 13; ++i)
+        {
+            uint8_t* e = b + 4 + i * 0x27;
+            if (bi == 0 && i == 0)
+            {
+                e[0] = 0xF5;
+                std::memcpy(e + 1, "AMPLI", 5);
+                e[0x1F] = 0x27;
+                e[0x20] = 13;
+                e[0x23] = 6;
+                e[0x25] = 0x18;
+                e[0x26] = 0x01;
+                continue;
+            }
+            const std::string nm = "H" + std::to_string(bi * 13 + i);
+            e[0] = static_cast<uint8_t>(0x10u | nm.size());
+            std::memcpy(e + 1, nm.data(), nm.size());
+            e[0x10] = 6;
+            e[0x11] = 7;
+            e[0x15] = 0xFF;
+            e[0x16] = 0xFF;
+            e[0x17] = 0xFF;
+        }
+    }
+    const auto a = dumpfloppy::analyse(wrap(d, "amp.po"));
+    REQUIRE(a.apple.present);
+    REQUIRE(a.apple.entries.size() == 51u);
+    std::string err;
+    REQUIRE(extract_to(a, "prodos-amp", err) < 0);
+    REQUIRE(err.find("exceeds the volume size") != std::string::npos);
+    REQUIRE(dir_bytes("prodos-amp") <= 4u * d.size());
+    const auto p = dumpfloppy::read_apple_file(a.apple, a.apple.entries[0]);
+    REQUIRE(p.size() == 512u);
+}
+
+TEST_CASE("review repro silent_zero_fill: bad pointers and 2IMG headers warn", "[prodos][2img][review]")
+{
+    /* Sapling whose index is all $FFFF, a seedling key $FFFF, a tree key $FFF0. */
+    prodos_test::volume v(280, "OOR");
+    v.add_file(v.root(), "OOR", 0x06, 0, pattern(600, 31));
+    v.add_file(v.root(), "OK", 0x06, 0, pattern(100, 32));
+    auto img = v.image();
+    const auto pre = dumpfloppy::parse_apple(img);
+    const uint16_t ix = find(pre, "OOR")->key;
+    std::fill(img.begin() + ix * 512, img.begin() + ix * 512 + 512, 0xFF);
+    const auto a = dumpfloppy::analyse(wrap(img, "oor.po"));
+    dumpfloppy::apple_read_issues iss{};
+    (void)dumpfloppy::read_apple_file(a.apple, *find(a.apple, "OOR"), &iss);
+    REQUIRE_FALSE(iss.errors.empty());
+    std::string err;
+    REQUIRE(extract_to(a, "prodos-oor", err) < 0);
+    REQUIRE(err.find("out of range") != std::string::npos);
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    std::ostringstream os;
+    dumpfloppy::write_report(a, os, opt);
+    REQUIRE(os.str().find("Warning: 1 file(s)") != std::string::npos);
+
+    const auto good = make_140k();
+    auto mg = prodos_test::wrap_2img(good, 1);
+    {
+        const std::vector<uint8_t> trunc(mg.begin(), mg.begin() + 5000);
+        const auto t = dumpfloppy::analyse(wrap(trunc, "trunc.2mg"));
+        REQUIRE_FALSE(t.foreign.problems.empty());
+        REQUIRE(extract_to(t, "prodos-trunc", err) < 0);
+        REQUIRE(err.find("warning") != std::string::npos);
+    }
+    {
+        auto h = mg;
+        h[8] = 0;
+        h[9] = 0; /* header length 0 */
+        const auto t = dumpfloppy::analyse(wrap(h, "hdr0.2mg"));
+        REQUIRE(t.apple.present);
+        REQUIRE(extract_to(t, "prodos-hdr0", err) < 0);
+        REQUIRE(err.find("header length 0") != std::string::npos);
+    }
+    {
+        auto h = mg;
+        h[0x1C] = h[0x1D] = h[0x1E] = h[0x1F] = 0xFF; /* data length $FFFFFFFF */
+        const auto t = dumpfloppy::analyse(wrap(h, "huge.2mg"));
+        REQUIRE(t.apple.present);
+        REQUIRE(extract_to(t, "prodos-huge", err) < 0);
+        REQUIRE(err.find("data length") != std::string::npos);
+    }
+    {
+        /* A clean image stays clean: no warnings, rc = files written. */
+        const auto t = dumpfloppy::analyse(wrap(mg, "ok.2mg"));
+        REQUIRE(t.foreign.problems.empty());
+        REQUIRE(t.apple.problems.empty());
+        REQUIRE(extract_to(t, "prodos-ok", err) == 2);
+        REQUIRE(err.empty());
+    }
 }

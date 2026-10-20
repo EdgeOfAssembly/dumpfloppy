@@ -241,6 +241,36 @@ foreign_disk parse_2img(std::span<const uint8_t> data)
     out.img2mg_format = fmt;
     out.data_offset = le32(data, 0x18);
     out.data_length = le32(data, 0x1C);
+    const unsigned hdr_len = le16(data, 0x08);
+    if (hdr_len < 0x40u || hdr_len > out.data_offset)
+    {
+        out.problems.push_back("2IMG header length " + std::to_string(hdr_len) +
+                               " is invalid (must be >= 64 and <= data offset " +
+                               std::to_string(out.data_offset) + ")");
+    }
+    if (out.data_offset > data.size())
+    {
+        out.problems.push_back("2IMG data offset " + std::to_string(out.data_offset) +
+                               " is past the end of the file");
+    }
+    else if (out.data_length == 0u ||
+             out.data_length > data.size() - out.data_offset)
+    {
+        out.problems.push_back("2IMG data length " + std::to_string(out.data_length) +
+                               " does not fit the file (" +
+                               std::to_string(data.size() - out.data_offset) +
+                               " bytes after the offset); payload truncated");
+    }
+    if (fmt == 1u)
+    {
+        const uint32_t blocks = le32(data, 0x14);
+        if (blocks != 0u && static_cast<uint64_t>(blocks) * 512u != out.data_length)
+        {
+            out.problems.push_back("2IMG block count " + std::to_string(blocks) +
+                                   " disagrees with data length " +
+                                   std::to_string(out.data_length));
+        }
+    }
     if (fmt == 0u)
     {
         out.note = "2IMG DOS 3.3 payload; catalog not decoded in this version";

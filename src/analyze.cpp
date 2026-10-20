@@ -221,6 +221,15 @@ analysis analyse(floppy_image image)
         if (a.foreign.img2mg_format <= 1u)
         {
             a.apple = parse_apple_ordered(bytes.subspan(a.foreign.data_offset, len), order);
+            if (a.apple.present && a.apple.fs == apple_fs::prodos &&
+                static_cast<std::size_t>(a.apple.total_blocks) * k_apple_prodos_block >
+                    a.apple.volume.size())
+            {
+                a.apple.problems.push_back(
+                    "volume header says " + std::to_string(a.apple.total_blocks) +
+                    " blocks but the payload holds " +
+                    std::to_string(a.apple.volume.size() / k_apple_prodos_block));
+            }
             if (a.apple.present)
             {
                 a.foreign.note = std::string("2IMG ") +
@@ -232,6 +241,15 @@ analysis analyse(floppy_image image)
     if (!a.apple.present && a.foreign.kind != foreign_kind::img2mg)
     {
         a.apple = parse_apple_ordered(bytes, raw_apple_order(a.image.path.string()));
+        if (a.apple.present && a.apple.fs == apple_fs::prodos &&
+            static_cast<std::size_t>(a.apple.total_blocks) * k_apple_prodos_block >
+                a.apple.volume.size())
+        {
+            a.apple.problems.push_back(
+                "volume header says " + std::to_string(a.apple.total_blocks) +
+                " blocks but the image holds " +
+                std::to_string(a.apple.volume.size() / k_apple_prodos_block));
+        }
     }
     if (a.apple.present)
     {
@@ -270,7 +288,7 @@ analysis analyse(floppy_image image)
             a.apple = parse_apple(vol);
             if (!a.apple.present)
             {
-                const std::vector<uint8_t> po = apple_dos_order_to_prodos(vol);
+                const std::vector<uint8_t> po = apple_physical_order_to_prodos(vol);
                 if (!po.empty())
                 {
                     a.apple = parse_apple(po);
