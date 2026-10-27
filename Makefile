@@ -23,11 +23,10 @@ ifeq ($(CRYPTO_LIBS),)
   CRYPTO_LIBS := -lcrypto
 endif
 
-XXH_CFLAGS := $(shell pkg-config --cflags libxxhash 2>/dev/null)
-XXH_LIBS   := $(shell pkg-config --libs libxxhash 2>/dev/null)
-ifeq ($(XXH_LIBS),)
-  XXH_LIBS := -lxxhash
-endif
+# xxHash is bundled (third_party/xxhash, BSD-2) and compiled header-only with
+# XXH_INLINE_ALL in src/util.cpp: no system package and no -lxxhash needed.
+XXH_CFLAGS := -isystem third_party/xxhash
+XXH_LIBS   :=
 
 CATCH_CFLAGS := $(shell pkg-config --cflags catch2-with-main 2>/dev/null)
 CATCH_LIBS   := $(shell pkg-config --libs catch2-with-main 2>/dev/null)

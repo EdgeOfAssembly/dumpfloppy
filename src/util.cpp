@@ -7,6 +7,8 @@
 #include <array>
 #include <cstdio>
 #include <openssl/sha.h>
+/* Bundled header-only xxHash (third_party/xxhash, BSD-2): no -lxxhash. */
+#define XXH_INLINE_ALL
 #include <xxhash.h>
 
 namespace dumpfloppy
