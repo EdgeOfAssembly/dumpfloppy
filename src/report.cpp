@@ -541,32 +541,57 @@ size_t apple_name_width(const apple_disk& d)
     return std::min<size_t>(w, 64u);
 }
 
-std::string apple_directory_header(bool prodos, size_t name_w)
+/* DOS 3.3 extra columns: catalog sector count, T/S list track/sector
+ * (decimal, as on CBM), B load address, and the A/I/B header length word. */
+constexpr size_t k_w_dos_secs = 4;
+constexpr size_t k_w_dos_ts = 8;
+constexpr size_t k_w_dos_addr = 5;
+constexpr size_t k_w_dos_len = 5;
+
+std::string apple_directory_header(apple_fs fs, size_t name_w)
 {
     std::ostringstream os;
     os << "  " << field(" ", k_w_mark) << field("Name", name_w)
        << field("Type", k_w_apple_type);
-    if (prodos)
+    if (fs == apple_fs::prodos)
     {
         os << field("Raw", 3) << field("Aux", k_w_apple_aux);
     }
-    os << field("Size", k_w_size) << field("XXH64 Checksum", k_w_sum);
+    os << field("Size", k_w_size);
+    if (fs == apple_fs::dos33)
+    {
+        os << field("Secs", k_w_dos_secs) << field("T/S", k_w_dos_ts)
+           << field("Addr", k_w_dos_addr) << field("Len", k_w_dos_len);
+    }
+    os << field("XXH64 Checksum", k_w_sum);
     return os.str();
 }
 
 std::string apple_entry_line(const apple_file& e, uint32_t size, std::string_view sum,
-                             bool prodos, size_t name_w)
+                             apple_fs fs, size_t name_w)
 {
     const char mark = e.deleted ? 'D' : (e.locked ? '*' : ' ');
     std::ostringstream os;
     os << "  " << field(std::string_view(&mark, 1), k_w_mark)
        << name_field(e.name, name_w) << field(e.type_name, k_w_apple_type);
-    if (prodos)
+    if (fs == apple_fs::prodos)
     {
         os << field(apple_hex(e.type_byte, 2), 3) << field(apple_hex(e.aux_type, 4), k_w_apple_aux);
     }
-    os << field(std::to_string(size), k_w_size)
-       << field(size == 0u ? std::string_view{} : sum, k_w_sum);
+    os << field(std::to_string(size), k_w_size);
+    if (fs == apple_fs::dos33)
+    {
+        /* Deleted: the T/S list is only known from the old track at $20. */
+        const std::string ts = (e.deleted ? "old " : "") + std::to_string(e.ts_track) + "/" +
+                               std::to_string(e.ts_sector);
+        const bool bin = (e.type_byte & 0x7Fu) == 0x04u;
+        os << field(std::to_string(e.dos_sectors), k_w_dos_secs) << field(ts, k_w_dos_ts)
+           << field(e.dos_has_header && bin ? apple_hex(e.dos_load_addr, 4) : std::string{},
+                    k_w_dos_addr)
+           << field(e.dos_has_header ? std::to_string(e.dos_header_len) : std::string{},
+                    k_w_dos_len);
+    }
+    os << field(size == 0u ? std::string_view{} : sum, k_w_sum);
     return os.str();
 }
 
@@ -602,9 +627,8 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     section(out, color, "DIRECTORY");
     put_style(out, color, TUI_BOLD);
     put_style(out, color, TUI_WHITE);
-    const bool prodos = a.apple.fs == apple_fs::prodos;
     const size_t name_w = apple_name_width(a.apple);
-    out << apple_directory_header(prodos, name_w);
+    out << apple_directory_header(a.apple.fs, name_w);
     put_style(out, color, TUI_RESET);
     out << '\n';
     size_t shown = 0;
@@ -625,7 +649,7 @@ void write_apple_sections(const analysis& a, std::ostream& out,
         damaged_n += issues.errors.empty() ? 0u : 1u;
         const uint32_t size = static_cast<uint32_t>(payload.size());
         const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
-        const std::string line = apple_entry_line(e, size, sum, prodos, name_w);
+        const std::string line = apple_entry_line(e, size, sum, a.apple.fs, name_w);
         if (e.deleted)
         {
             emit_deleted_line(out, color, line);
@@ -641,6 +665,13 @@ void write_apple_sections(const analysis& a, std::ostream& out,
         out << "  (no Apple directory entries)\n";
     }
     out << "  " << shown << " entries shown, " << deleted_n << " deleted on disk\n";
+    if (a.apple.fs == apple_fs::dos33 && !a.apple.entries.empty())
+    {
+        out << "  Size: bytes -x writes (I/A: 2 + Len, B: 4 + Len from the file header; T: up\n"
+               "        to the first $00, or the T/S-list extent when random-access; S/R/A2/B2:\n"
+               "        the T/S-list extent). Secs includes T/S list sectors. Type * = locked.\n"
+               "        Deleted (D): name from bytes $03-$1F; \"old T/S\" uses the track saved at $20.\n";
+    }
     if (damaged_n != 0u)
     {
         out << "  Warning: " << damaged_n

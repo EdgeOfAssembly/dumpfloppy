@@ -48,6 +48,10 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (this tree, 0.40):** parent `make -s verify` exit 0: 298 cases, 291 passed, 7 skipped, 28299 assertions. CBMC 6.10 SUCCESS — fat12 0 of 67 failed, gcr 0 of 35 failed, apple_gcr 0 of 178 failed, fat_slack 0 of 7 failed. The 7 skips are the existing missing-fixture cases. Harnesses were not edited.
 
+**0.41 (2026-10-27, dos33-fixes):** xxHash 0.8.3 bundled in `third_party/xxhash/` (BSD-2), so a fresh clone builds with no system xxhash. DOS 3.3 catalog: deleted files listed and extracted as `?NAME` (name from $03-$1F, old T/S track from $20, shown as "old t/s"); real sizes (I/A 2+len, B 4+len, T up to first $00 or the T/S extent when random-access; others T/S extent); CATALOG type letters T I A B S R A2 B2 with `*` for locked; Secs, T/S, Addr, Len columns. Tests: `tests/test_dos33.cpp` with synthetic images from `tests/dos33_builder.hpp`.
+
+**Verify last green (box, 0.41):** ASan `make -s test` 320 cases, 298 passed, 22 skipped (missing local fixtures), 28828 assertions, 0 failed; CBMC SUCCESS — fat12 0 of 67, gcr 0 of 35, apple_gcr 0 of 178, fat_slack 0 of 7 failed. The tests need nlohmann/json headers (not on the box; supplied via `CATCH_CFLAGS`).
+
 ## Still open (2026-10-05)
 
 Shipped in 0.35 and not part of this list: symlink-safe extract, directory-walk caps, `--slack`, `--leaked`, `--carve`.

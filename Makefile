@@ -95,7 +95,8 @@ TEST_SRC := tests/test_fat12.cpp tests/test_cli.cpp tests/test_geometry.cpp \
             tests/test_apple_gcr.cpp tests/test_analyze_hygiene.cpp \
             tests/test_forensics.cpp \
             tests/test_review_036.cpp \
-            tests/test_ws040.cpp
+            tests/test_ws040.cpp \
+            tests/test_dos33.cpp
 
 OBJ_C := $(SRC_C:.c=.o)
 OBJ_CXX := $(SRC_CXX:.cpp=.o)

@@ -127,9 +127,11 @@ TEST_CASE("parse_apple DOS 3.3 lists BIN HELLO", "[apple][dos33]")
     REQUIRE(d.fs == dumpfloppy::apple_fs::dos33);
     REQUIRE(d.entries.size() == 1u);
     REQUIRE(d.entries[0].name == "HELLO");
-    REQUIRE(d.entries[0].type_name == "BIN");
+    REQUIRE(d.entries[0].type_name == "B");
+    /* B header: load address 'H''I' = $4948, length '!' = 33 → 4 + 33 bytes. */
+    REQUIRE(d.entries[0].dos_load_addr == 0x4948u);
     const auto payload = dumpfloppy::read_apple_file(d, d.entries[0]);
-    REQUIRE(payload.size() >= 3u);
+    REQUIRE(payload.size() == 37u);
     REQUIRE(payload[0] == 'H');
     REQUIRE(payload[2] == '!');
 }

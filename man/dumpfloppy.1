@@ -87,6 +87,19 @@ as OFS/FFS.
 A DOS 3.3 VTOC (track 17 sector 0) or ProDOS volume header (block 2)
 is listed as Apple (catalog names) from a raw 140K image, a 2IMG payload,
 or a decoded WOZ.
+DOS 3.3 rows use the CATALOG type letters
+.BR T ", " I ", " A ", " B ", " S ", " R ", " A2 ", " B2
+(a leading
+.B *
+means locked) and give the real length: I and A files are 2 plus their
+length word, B files 4 plus their length word (B also shows its load
+address), T files end at the first zero byte (random-access T files keep
+the track/sector list extent), other types use the track/sector list.
+Deleted DOS 3.3 files are listed with the name from bytes $03\-$1F and
+their old track/sector list as
+.BR "old t/s"
+(the track is kept at offset $20), and extracted as
+.BR ?NAME .
 A 160K image whose first FAT bytes are
 .B FE FF FF
 or a 320K image whose first FAT bytes are
@@ -224,7 +237,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.40
+.B dumpfloppy 0.41
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"

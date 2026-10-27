@@ -97,7 +97,7 @@ enum class apple_order : uint8_t
     std::span<const uint8_t> physical);
 
 /**
- * @brief Host extract name (spaces stripped; `/` flattened).
+ * @brief Host extract name (`/` flattened; deleted files start with `?`).
  *
  * @param[in] file Directory slot.
  */
@@ -106,7 +106,9 @@ enum class apple_order : uint8_t
 /**
  * @brief Read file payload from @a disk.volume.
  *
- * DOS 3.3 follows the T/S list. ProDOS reads seedling, sapling, and tree
+ * DOS 3.3 follows the T/S list chain (holes read as zeros) and trims I/A/B
+ * files to header + length word; deleted files are read from the T/S list
+ * kept in the last name byte (damage there is a note, not an error). ProDOS reads seedling, sapling, and tree
  * files (sparse pointers read as zeros) and either fork of an extended file;
  * output is at most the volume size and stops at the last allocated
  * block. Out-of-range pointers read as zeros and are reported in

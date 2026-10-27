@@ -50,29 +50,58 @@ std::string strip_hi(const uint8_t* p, std::size_t n)
     return out;
 }
 
-const char* dos_type_name(uint8_t type)
+/**
+ * @brief DOS 3.3 CATALOG type letters: T I A B S R, A2 / B2 for the "new A"
+ *        ($20) and "new B" ($40) types, `*` in front when bit 7 (locked) is set.
+ *
+ * A type byte with no single known bit prints as `$XX` (low 7 bits).
+ */
+std::string dos_type_name(uint8_t type)
 {
+    const char* base = nullptr;
     switch (type & 0x7Fu)
     {
     case 0x00:
-        return "TXT";
+        base = "T";
+        break;
     case 0x01:
-        return "INT";
+        base = "I";
+        break;
     case 0x02:
-        return "APP";
+        base = "A";
+        break;
     case 0x04:
-        return "BIN";
+        base = "B";
+        break;
     case 0x08:
-        return "S";
+        base = "S";
+        break;
     case 0x10:
-        return "REL";
+        base = "R";
+        break;
     case 0x20:
-        return "A";
+        base = "A2";
+        break;
     case 0x40:
-        return "B";
+        base = "B2";
+        break;
     default:
-        return "FILE";
+        break;
     }
+    std::string out = (type & 0x80u) != 0u ? "*" : "";
+    if (base != nullptr)
+    {
+        out += base;
+    }
+    else
+    {
+        static constexpr char k_hex[] = "0123456789ABCDEF";
+        const unsigned v = type & 0x7Fu;
+        out.push_back('$');
+        out.push_back(k_hex[(v >> 4) & 0x0Fu]);
+        out.push_back(k_hex[v & 0x0Fu]);
+    }
+    return out;
 }
 
 const char* prodos_type_name(uint8_t type)
@@ -182,6 +211,137 @@ std::span<const uint8_t> dos_sector(std::span<const uint8_t> vol, uint8_t track,
     return vol.subspan(off, k_apple_dos_sector);
 }
 
+/** @brief DOS 3.3 T/S list: data sector pairs start at byte $0C, 122 per list. */
+constexpr std::size_t k_dos_ts_pairs = 122u;
+
+/** @brief Result of following one DOS 3.3 track/sector list chain. */
+struct dos33_walk
+{
+    std::vector<uint8_t> bytes{}; /**< Data placed at its file offset; holes read as zeros. */
+    std::size_t data_sectors = 0; /**< Data sectors actually present. */
+    bool holes = false;           /**< A zero pair before the last data sector (random access). */
+    unsigned bad_ptrs = 0;        /**< Data sector pointers outside the volume. */
+    unsigned bad_lists = 0;       /**< T/S list pointers outside the volume. */
+    bool loop = false;            /**< A T/S list sector was reached twice. */
+    bool capped = false;          /**< File offsets past the volume size were dropped. */
+};
+
+/**
+ * @brief Follow a T/S list chain from @p t / @p s.
+ *
+ * List k describes file sectors k×122 … k×122+121, so a zero pair is a hole
+ * (random-access text files) and later data keeps its offset. The result
+ * ends after the last present data sector (the T/S-list-based length).
+ * Every list sector is visited at most once and output never exceeds the
+ * volume size, so a looping or hostile chain cannot hang or amplify.
+ */
+dos33_walk walk_dos33_ts(const apple_disk& disk, uint8_t t, uint8_t s)
+{
+    dos33_walk w{};
+    const uint8_t spt = disk.sectors_per_track;
+    const std::size_t vol_sectors = disk.volume.size() / k_apple_dos_sector;
+    if (spt == 0u || vol_sectors == 0u)
+    {
+        return w;
+    }
+    std::vector<bool> seen(vol_sectors, false);
+    std::size_t list_index = 0;
+    while (t != 0u)
+    {
+        const std::size_t idx = static_cast<std::size_t>(t) * spt + s;
+        if (s >= spt || idx >= vol_sectors)
+        {
+            ++w.bad_lists;
+            break;
+        }
+        if (seen[idx])
+        {
+            w.loop = true;
+            break;
+        }
+        seen[idx] = true;
+        const auto ts = dos_sector(disk.volume, t, s, spt);
+        for (std::size_t i = 0; i < k_dos_ts_pairs; ++i)
+        {
+            const uint8_t dt = ts[0x0Cu + i * 2u];
+            const uint8_t ds = ts[0x0Du + i * 2u];
+            if (dt == 0u)
+            {
+                continue; /* track 0 never holds file data: a hole */
+            }
+            const std::size_t didx = static_cast<std::size_t>(dt) * spt + ds;
+            if (ds >= spt || didx >= vol_sectors)
+            {
+                ++w.bad_ptrs;
+                continue;
+            }
+            const std::size_t pos = list_index * k_dos_ts_pairs + i;
+            const std::size_t end = (pos + 1u) * k_apple_dos_sector;
+            if (end > disk.volume.size())
+            {
+                w.capped = true;
+                continue;
+            }
+            if (w.bytes.size() < end)
+            {
+                w.bytes.resize(end, 0);
+            }
+            const auto sec = dos_sector(disk.volume, dt, ds, spt);
+            std::memcpy(w.bytes.data() + pos * k_apple_dos_sector, sec.data(), sec.size());
+            ++w.data_sectors;
+        }
+        ++list_index;
+        t = ts[1];
+        s = ts[2];
+    }
+    w.holes = w.data_sectors * k_apple_dos_sector < w.bytes.size();
+    return w;
+}
+
+/**
+ * @brief Set the real length of a DOS 3.3 file from its walked data.
+ *
+ * I and A files start with a 2-byte length, B files with a 2-byte load
+ * address and a 2-byte length: the real size is header + length when it
+ * fits in the data the T/S list holds. T files have no length field: a
+ * sequential file ends at its first $00; one with holes in its T/S list is
+ * random-access and keeps the T/S-list extent. Every other type (and a
+ * header that does not fit) uses the T/S-list extent.
+ */
+void set_dos33_length(apple_file& f, const dos33_walk& w)
+{
+    const unsigned base = f.type_byte & 0x7Fu;
+    const std::size_t have = w.bytes.size();
+    f.dos_has_header = false;
+    f.dos_header_len = 0;
+    f.dos_load_addr = 0;
+    f.byte_size = static_cast<uint32_t>(have);
+    f.dos_len_source = have == 0u ? 0u : 2u;
+    if (base == 0x00u && have != 0u && !w.holes)
+    {
+        const auto z = std::find(w.bytes.begin(), w.bytes.end(), uint8_t{0});
+        f.byte_size = static_cast<uint32_t>(z - w.bytes.begin());
+        f.dos_len_source = 3u;
+        return;
+    }
+    const std::size_t hdr = (base == 0x01u || base == 0x02u) ? 2u : (base == 0x04u ? 4u : 0u);
+    if (hdr == 0u || have < hdr)
+    {
+        return;
+    }
+    const std::span<const uint8_t> b(w.bytes);
+    const uint16_t len = le16(b, hdr - 2u);
+    if (hdr + len > have)
+    {
+        return;
+    }
+    f.dos_has_header = true;
+    f.dos_header_len = len;
+    f.dos_load_addr = hdr == 4u ? le16(b, 0) : 0u;
+    f.byte_size = static_cast<uint32_t>(hdr + len);
+    f.dos_len_source = 1u;
+}
+
 apple_disk parse_dos33(std::span<const uint8_t> data)
 {
     apple_disk disk{};
@@ -217,10 +377,18 @@ apple_disk parse_dos33(std::span<const uint8_t> data)
         disk.sectors_per_track = spt;
         disk.volume.assign(data.begin(), data.end());
 
-        int hops = 0;
-        while (cat_t != 0u && hops < 32)
+        /* Catalog chain: every sector at most once (a loop cannot repeat entries). */
+        std::vector<bool> cat_seen(static_cast<std::size_t>(tracks) * spt, false);
+        while (cat_t != 0u && cat_t < tracks && cat_s < spt)
         {
-            ++hops;
+            const std::size_t ci = static_cast<std::size_t>(cat_t) * spt + cat_s;
+            if (cat_seen[ci])
+            {
+                disk.problems.push_back("catalog sector chain loops at T" +
+                                        std::to_string(cat_t) + " S" + std::to_string(cat_s));
+                break;
+            }
+            cat_seen[ci] = true;
             const auto cat = dos_sector(disk.volume, cat_t, cat_s, spt);
             if (cat.size() < 256u)
             {
@@ -231,37 +399,32 @@ apple_disk parse_dos33(std::span<const uint8_t> data)
             for (int i = 0; i < 7; ++i)
             {
                 const std::size_t e = 0x0Bu + static_cast<std::size_t>(i) * 35u;
-                if (e + 35u > cat.size())
-                {
-                    break;
-                }
                 const uint8_t ts_t = cat[e];
                 if (ts_t == 0u)
                 {
-                    continue;
+                    continue; /* never used */
                 }
                 apple_file f{};
+                /* DELETE copies the T/S list track into the last name byte
+                 * ($20 in the entry) and writes $FF over the first byte. */
                 f.deleted = (ts_t == 0xFFu);
-                f.ts_track = ts_t;
+                f.ts_track = f.deleted ? cat[e + 0x20u] : ts_t;
+                f.dos_old_track = f.deleted ? cat[e + 0x20u] : uint8_t{0};
                 f.ts_sector = cat[e + 1u];
                 f.type_byte = cat[e + 2u];
                 f.locked = (f.type_byte & 0x80u) != 0u;
                 f.type_name = dos_type_name(f.type_byte);
-                f.name = strip_hi(cat.data() + e + 3u, 30u);
-                if (f.deleted && !f.name.empty())
-                {
-                    f.name[0] = '?';
-                }
-                f.byte_size = static_cast<uint32_t>(le16(cat, e + 33u)) *
-                              k_apple_dos_sector;
+                /* Name: $03-$20 live; $03-$1F when deleted ($20 is the old track). */
+                f.name = strip_hi(cat.data() + e + 3u, f.deleted ? 29u : 30u);
+                f.dos_sectors = le16(cat, e + 33u);
                 f.key = static_cast<uint16_t>((static_cast<unsigned>(f.ts_track)
                                                << 8) |
                                               f.ts_sector);
+                if (f.ts_track != 0u && f.ts_track < tracks && f.ts_sector < spt)
+                {
+                    set_dos33_length(f, walk_dos33_ts(disk, f.ts_track, f.ts_sector));
+                }
                 disk.entries.push_back(std::move(f));
-            }
-            if (next_t == cat_t && next_s == cat_s)
-            {
-                break;
             }
             cat_t = next_t;
             cat_s = next_s;
@@ -470,56 +633,55 @@ apple_disk parse_prodos(std::span<const uint8_t> data)
     walk_prodos_dir(disk, 2, std::string{}, {h[0x1F], h[0x20]}, visited, 0);
     return disk;
 }
-std::vector<uint8_t> read_dos33(const apple_disk& disk, const apple_file& file)
+std::vector<uint8_t> read_dos33(const apple_disk& disk, const apple_file& file,
+                                apple_read_issues* issues)
 {
-    if (file.ts_track == 0u || file.ts_track == 0xFFu ||
-        disk.sectors_per_track == 0u)
+    /* A deleted file's sectors may be reused: damage there is a note. */
+    auto problem = [&](std::string msg)
+    {
+        if (issues != nullptr)
+        {
+            (file.deleted ? issues->notes : issues->errors).push_back(std::move(msg));
+        }
+    };
+    if (file.ts_track == 0u || disk.sectors_per_track == 0u)
     {
         return {};
     }
-    std::vector<uint8_t> out;
-    uint8_t t = file.ts_track;
-    uint8_t s = file.ts_sector;
-    int hops = 0;
-    while (t != 0u && t != 0xFFu && hops < 64)
+    if (file.ts_track >= disk.tracks || file.ts_sector >= disk.sectors_per_track)
     {
-        ++hops;
-        const auto ts = dos_sector(disk.volume, t, s, disk.sectors_per_track);
-        if (ts.size() < 256u)
-        {
-            break;
-        }
-        const uint8_t next_t = ts[1];
-        const uint8_t next_s = ts[2];
-        for (int i = 0; i < 122; ++i)
-        {
-            const std::size_t p = 0x0Cu + static_cast<std::size_t>(i) * 2u;
-            const uint8_t dt = ts[p];
-            const uint8_t ds = ts[p + 1u];
-            if (dt == 0u)
-            {
-                continue;
-            }
-            const auto sec =
-                dos_sector(disk.volume, dt, ds, disk.sectors_per_track);
-            if (sec.empty())
-            {
-                continue;
-            }
-            out.insert(out.end(), sec.begin(), sec.end());
-        }
-        if (next_t == t && next_s == s)
-        {
-            break;
-        }
-        t = next_t;
-        s = next_s;
+        problem("T/S list T" + std::to_string(file.ts_track) + " S" +
+                std::to_string(file.ts_sector) + " is outside the volume");
+        return {};
     }
-    if (file.byte_size > 0u && file.byte_size < out.size())
+    dos33_walk w = walk_dos33_ts(disk, file.ts_track, file.ts_sector);
+    if (w.bad_ptrs != 0u || w.bad_lists != 0u)
     {
-        out.resize(file.byte_size);
+        problem(std::to_string(w.bad_ptrs) + " data and " + std::to_string(w.bad_lists) +
+                " T/S list pointer(s) are outside the volume; those bytes read as zeros");
     }
-    return out;
+    if (w.loop)
+    {
+        problem("T/S list chain loops; stopped at the repeated list sector");
+    }
+    if (w.capped)
+    {
+        problem("T/S list addresses offsets past the volume size; output capped");
+    }
+    apple_file sized = file;
+    set_dos33_length(sized, w);
+    const unsigned base = file.type_byte & 0x7Fu;
+    if (!sized.dos_has_header && (base == 0x01u || base == 0x02u || base == 0x04u) &&
+        !w.bytes.empty() && issues != nullptr)
+    {
+        issues->notes.push_back("length word does not fit the " + std::to_string(w.bytes.size()) +
+                                " bytes in the T/S list; size taken from the T/S list");
+    }
+    if (sized.byte_size < w.bytes.size())
+    {
+        w.bytes.resize(sized.byte_size);
+    }
+    return std::move(w.bytes);
 }
 
 /** @brief Largest EOF a ProDOS fork can address (24-bit). */
@@ -772,6 +934,13 @@ std::vector<uint8_t> apple_physical_order_to_prodos(std::span<const uint8_t> phy
 std::string apple_host_filename(const apple_file& file)
 {
     std::string stem = file.name.empty() ? std::string("FILE") : file.name;
+    /* Deleted files carry the `?` marker on the host (FAT/TRD convention).
+     * ProDOS already overwrote its first character; DOS 3.3 keeps the full
+     * name in the catalog, so the marker is prefixed instead. */
+    if (file.deleted && stem.front() != '?')
+    {
+        stem.insert(stem.begin(), '?');
+    }
     for (char& c : stem)
     {
         if (c == '/' || c == '\\' || c == '\0')
@@ -787,7 +956,7 @@ std::vector<uint8_t> read_apple_file(const apple_disk& disk, const apple_file& f
 {
     if (disk.fs == apple_fs::dos33)
     {
-        return read_dos33(disk, file);
+        return read_dos33(disk, file, issues);
     }
     if (disk.fs == apple_fs::prodos)
     {

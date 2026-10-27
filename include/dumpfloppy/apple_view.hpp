@@ -26,11 +26,11 @@ enum class apple_fs : uint8_t
 struct apple_file
 {
     std::string name{};
-    std::string type_name{}; /**< TXT / BIN / BAS / DIR / … */
+    std::string type_name{}; /**< ProDOS TXT / BIN / DIR / …; DOS 3.3 T I A B S R A2 B2 (`*` = locked). */
     uint8_t type_byte = 0;
     bool deleted = false;
     bool locked = false;
-    uint32_t byte_size = 0;  /**< DOS sector-count×256 or ProDOS EOF. */
+    uint32_t byte_size = 0;  /**< DOS 3.3 real length (see @ref apple_file::dos_len_source) or ProDOS EOF. */
     uint16_t key = 0;        /**< DOS T/S list packed, or ProDOS key block. */
     uint8_t storage = 0;     /**< ProDOS storage type 1–3 / 0xD (fork's type for 5); 0 on DOS 3.3. */
     uint8_t ts_track = 0;    /**< DOS 3.3 track/sector list. */
@@ -38,6 +38,13 @@ struct apple_file
     uint16_t aux_type = 0;      /**< ProDOS aux type (load address, record length, …). */
     bool extended = false;      /**< ProDOS storage type 5 (forked) file. */
     bool resource_fork = false; /**< This slot is the resource fork of an extended file. */
+    /* DOS 3.3 only. */
+    uint16_t dos_sectors = 0;   /**< Catalog sector count (T/S list sectors included). */
+    uint16_t dos_load_addr = 0; /**< B file load address from its 4-byte header. */
+    uint16_t dos_header_len = 0;/**< A/I/B length word from the file header (body bytes). */
+    bool dos_has_header = false;/**< dos_header_len (and for B dos_load_addr) were read and fit. */
+    uint8_t dos_len_source = 0; /**< 0 none, 1 file header (A/I/B), 2 T/S list, 3 T up to first $00. */
+    uint8_t dos_old_track = 0;  /**< Deleted only: T/S list track saved at entry offset $20 (0 = live). */
 };
 
 /**

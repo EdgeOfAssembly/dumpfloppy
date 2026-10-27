@@ -35,7 +35,14 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
   standard AmigaDOS (`4489`) sectors are assembled into a DD ADF (OFS/FFS
   listing + extract). `-u` still refused.
 - Apple **DOS 3.3 / ProDOS**: catalog listing and extract from raw 140K, 2IMG
-  payload, or decoded WOZ (VTOC T17/S0 vs ProDOS volume header in block 2)
+  payload, or decoded WOZ (VTOC T17/S0 vs ProDOS volume header in block 2).
+  DOS 3.3 rows show the CATALOG type letters (`T I A B S R A2 B2`, `*` =
+  locked), sector count (T/S list sectors included), T/S list, B load address,
+  and the real length: I/A = 2 + length word, B = 4 + length word, T up to
+  the first `$00` (random-access T files keep the T/S-list extent, holes read
+  as zeros), other types from the T/S list. Deleted DOS 3.3 files (first byte
+  `$FF`, T/S track kept at offset `$20`) are listed with the name from
+  `$03-$1F`, their old T/S shown as `old t/s`, and extracted as `?NAME`.
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
 - Whole-image **XXH64 catalog**: known dumps print a **CATALOG** section with
@@ -55,8 +62,11 @@ make -s verify                    # tests, then CBMC on FAT12 and GCR codecs
 make -s release
 ```
 
-Needs **g++** (GNU C++23), **libcrypto**, Catch2 (`pkg-config catch2-with-main`),
-and `/usr/local/include/libsf/tui/ansi.h`.
+Needs **g++** (GNU C++23), **libcrypto**, and Catch2 (`pkg-config catch2-with-main`).
+xxHash 0.8.3 is bundled header-only in `third_party/xxhash/` (BSD-2, license
+included), and `tui/ansi.h` ships in `include/`, so no system xxhash or libsf
+is needed. The test suite also needs the nlohmann/json headers
+(`nlohmann-json3-dev` or equivalent).
 
 ```bash
 make install   # PREFIX=/usr/local
@@ -69,7 +79,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.40`. Options and paths may be interleaved. DOS 1.x 160K
+`dumpfloppy 0.41`. Options and paths may be interleaved. DOS 1.x 160K
 (media `FE`) and 320K (media `FF`) images with no BPB are listed as FAT12.
 ImageDisk `.imd` is assembled in sector-number order and then listed; a
 header with no sector payload is reported as ImageDisk with an empty
