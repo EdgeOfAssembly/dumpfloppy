@@ -237,7 +237,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.41
+.B dumpfloppy 0.42
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -324,6 +324,31 @@ took the report.
 There is no
 .B \-\-no-json
 switch.
+Each entry has
+.BR path ", " name ", " size ", " deleted ", " directory ", " first_cluster ", " type ,
+and
+.BR xxh64 .
+DOS 3.3 entries add a
+.B dos33
+object:
+.BR deleted ", " locked ,
+.B type_letter
+(T I A B S R A2 B2 or $XX, without the locked *),
+.BR type_byte ,
+.B sectors
+(catalog count),
+.BR ts_track ", " ts_sector ,
+.BR old_ts_track ", " old_ts_sector
+(deleted files only, else null),
+.BR load_address ", " load_address_hex
+(B files, else null),
+.B header_length
+(A/I/B length word, else null),
+.B real_length
+(B = length+4, A/I = length+2, T up to the first $00, else the T/S extent),
+and
+.B length_source
+(header, ts_list, text_nul, or none).
 Combined with
 .BR \-\-slack ,
 .BR \-\-leaked ,

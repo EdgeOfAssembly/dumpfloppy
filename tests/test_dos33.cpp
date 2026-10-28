@@ -11,6 +11,7 @@
 #include "dumpfloppy/report.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <nlohmann/json.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -322,4 +323,104 @@ TEST_CASE("DOS 3.3 looping T/S list and catalog terminate", "[apple][dos33]")
     CHECK(dumpfloppy::read_apple_file(d, d.entries[0], &issues).size() == 10u);
     REQUIRE_FALSE(issues.errors.empty());
     CHECK(issues.errors[0].find("loops") != std::string::npos);
+}
+
+namespace
+{
+
+std::string json_of(const std::vector<uint8_t>& bytes, bool deleted = true)
+{
+    const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(bytes, "t.dsk"));
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    opt.show_deleted = deleted;
+    std::ostringstream os;
+    dumpfloppy::write_json_begin(os);
+    dumpfloppy::write_json_image(a, os, opt, true);
+    dumpfloppy::write_json_end(os);
+    return os.str();
+}
+
+const nlohmann::json* json_entry(const nlohmann::json& doc, const std::string& name)
+{
+    for (const auto& e : doc.at("images").at(0).at("entries"))
+    {
+        if (e.at("name").get<std::string>() == name)
+        {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
+} /* namespace */
+
+TEST_CASE("DOS 3.3 JSON carries the catalog columns", "[apple][dos33][json]")
+{
+    builder b;
+    b.add("TEXT", t_text, std::vector<uint8_t>{'H', 'I', 0, 'x', 'y'});
+    const slot bin = b.add("BIN", t_binary, with_header({0x0800, 4}, 4, 1));
+    b.add("LOCKA", t_applesoft | t_locked, with_header({6}, 6, 2));
+    b.add("NEWB", t_new_b, std::vector<uint8_t>(10, 1));
+    const slot gone = b.add("GONE", t_integer | t_locked, with_header({40}, 40, 9));
+    b.remove(gone);
+    const auto doc = nlohmann::json::parse(json_of(b.bytes()));
+
+    /* Existing keys unchanged. */
+    const auto* jb = json_entry(doc, "BIN");
+    REQUIRE(jb != nullptr);
+    for (const char* k : {"path", "name", "size", "deleted", "directory", "first_cluster", "type",
+                          "xxh64"})
+    {
+        CHECK(jb->contains(k));
+    }
+    CHECK(jb->at("type").get<std::string>() == "B");
+    CHECK(jb->at("size").get<unsigned>() == 8u);
+    const auto& db = jb->at("dos33");
+    CHECK_FALSE(db.at("deleted").get<bool>());
+    CHECK_FALSE(db.at("locked").get<bool>());
+    CHECK(db.at("type_letter").get<std::string>() == "B");
+    CHECK(db.at("type_byte").get<unsigned>() == 0x04u);
+    CHECK(db.at("sectors").get<unsigned>() == 2u);
+    CHECK(db.at("ts_track").get<unsigned>() == bin.ts_track);
+    CHECK(db.at("ts_sector").get<unsigned>() == bin.ts_sector);
+    CHECK(db.at("old_ts_track").is_null());
+    CHECK(db.at("old_ts_sector").is_null());
+    CHECK(db.at("load_address").get<unsigned>() == 0x0800u);
+    CHECK(db.at("load_address_hex").get<std::string>() == "$0800");
+    CHECK(db.at("header_length").get<unsigned>() == 4u);
+    CHECK(db.at("real_length").get<unsigned>() == 8u);
+    CHECK(db.at("length_source").get<std::string>() == "header");
+
+    const auto& dl = json_entry(doc, "LOCKA")->at("dos33");
+    CHECK(dl.at("locked").get<bool>());
+    CHECK(dl.at("type_letter").get<std::string>() == "A");
+    CHECK(json_entry(doc, "LOCKA")->at("type").get<std::string>() == "*A");
+    CHECK(dl.at("load_address").is_null());
+    CHECK(dl.at("real_length").get<unsigned>() == 8u);
+
+    const auto& dt = json_entry(doc, "TEXT")->at("dos33");
+    CHECK(dt.at("real_length").get<unsigned>() == 2u);
+    CHECK(dt.at("length_source").get<std::string>() == "text_nul");
+    CHECK(dt.at("header_length").is_null());
+
+    const auto& dn = json_entry(doc, "NEWB")->at("dos33");
+    CHECK(dn.at("type_letter").get<std::string>() == "B2");
+    CHECK(dn.at("length_source").get<std::string>() == "ts_list");
+    CHECK(dn.at("load_address").is_null());
+
+    const auto* jg = json_entry(doc, "GONE");
+    REQUIRE(jg != nullptr);
+    CHECK(jg->at("deleted").get<bool>());
+    const auto& dg = jg->at("dos33");
+    CHECK(dg.at("deleted").get<bool>());
+    CHECK(dg.at("locked").get<bool>());
+    CHECK(dg.at("type_letter").get<std::string>() == "I");
+    CHECK(dg.at("old_ts_track").get<unsigned>() == gone.ts_track);
+    CHECK(dg.at("old_ts_sector").get<unsigned>() == gone.ts_sector);
+    CHECK(dg.at("real_length").get<unsigned>() == 42u);
+
+    /* --no-deleted drops the row from JSON too. */
+    const auto doc2 = nlohmann::json::parse(json_of(b.bytes(), false));
+    CHECK(json_entry(doc2, "GONE") == nullptr);
 }

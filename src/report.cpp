@@ -691,6 +691,7 @@ struct json_row
     uint32_t first_cluster = 0;
     std::string type{};
     std::string xxh64{};
+    std::string dos33{}; /**< Pre-rendered `"dos33": {...}` members; empty off DOS 3.3. */
 };
 
 /**
@@ -900,6 +901,69 @@ void collect_trd_rows(const analysis& a, const report_options& opt,
     }
 }
 
+/** @brief DOS 3.3 catalog fields as one JSON object (the text listing's columns). */
+std::string dos33_json(const apple_file& e)
+{
+    static constexpr const char* k_src[] = {"none", "header", "ts_list", "text_nul"};
+    const unsigned base = e.type_byte & 0x7Fu;
+    const bool bin = base == 0x04u;
+    std::string letter = e.type_name;
+    if (!letter.empty() && letter.front() == '*')
+    {
+        letter.erase(0, 1);
+    }
+    std::ostringstream o;
+    const char* ind = "\n            ";
+    o << "{" << ind << "\"deleted\": " << (e.deleted ? "true" : "false") << ',';
+    o << ind << "\"locked\": " << (e.locked ? "true" : "false") << ',';
+    o << ind << "\"type_letter\": ";
+    json_quote(o, letter);
+    o << ',' << ind << "\"type_byte\": " << static_cast<unsigned>(e.type_byte) << ',';
+    o << ind << "\"sectors\": " << e.dos_sectors << ',';
+    o << ind << "\"ts_track\": " << static_cast<unsigned>(e.ts_track) << ',';
+    o << ind << "\"ts_sector\": " << static_cast<unsigned>(e.ts_sector) << ',';
+    if (e.deleted)
+    {
+        o << ind << "\"old_ts_track\": " << static_cast<unsigned>(e.dos_old_track) << ',';
+        o << ind << "\"old_ts_sector\": " << static_cast<unsigned>(e.ts_sector) << ',';
+    }
+    else
+    {
+        o << ind << "\"old_ts_track\": null," << ind << "\"old_ts_sector\": null,";
+    }
+    if (e.dos_has_header && bin)
+    {
+        o << ind << "\"load_address\": " << e.dos_load_addr << ',';
+        o << ind << "\"load_address_hex\": ";
+        json_quote(o, apple_hex(e.dos_load_addr, 4));
+        o << ',';
+    }
+    else
+    {
+        o << ind << "\"load_address\": null," << ind << "\"load_address_hex\": null,";
+    }
+    if (e.dos_has_header)
+    {
+        o << ind << "\"header_length\": " << e.dos_header_len << ',';
+    }
+    else
+    {
+        o << ind << "\"header_length\": null,";
+    }
+    if (e.dos_len_source != 0u)
+    {
+        o << ind << "\"real_length\": " << e.byte_size << ',';
+    }
+    else
+    {
+        o << ind << "\"real_length\": null,";
+    }
+    o << ind << "\"length_source\": ";
+    json_quote(o, k_src[e.dos_len_source < 4u ? e.dos_len_source : 0u]);
+    o << "\n          }";
+    return o.str();
+}
+
 void collect_apple_rows(const analysis& a, const report_options& opt,
                         std::vector<json_row>& rows)
 {
@@ -920,6 +984,10 @@ void collect_apple_rows(const analysis& a, const report_options& opt,
             row.size = static_cast<uint32_t>(payload.size());
         }
         row.type = e.type_name;
+        if (a.apple.fs == apple_fs::dos33)
+        {
+            row.dos33 = dos33_json(e);
+        }
         push_row(rows, std::move(row));
     }
 }
@@ -971,6 +1039,10 @@ void write_json_row(std::ostream& out, const json_row& row, bool first)
     out << ",\n";
     out << "          \"xxh64\": ";
     json_quote(out, row.xxh64);
+    if (!row.dos33.empty())
+    {
+        out << ",\n          \"dos33\": " << row.dos33;
+    }
     out << "\n        }";
 }
 

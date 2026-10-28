@@ -52,6 +52,10 @@ Game images, TOSEC dumps, extracted `*.EXE` / `*.PRG`. `.gitignore` covers commo
 
 **Verify last green (box, 0.41):** ASan `make -s test` 320 cases, 298 passed, 22 skipped (missing local fixtures), 28828 assertions, 0 failed; CBMC SUCCESS — fat12 0 of 67, gcr 0 of 35, apple_gcr 0 of 178, fat_slack 0 of 7 failed. The tests need nlohmann/json headers (not on the box; supplied via `CATCH_CFLAGS`).
 
+**0.42 (2026-10-28, dos33-json):** `--json` DOS 3.3 entries gain an additive `dos33` object: `deleted`, `locked`, `type_letter`, `type_byte`, `sectors`, `ts_track`/`ts_sector`, `old_ts_track`/`old_ts_sector` (deleted only, else null), `load_address`/`load_address_hex` (B only), `header_length`, `real_length`, `length_source`. Existing keys unchanged. README and man page list the keys. Test: `tests/test_dos33.cpp` "DOS 3.3 JSON carries the catalog columns".
+
+**Verify last green (box, 0.42):** plain (-O2, no sanitizers) and ASan `make -s test` 321 cases, 299 passed, 22 skipped, 28873 assertions, 0 failed; CBMC SUCCESS — fat12 0 of 67, gcr 0 of 35, apple_gcr 0 of 178, fat_slack 0 of 7 failed.
+
 ## Still open (2026-10-05)
 
 Shipped in 0.35 and not part of this list: symlink-safe extract, directory-walk caps, `--slack`, `--leaked`, `--carve`.

@@ -79,7 +79,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.41`. Options and paths may be interleaved. DOS 1.x 160K
+`dumpfloppy 0.42`. Options and paths may be interleaved. DOS 1.x 160K
 (media `FE`) and 320K (media `FF`) images with no BPB are listed as FAT12.
 ImageDisk `.imd` is assembled in sector-number order and then listed; a
 header with no sector payload is reported as ImageDisk with an empty
@@ -151,6 +151,18 @@ Combined with `-x`, `-u`, or `--offset` it exits 2 before analysis. Stderr is
 `dumpfloppy: --json does not include -x, -u, or --offset` and stdout is empty.
 `-o` with `--json` uses `<stem>.json` (or `<outstem>_<instem>.json` when
 several inputs share one file). One input and `-o file` keeps that exact path.
+
+Each JSON entry has `path`, `name`, `size`, `deleted`, `directory`,
+`first_cluster`, `type`, and `xxh64`. DOS 3.3 entries also have a `dos33`
+object with the catalog columns: `deleted`, `locked`, `type_letter`
+(`T I A B S R A2 B2`, or `$XX`; `type` keeps the `*` for locked),
+`type_byte`, `sectors` (catalog count, T/S lists included), `ts_track` /
+`ts_sector`, `old_ts_track` / `old_ts_sector` (deleted files: the track saved
+at `$20`; `null` when live), `load_address` / `load_address_hex` (B files with
+a header that fits, else `null`), `header_length` (A/I/B length word, else
+`null`), `real_length` (B = length+4, A/I = length+2, T up to the first `$00`,
+else the T/S extent; `null` when nothing was read), and `length_source`
+(`header`, `ts_list`, `text_nul`, or `none`).
 
 ## Example (Elvira 720K Disk 2)
 
