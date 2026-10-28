@@ -46,6 +46,7 @@ struct slot
     std::size_t off = 0; /**< Byte offset of the 35-byte entry. */
     uint8_t ts_track = 0;
     uint8_t ts_sector = 0;
+    std::vector<std::pair<uint8_t, uint8_t>> sectors{}; /**< List + data sectors (for DELETE). */
 };
 
 class builder
@@ -69,6 +70,28 @@ public:
             img_[c + 1u] = static_cast<uint8_t>(s > 1u ? 17u : 0u);
             img_[c + 2u] = s > 1u ? static_cast<uint8_t>(s - 1u) : 0u;
         }
+        /* VTOC free-sector map: tracks 18 and up start free. */
+        for (unsigned t = 18; t < k_tracks; ++t)
+        {
+            for (unsigned s = 0; s < k_spt; ++s)
+            {
+                set_free(static_cast<uint8_t>(t), static_cast<uint8_t>(s), true);
+            }
+        }
+    }
+
+    /** @brief VTOC map bit for T @p t / S @p s ($38+4t: S15…S8, then S7…S0; 1 = free). */
+    void set_free(uint8_t t, uint8_t s, bool free)
+    {
+        const std::size_t b = at(17, 0) + 0x38u + static_cast<std::size_t>(t) * 4u + (s >= 8u ? 0u : 1u);
+        const auto bit = static_cast<uint8_t>(1u << (s & 7u));
+        img_[b] = free ? static_cast<uint8_t>(img_[b] | bit) : static_cast<uint8_t>(img_[b] & ~bit);
+    }
+
+    [[nodiscard]] bool is_free(uint8_t t, uint8_t s) const
+    {
+        const std::size_t b = at(17, 0) + 0x38u + static_cast<std::size_t>(t) * 4u + (s >= 8u ? 0u : 1u);
+        return (img_[b] & (1u << (s & 7u))) != 0u;
     }
 
     [[nodiscard]] static std::size_t at(unsigned t, unsigned s)
@@ -84,6 +107,8 @@ public:
             throw std::runtime_error("synthetic DOS 3.3 volume full");
         }
         const auto r = std::make_pair(static_cast<uint8_t>(next_t_), static_cast<uint8_t>(next_s_));
+        set_free(r.first, r.second, false);
+        last_.push_back(r);
         if (++next_s_ == k_spt)
         {
             next_s_ = 0;
@@ -99,6 +124,7 @@ public:
     slot add_sparse(const std::string& name, uint8_t type,
                     const std::vector<std::vector<uint8_t>>& sectors)
     {
+        last_.clear();
         std::vector<std::pair<uint8_t, uint8_t>> lists;
         const std::size_t n_lists = sectors.empty() ? 1u : (sectors.size() + 121u) / 122u;
         for (std::size_t i = 0; i < n_lists; ++i)
@@ -133,7 +159,9 @@ public:
             img_[l + 5u] = static_cast<uint8_t>(off);
             img_[l + 6u] = static_cast<uint8_t>(off >> 8);
         }
-        return add_entry(name, type, lists[0].first, lists[0].second, used);
+        slot sl = add_entry(name, type, lists[0].first, lists[0].second, used);
+        sl.sectors = last_;
+        return sl;
     }
 
     /** @brief Add a file holding @p body, split into whole sectors. */
@@ -149,9 +177,13 @@ public:
         return add_sparse(name, type, secs);
     }
 
-    /** @brief DOS DELETE: T/S track to the last name byte, then $FF. */
+    /** @brief DOS DELETE: T/S track to the last name byte, then $FF; frees its sectors. */
     void remove(const slot& sl)
     {
+        for (const auto& [t, s] : sl.sectors)
+        {
+            set_free(t, s, true);
+        }
         img_[sl.off + 0x20u] = img_[sl.off];
         img_[sl.off] = 0xFF;
     }
@@ -185,6 +217,7 @@ private:
     unsigned next_t_ = 18;
     unsigned next_s_ = 0;
     unsigned entries_ = 0;
+    std::vector<std::pair<uint8_t, uint8_t>> last_{};
 };
 
 /** @brief File body with a little-endian header word prefix. */

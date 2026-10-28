@@ -138,6 +138,16 @@ std::string usage_text()
        << "                       -o DIR selects it and is created if missing.\n"
        << "                       Default: all payloads, deleted and unused included.\n"
        << "                       Quote globs: -x '*.PKD' -x '5??.PKD'\n"
+       << "      --undelete       DOS 3.3: recover deleted files from their old T/S list,\n"
+       << "                       checked against the VTOC free-sector map (default: off).\n"
+       << "                       The listing gains a Recovery column (full / partial /\n"
+       << "                       unrecoverable) and --json gains dos33.recovered,\n"
+       << "                       recovery, reused_sectors, and recovery_reason. With -x a\n"
+       << "                       deleted file is written as NAME.undeleted (full) or\n"
+       << "                       NAME.partial (a sector is in use again or the T/S chain\n"
+       << "                       is bad) instead of ?NAME; unrecoverable files are skipped\n"
+       << "                       with a note. Live files are written first and are never\n"
+       << "                       overwritten. Other filesystems ignore it.\n"
        << "  -u, --update FILE    Overwrite the same-named file in the image.\n"
        << "                       Repeatable. Silent (no listing). FAT: same size in-place;\n"
        << "                       grow/shrink allocates or frees clusters and relocates\n"
@@ -220,6 +230,12 @@ cli_options parse_cli(int argc, char** argv)
         if (!end_opts && arg == "--no-unused")
         {
             o.report.show_unused = false;
+            continue;
+        }
+        if (!end_opts && arg == "--undelete")
+        {
+            o.report.undelete = true;
+            o.extract.undelete = true;
             continue;
         }
         if (!end_opts && arg == "--json")

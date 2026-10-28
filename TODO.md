@@ -108,3 +108,9 @@ Shipped in 0.39: enable-only `--json` (no `--no-json`, no TSV). One JSON documen
 ## Quality bar
 
 C++23 gnu++23, Allman, Doxygen, gcc. CLI: no-args usage, `-h`/`-v`, `-v` never verbose, `--no-*`. `make -s test` then `make -s verify`. FEATURE/FIXUP commits; `require-durable.sh --push --sync`.
+
+**0.43 (2026-10-28, dos33-undelete):** opt-in `--undelete` for deleted DOS 3.3 files (default output unchanged). The old T/S chain is walked by C23 `dos33_ts_chain` (`src/dos33_chain.c`: range check, loop detection, max 64 lists; CBMC `formal/harness_dos33_chain.c`). Each list/data sector is checked in the VTOC free map ($38, 4 bytes/track): reused → `partial`. Listing: `Recovery` column (`full` / `partial (N reused)` / `unrecoverable`) + notes. JSON: `dos33.recovered`, `recovery`, `reused_sectors`, `recovery_reason` (absent without the switch). `-x`: `NAME.undeleted` / `NAME.partial`, live files first, unrecoverable skipped with a note. Builder gained the VTOC free map (`set_free` / `is_free`, DELETE frees). Tests: `tests/test_dos33.cpp` `[undelete]`.
+
+**Next (undelete):** 13-sector (DOS 3.2) free-map layout is not checked, so those recoveries are always `partial`; confirm the map layout from a reference before trusting it.
+
+**Verify last green (box, 0.43):** ASan `make verify` and plain -O2 `make test` both 328 cases, 306 passed, 22 skipped, 28971 assertions, 0 failed; CBMC SUCCESS — fat12 0 of 67, gcr 0 of 35, apple_gcr 0 of 178, fat_slack 0 of 7, dos33_chain 0 of 93 failed.

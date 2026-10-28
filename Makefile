@@ -70,7 +70,8 @@ TARGET := dumpfloppy
 .DEFAULT_GOAL := $(TARGET)
 TEST_BIN := tests/run_tests
 
-SRC_C := src/fat12_codec.c src/gcr_codec.c src/apple_gcr_codec.c src/fat_slack.c
+SRC_C := src/fat12_codec.c src/gcr_codec.c src/apple_gcr_codec.c src/fat_slack.c \
+         src/dos33_chain.c
 SRC_CXX := src/util.cpp src/geometry.cpp src/image.cpp src/bpb.cpp \
            src/boot.cpp src/fat.cpp src/directory.cpp src/analyze.cpp \
            src/report.cpp src/cli.cpp src/extract.cpp src/update.cpp \
@@ -150,6 +151,9 @@ verify: test
 	  --unwinding-assertions
 	$(HOME)/.local/bin/cbmc src/fat_slack.c formal/harness_fat_slack.c \
 	  -I include --bounds-check --pointer-check --unwind 2 \
+	  --unwinding-assertions
+	$(HOME)/.local/bin/cbmc src/dos33_chain.c formal/harness_dos33_chain.c \
+	  -I include --bounds-check --pointer-check --unwind 5 \
 	  --unwinding-assertions
 
 # clean and all are separate $(MAKE) lines so -j1 applies only to clean.

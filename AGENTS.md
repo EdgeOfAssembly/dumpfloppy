@@ -30,7 +30,9 @@ Deleted entries: `TUI_BG_BRIGHT_RED` + `TUI_WHITE` + `TUI_BOLD` (no blink).
 `formal/harness_fat12.c` proves FAT12 even/odd packed-entry round-trip.
 `formal/harness_gcr.c` proves Commodore 4-to-5 GCR nibble/byte round-trip.
 `formal/harness_apple_gcr.c` proves Apple 6-and-2 map and 4-and-4 round-trip.
-Keep `fat12_entry_get` / `fat12_entry_set`, `gcr_*`, and `apple_gcr_*` in C23
+`formal/harness_dos33_chain.c` proves the bounded DOS 3.3 T/S-list chain walk
+(range, loop, cap) used by `--undelete`.
+Keep `fat12_entry_get` / `fat12_entry_set`, `gcr_*`, `apple_gcr_*`, and `dos33_ts_chain` in C23
 (no C++ in those TUs).
 
 ## Continue tomorrow

@@ -843,10 +843,13 @@ bool apple_extract_matches(const apple_file& file, const extract_options& opt)
         return true;
     }
     const std::string host = apple_host_filename(file);
+    const bool undel = opt.undelete && file.deleted;
     for (const std::string& pat : opt.patterns)
     {
         if (glob_match(pat, file.name) || glob_match(pat, host) ||
-            glob_match(pat, file.type_name))
+            glob_match(pat, file.type_name) ||
+            (undel && (glob_match(pat, apple_undelete_filename(file, dos33_recovery::full)) ||
+                       glob_match(pat, apple_undelete_filename(file, dos33_recovery::partial)))))
         {
             return true;
         }
@@ -880,8 +883,30 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
     /* Legitimate files never share blocks, so the sum of all outputs cannot
      * exceed the volume; a generous multiple still stops cross-link bombs. */
     std::size_t budget = k_extract_budget_factor * std::max<std::size_t>(a.apple.volume.size(), 1u) + 1u;
+    /* --undelete: live files claim their names first, so a recovered
+     * file can never take (or overwrite) a live file's output. */
+    const bool undelete = opt.undelete && a.apple.fs == apple_fs::dos33;
+    std::vector<const apple_file*> order;
     for (const apple_file& file : a.apple.entries)
     {
+        if (!undelete || !file.deleted)
+        {
+            order.push_back(&file);
+        }
+    }
+    if (undelete)
+    {
+        for (const apple_file& file : a.apple.entries)
+        {
+            if (file.deleted)
+            {
+                order.push_back(&file);
+            }
+        }
+    }
+    for (const apple_file* fp : order)
+    {
+        const apple_file& file = *fp;
         if (file.storage == 0x0Du)
         {
             continue;
@@ -891,7 +916,25 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
             continue;
         }
         ++matched;
-        const std::string host = host_leaf(apple_host_filename(file), err);
+        dos33_undelete u{};
+        const bool recover = undelete && file.deleted;
+        if (recover)
+        {
+            u = undelete_dos33(a.apple, file);
+            if (u.status == dos33_recovery::unrecoverable)
+            {
+                err << "dumpfloppy: note: " << file.name << ": not recovered: " << u.reason
+                    << '\n';
+                continue;
+            }
+            if (u.status == dos33_recovery::partial)
+            {
+                err << "dumpfloppy: note: " << file.name << ": partial recovery: " << u.reason
+                    << '\n';
+            }
+        }
+        const std::string host = host_leaf(
+            recover ? apple_undelete_filename(file, u.status) : apple_host_filename(file), err);
         if (host.empty())
         {
             continue;
@@ -912,7 +955,8 @@ int extract_apple_files(const analysis& a, const extract_options& opt,
             continue;
         }
         apple_read_issues issues{};
-        const std::vector<uint8_t> bytes = read_apple_file(a.apple, file, &issues);
+        const std::vector<uint8_t> bytes =
+            recover ? std::move(u.bytes) : read_apple_file(a.apple, file, &issues);
         for (const std::string& m : issues.errors)
         {
             err << "dumpfloppy: warning: " << file.name << ": " << m << '\n';

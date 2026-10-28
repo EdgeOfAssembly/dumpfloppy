@@ -23,6 +23,7 @@ struct extract_options
     bool enabled = false;
     std::vector<std::string> patterns{}; /**< DOS globs; empty → all payloads. */
     std::filesystem::path dest_dir{"."};
+    bool undelete = false; /**< `--undelete`: DOS 3.3 deleted files → NAME.undeleted / NAME.partial. */
 };
 
 /**

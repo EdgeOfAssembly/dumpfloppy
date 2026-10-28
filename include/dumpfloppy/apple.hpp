@@ -121,6 +121,53 @@ enum class apple_order : uint8_t
                                                    const apple_file& file,
                                                    apple_read_issues* issues = nullptr);
 
+/** @brief Outcome of `--undelete` for one DOS 3.3 catalog entry. */
+enum class dos33_recovery : uint8_t
+{
+    none = 0,          /**< Live entry, or not DOS 3.3: nothing to recover. */
+    full = 1,          /**< Every list and data sector is still free in the VTOC map. */
+    partial = 2,       /**< Recovered, but some bytes may belong to a later file. */
+    unrecoverable = 3  /**< No usable T/S list or no data sector left. */
+};
+
+/** @brief Result of @ref undelete_dos33. */
+struct dos33_undelete
+{
+    dos33_recovery status = dos33_recovery::none;
+    unsigned reused = 0;       /**< List + data sectors the VTOC map shows as used again. */
+    unsigned lists = 0;        /**< T/S list sectors followed. */
+    unsigned data_sectors = 0; /**< Data sectors copied. */
+    std::string reason{};      /**< Why partial / unrecoverable (empty when full). */
+    std::vector<uint8_t> bytes{}; /**< Recovered data, trimmed by the real-length rules. */
+};
+
+/**
+ * @brief Recover a deleted DOS 3.3 file (`--undelete`).
+ *
+ * The old T/S list chain is checked with @ref dos33_ts_chain (range,
+ * loop, at most @c DOS33_MAX_TS_LISTS lists) before it is read. Every
+ * list and data sector is then looked up in the VTOC free-sector map
+ * (offset $38, 4 bytes per track): DELETE frees them, so one that is
+ * marked used again may hold a later file and makes the result partial.
+ * A bad or looping chain, an out-of-range data pointer, or a volume that
+ * is not 16 sectors per track (map layout not checked) is also partial.
+ * Nothing is guessed: bytes are read as they are on the disk. I/A/B and
+ * T lengths follow the same rules as live files.
+ *
+ * @param[in] disk Parsed DOS 3.3 volume.
+ * @param[in] file Catalog entry; live entries return @c dos33_recovery::none.
+ */
+[[nodiscard]] dos33_undelete undelete_dos33(const apple_disk& disk, const apple_file& file);
+
+/** @brief Short listing / JSON word: `full`, `partial`, `unrecoverable`, or empty. */
+[[nodiscard]] const char* dos33_recovery_name(dos33_recovery r);
+
+/**
+ * @brief Host name for an `--undelete` extract: `NAME.undeleted` when
+ *        full, `NAME.partial` when partial (`/` flattened to `_`).
+ */
+[[nodiscard]] std::string apple_undelete_filename(const apple_file& file, dos33_recovery r);
+
 } /* namespace dumpfloppy */
 
 #endif /* DUMPFLOPPY_APPLE_HPP */

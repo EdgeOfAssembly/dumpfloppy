@@ -97,6 +97,21 @@ TEST_CASE("parse_cli --no-hex and --no-deleted", "[cli]")
     REQUIRE_FALSE(o.report.show_deleted);
 }
 
+TEST_CASE("parse_cli --undelete is opt-in and reaches listing and -x", "[cli][undelete]")
+{
+    const auto off = parse({"a.dsk", "-x"});
+    REQUIRE(off.ok);
+    CHECK_FALSE(off.report.undelete);
+    CHECK_FALSE(off.extract.undelete);
+    const auto on = parse({"-x", "--undelete", "a.dsk"});
+    REQUIRE(on.ok);
+    CHECK(on.report.undelete);
+    CHECK(on.extract.undelete);
+    CHECK(on.extract.enabled);
+    CHECK(on.extract.patterns.empty());
+    REQUIRE(on.inputs.size() == 1u);
+}
+
 TEST_CASE("parse_cli -x extract all vs glob vs --extract=", "[cli]")
 {
     const auto all = parse({"disk.ima", "-x"});

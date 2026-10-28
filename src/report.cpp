@@ -548,7 +548,7 @@ constexpr size_t k_w_dos_ts = 8;
 constexpr size_t k_w_dos_addr = 5;
 constexpr size_t k_w_dos_len = 5;
 
-std::string apple_directory_header(apple_fs fs, size_t name_w)
+std::string apple_directory_header(apple_fs fs, size_t name_w, bool undelete = false)
 {
     std::ostringstream os;
     os << "  " << field(" ", k_w_mark) << field("Name", name_w)
@@ -564,7 +564,22 @@ std::string apple_directory_header(apple_fs fs, size_t name_w)
            << field("Addr", k_w_dos_addr) << field("Len", k_w_dos_len);
     }
     os << field("XXH64 Checksum", k_w_sum);
+    if (undelete && fs == apple_fs::dos33)
+    {
+        os << "Recovery";
+    }
     return os.str();
+}
+
+/** @brief `--undelete` Recovery column: `full`, `partial (N reused)`, `unrecoverable`. */
+std::string recovery_cell(const dos33_undelete& u)
+{
+    std::string c = dos33_recovery_name(u.status);
+    if (u.status == dos33_recovery::partial && u.reused != 0u)
+    {
+        c += " (" + std::to_string(u.reused) + " reused)";
+    }
+    return c;
 }
 
 std::string apple_entry_line(const apple_file& e, uint32_t size, std::string_view sum,
@@ -628,12 +643,14 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     put_style(out, color, TUI_BOLD);
     put_style(out, color, TUI_WHITE);
     const size_t name_w = apple_name_width(a.apple);
-    out << apple_directory_header(a.apple.fs, name_w);
+    const bool undelete = opt.undelete && a.apple.fs == apple_fs::dos33;
+    out << apple_directory_header(a.apple.fs, name_w, undelete);
     put_style(out, color, TUI_RESET);
     out << '\n';
     size_t shown = 0;
     size_t deleted_n = 0;
     size_t damaged_n = 0;
+    std::vector<std::string> recovery_notes;
     for (const apple_file& e : a.apple.entries)
     {
         if (e.deleted)
@@ -645,11 +662,30 @@ void write_apple_sections(const analysis& a, std::ostream& out,
             }
         }
         apple_read_issues issues{};
-        const std::vector<uint8_t> payload = read_apple_file(a.apple, e, &issues);
+        std::vector<uint8_t> payload;
+        dos33_undelete u{};
+        if (undelete && e.deleted)
+        {
+            u = undelete_dos33(a.apple, e);
+            payload = std::move(u.bytes);
+            if (!u.reason.empty())
+            {
+                recovery_notes.push_back(e.name + ": " + dos33_recovery_name(u.status) + ": " +
+                                         u.reason);
+            }
+        }
+        else
+        {
+            payload = read_apple_file(a.apple, e, &issues);
+        }
         damaged_n += issues.errors.empty() ? 0u : 1u;
         const uint32_t size = static_cast<uint32_t>(payload.size());
         const std::string sum = payload.empty() ? std::string{} : xxh64_hex(payload);
-        const std::string line = apple_entry_line(e, size, sum, a.apple.fs, name_w);
+        std::string line = apple_entry_line(e, size, sum, a.apple.fs, name_w);
+        if (undelete && e.deleted)
+        {
+            line += recovery_cell(u);
+        }
         if (e.deleted)
         {
             emit_deleted_line(out, color, line);
@@ -671,6 +707,16 @@ void write_apple_sections(const analysis& a, std::ostream& out,
                "        to the first $00, or the T/S-list extent when random-access; S/R/A2/B2:\n"
                "        the T/S-list extent). Secs includes T/S list sectors. Type * = locked.\n"
                "        Deleted (D): name from bytes $03-$1F; \"old T/S\" uses the track saved at $20.\n";
+    }
+    if (undelete && !a.apple.entries.empty())
+    {
+        out << "  Recovery (--undelete): full = every old list and data sector is still free\n"
+               "        in the VTOC map; partial = some may hold a later file, or the T/S chain\n"
+               "        is bad; -x writes NAME.undeleted or NAME.partial.\n";
+        for (const std::string& n : recovery_notes)
+        {
+            out << "  Recovery note: " << n << '\n';
+        }
     }
     if (damaged_n != 0u)
     {
@@ -902,7 +948,7 @@ void collect_trd_rows(const analysis& a, const report_options& opt,
 }
 
 /** @brief DOS 3.3 catalog fields as one JSON object (the text listing's columns). */
-std::string dos33_json(const apple_file& e)
+std::string dos33_json(const apple_file& e, const dos33_undelete* u = nullptr)
 {
     static constexpr const char* k_src[] = {"none", "header", "ts_list", "text_nul"};
     const unsigned base = e.type_byte & 0x7Fu;
@@ -960,6 +1006,32 @@ std::string dos33_json(const apple_file& e)
     }
     o << ind << "\"length_source\": ";
     json_quote(o, k_src[e.dos_len_source < 4u ? e.dos_len_source : 0u]);
+    if (u != nullptr)
+    {
+        /* --undelete only: additive keys, absent by default. */
+        const bool rec = u->status == dos33_recovery::full || u->status == dos33_recovery::partial;
+        o << ',' << ind << "\"recovered\": " << (rec ? "true" : "false") << ',';
+        o << ind << "\"recovery\": ";
+        if (u->status == dos33_recovery::none)
+        {
+            o << "null," << ind << "\"reused_sectors\": null," << ind
+              << "\"recovery_reason\": null";
+        }
+        else
+        {
+            json_quote(o, dos33_recovery_name(u->status));
+            o << ',' << ind << "\"reused_sectors\": " << u->reused << ',';
+            o << ind << "\"recovery_reason\": ";
+            if (u->reason.empty())
+            {
+                o << "null";
+            }
+            else
+            {
+                json_quote(o, u->reason);
+            }
+        }
+    }
     o << "\n          }";
     return o.str();
 }
@@ -978,15 +1050,22 @@ void collect_apple_rows(const analysis& a, const report_options& opt,
         row.name = e.name;
         row.deleted = e.deleted;
         row.directory = e.type_name == "DIR";
+        const bool undelete = opt.undelete && a.apple.fs == apple_fs::dos33;
+        dos33_undelete u{};
+        if (undelete)
+        {
+            u = undelete_dos33(a.apple, e);
+        }
         if (!row.directory)
         {
-            const std::vector<uint8_t> payload = read_apple_file(a.apple, e);
-            row.size = static_cast<uint32_t>(payload.size());
+            row.size = undelete && e.deleted
+                           ? static_cast<uint32_t>(u.bytes.size())
+                           : static_cast<uint32_t>(read_apple_file(a.apple, e).size());
         }
         row.type = e.type_name;
         if (a.apple.fs == apple_fs::dos33)
         {
-            row.dos33 = dos33_json(e);
+            row.dos33 = dos33_json(e, undelete ? &u : nullptr);
         }
         push_row(rows, std::move(row));
     }

@@ -3,6 +3,7 @@
  * @brief DOS 3.3 VTOC/catalog and ProDOS volume-directory parse + extract.
  */
 #include "dumpfloppy/apple.hpp"
+#include "dumpfloppy/dos33_chain.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -341,6 +342,181 @@ void set_dos33_length(apple_file& f, const dos33_walk& w)
     f.byte_size = static_cast<uint32_t>(hdr + len);
     f.dos_len_source = 1u;
 }
+
+/**
+ * @brief VTOC free-sector map lookup (16-sector DOS 3.3 only).
+ *
+ * Track t uses VTOC bytes $38+4t and $39+4t: bit 7 of the first byte is
+ * sector 15 … bit 0 sector 8, bit 7 of the second is sector 7 … bit 0
+ * sector 0. A set bit means free.
+ */
+bool dos33_sector_free(const apple_disk& disk, uint8_t t, uint8_t s)
+{
+    const auto vtoc = dos_sector(disk.volume, 17u, 0u, disk.sectors_per_track);
+    const std::size_t at = 0x38u + static_cast<std::size_t>(t) * 4u + (s >= 8u ? 0u : 1u);
+    if (vtoc.empty() || at >= vtoc.size() || s >= 16u)
+    {
+        return false;
+    }
+    return (vtoc[at] & (1u << (s & 7u))) != 0u;
+}
+
+} /* namespace */
+
+dos33_undelete undelete_dos33(const apple_disk& disk, const apple_file& file)
+{
+    dos33_undelete r{};
+    if (disk.fs != apple_fs::dos33 || !file.deleted)
+    {
+        return r;
+    }
+    const uint8_t spt = disk.sectors_per_track;
+    const bool map_ok = spt == 16u;
+    std::vector<std::string> why;
+    uint8_t lt[DOS33_MAX_TS_LISTS]{};
+    uint8_t ls[DOS33_MAX_TS_LISTS]{};
+    std::size_t n = 0;
+    const dos33_chain_status st =
+        dos33_ts_chain(disk.volume.data(), disk.volume.size(), disk.tracks, spt, file.ts_track,
+                       file.ts_sector, lt, ls, DOS33_MAX_TS_LISTS, &n);
+    r.lists = static_cast<unsigned>(n);
+    if (n == 0u)
+    {
+        r.status = dos33_recovery::unrecoverable;
+        r.reason = "old T/S list T" + std::to_string(file.ts_track) + " S" +
+                   std::to_string(file.ts_sector) + " is outside the volume";
+        return r;
+    }
+    if (st == DOS33_CHAIN_BAD_LINK)
+    {
+        why.push_back("T/S list chain has a bad link after " + std::to_string(n) + " list(s)");
+    }
+    else if (st == DOS33_CHAIN_LOOP)
+    {
+        why.push_back("T/S list chain loops after " + std::to_string(n) + " list(s)");
+    }
+    else if (st == DOS33_CHAIN_TOO_LONG)
+    {
+        why.push_back("T/S list chain longer than " + std::to_string(DOS33_MAX_TS_LISTS) +
+                      " lists");
+    }
+    dos33_walk w{};
+    unsigned bad_ptrs = 0;
+    for (std::size_t k = 0; k < n; ++k)
+    {
+        if (map_ok && !dos33_sector_free(disk, lt[k], ls[k]))
+        {
+            ++r.reused;
+        }
+        const auto ts = dos_sector(disk.volume, lt[k], ls[k], spt);
+        for (std::size_t i = 0; i < k_dos_ts_pairs; ++i)
+        {
+            const uint8_t dt = ts[0x0Cu + i * 2u];
+            const uint8_t ds = ts[0x0Du + i * 2u];
+            if (dt == 0u)
+            {
+                continue;
+            }
+            if (dt >= disk.tracks || ds >= spt ||
+                dos_sector(disk.volume, dt, ds, spt).empty())
+            {
+                ++bad_ptrs;
+                continue;
+            }
+            const std::size_t pos = k * k_dos_ts_pairs + i;
+            const std::size_t end = (pos + 1u) * k_apple_dos_sector;
+            if (end > disk.volume.size())
+            {
+                w.capped = true;
+                continue;
+            }
+            if (map_ok && !dos33_sector_free(disk, dt, ds))
+            {
+                ++r.reused;
+            }
+            if (w.bytes.size() < end)
+            {
+                w.bytes.resize(end, 0);
+            }
+            const auto sec = dos_sector(disk.volume, dt, ds, spt);
+            std::memcpy(w.bytes.data() + pos * k_apple_dos_sector, sec.data(), sec.size());
+            ++w.data_sectors;
+        }
+    }
+    w.holes = w.data_sectors * k_apple_dos_sector < w.bytes.size();
+    r.data_sectors = static_cast<unsigned>(w.data_sectors);
+    if (r.reused != 0u)
+    {
+        why.push_back(std::to_string(r.reused) +
+                      " sector(s) marked used again in the VTOC map (may hold a later file)");
+    }
+    if (bad_ptrs != 0u)
+    {
+        why.push_back(std::to_string(bad_ptrs) + " data pointer(s) outside the volume skipped");
+    }
+    if (w.capped)
+    {
+        why.push_back("offsets past the volume size dropped");
+    }
+    if (!map_ok)
+    {
+        why.push_back("free-sector map not checked (" + std::to_string(spt) +
+                      " sectors per track)");
+    }
+    if (w.data_sectors == 0u)
+    {
+        r.status = dos33_recovery::unrecoverable;
+        why.insert(why.begin(), "no data sectors left in the old T/S list");
+    }
+    else
+    {
+        r.status = why.empty() ? dos33_recovery::full : dos33_recovery::partial;
+        apple_file sized = file;
+        set_dos33_length(sized, w);
+        if (sized.byte_size < w.bytes.size())
+        {
+            w.bytes.resize(sized.byte_size);
+        }
+        r.bytes = std::move(w.bytes);
+    }
+    for (std::size_t i = 0; i < why.size(); ++i)
+    {
+        r.reason += (i == 0u ? "" : "; ") + why[i];
+    }
+    return r;
+}
+
+const char* dos33_recovery_name(dos33_recovery r)
+{
+    switch (r)
+    {
+    case dos33_recovery::full:
+        return "full";
+    case dos33_recovery::partial:
+        return "partial";
+    case dos33_recovery::unrecoverable:
+        return "unrecoverable";
+    case dos33_recovery::none:
+        break;
+    }
+    return "";
+}
+
+std::string apple_undelete_filename(const apple_file& file, dos33_recovery r)
+{
+    std::string stem = file.name.empty() ? std::string("FILE") : file.name;
+    for (char& c : stem)
+    {
+        if (c == '/' || c == '\\' || c == '\0')
+        {
+            c = '_';
+        }
+    }
+    return stem + (r == dos33_recovery::full ? ".undeleted" : ".partial");
+}
+
+namespace
+{
 
 apple_disk parse_dos33(std::span<const uint8_t> data)
 {

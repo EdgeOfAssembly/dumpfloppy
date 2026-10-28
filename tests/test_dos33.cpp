@@ -424,3 +424,315 @@ TEST_CASE("DOS 3.3 JSON carries the catalog columns", "[apple][dos33][json]")
     const auto doc2 = nlohmann::json::parse(json_of(b.bytes(), false));
     CHECK(json_entry(doc2, "GONE") == nullptr);
 }
+
+/* ---- --undelete (0.43) ------------------------------------------------- */
+
+namespace
+{
+
+std::string report_undel(const std::vector<uint8_t>& bytes, bool undelete)
+{
+    const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(bytes, "t.dsk"));
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    opt.undelete = undelete;
+    std::ostringstream os;
+    dumpfloppy::write_report(a, os, opt);
+    return os.str();
+}
+
+nlohmann::json json_undel(const std::vector<uint8_t>& bytes, bool undelete)
+{
+    const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(bytes, "t.dsk"));
+    dumpfloppy::report_options opt{};
+    opt.color = false;
+    opt.undelete = undelete;
+    std::ostringstream os;
+    dumpfloppy::write_json_begin(os);
+    dumpfloppy::write_json_image(a, os, opt, true);
+    dumpfloppy::write_json_end(os);
+    return nlohmann::json::parse(os.str());
+}
+
+/** @brief Fresh extract dir under the temp dir; caller removes it. */
+std::filesystem::path undel_dest(const char* leaf)
+{
+    const auto dest = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / leaf;
+    std::filesystem::remove_all(dest);
+    std::filesystem::create_directories(dest);
+    return dest;
+}
+
+int extract_undel(const std::vector<uint8_t>& bytes, const std::filesystem::path& dest,
+                  bool undelete, std::string* err_out = nullptr)
+{
+    const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(bytes, "t.dsk"));
+    dumpfloppy::extract_options opt{};
+    opt.enabled = true;
+    opt.dest_dir = dest;
+    opt.undelete = undelete;
+    std::ostringstream err;
+    const int n = dumpfloppy::extract_files(a, opt, err);
+    if (err_out != nullptr)
+    {
+        *err_out = err.str();
+    }
+    return n;
+}
+
+std::string slurp(const std::filesystem::path& p)
+{
+    std::ifstream in(p, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+} /* namespace */
+
+TEST_CASE("DOS 3.3 --undelete: full recovery", "[apple][dos33][undelete]")
+{
+    builder b;
+    b.add("KEEP", t_text, std::vector<uint8_t>(10, 'k'));
+    const auto body = with_header({0x0800, 400}, 400, 3); /* B: 4 + 400, two data sectors */
+    const slot gone = b.add("GONE", t_binary, body);
+    b.remove(gone);
+    for (const auto& [t, s] : gone.sectors)
+    {
+        REQUIRE(b.is_free(t, s));
+    }
+    const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(b.bytes());
+    const auto* g = find(d, "GONE");
+    REQUIRE(g != nullptr);
+    const dumpfloppy::dos33_undelete u = dumpfloppy::undelete_dos33(d, *g);
+    CHECK(u.status == dumpfloppy::dos33_recovery::full);
+    CHECK(u.reused == 0u);
+    CHECK(u.lists == 1u);
+    CHECK(u.data_sectors == 2u);
+    CHECK(u.reason.empty());
+    REQUIRE(u.bytes.size() == 404u); /* B real length: 4 + length word */
+    CHECK(std::equal(body.begin(), body.end(), u.bytes.begin()));
+    /* Live entries are not "recovered". */
+    CHECK(dumpfloppy::undelete_dos33(d, *find(d, "KEEP")).status ==
+          dumpfloppy::dos33_recovery::none);
+
+    const std::string s = report_undel(b.bytes(), true);
+    CHECK(line_with(s, "XXH64 Checksum").find("Recovery") != std::string::npos);
+    const std::string gl = line_with(s, "GONE");
+    CHECK(gl.find("404") != std::string::npos);
+    CHECK(gl.ends_with("full"));
+    CHECK(line_with(s, "KEEP").find("full") == std::string::npos);
+
+    const auto doc = json_undel(b.bytes(), true);
+    const auto* jg = json_entry(doc, "GONE");
+    REQUIRE(jg != nullptr);
+    CHECK(jg->at("size") == 404);
+    CHECK(jg->at("dos33").at("recovered") == true);
+    CHECK(jg->at("dos33").at("recovery") == "full");
+    CHECK(jg->at("dos33").at("reused_sectors") == 0);
+    CHECK(jg->at("dos33").at("recovery_reason").is_null());
+    const auto* jk = json_entry(doc, "KEEP");
+    REQUIRE(jk != nullptr);
+    CHECK(jk->at("dos33").at("recovered") == false);
+    CHECK(jk->at("dos33").at("recovery").is_null());
+
+    const auto dest = undel_dest("dos33-undel-full");
+    CHECK(extract_undel(b.bytes(), dest, true) == 2);
+    CHECK(slurp(dest / "GONE.undeleted") == std::string(body.begin(), body.end()));
+    CHECK_FALSE(std::filesystem::exists(dest / "?GONE"));
+    CHECK(slurp(dest / "KEEP") == std::string(10, 'k'));
+    std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("DOS 3.3 --undelete: a reused sector makes the file partial",
+          "[apple][dos33][undelete]")
+{
+    builder b;
+    std::vector<uint8_t> text(600, 'o'); /* T: three data sectors, ends at $00 */
+    text.push_back(0);
+    const slot gone = b.add("OLD", t_text, text);
+    b.remove(gone);
+    /* A later file took data sector 2 (sectors[0] is the T/S list). */
+    const auto [rt, rs] = gone.sectors[2];
+    b.set_free(rt, rs, false);
+    std::memset(b.bytes().data() + builder::at(rt, rs), 'N', k_sector);
+
+    const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(b.bytes());
+    const dumpfloppy::dos33_undelete u = dumpfloppy::undelete_dos33(d, *find(d, "OLD"));
+    CHECK(u.status == dumpfloppy::dos33_recovery::partial);
+    CHECK(u.reused == 1u);
+    CHECK(u.reason.find("1 sector(s) marked used again") != std::string::npos);
+    /* Bytes are taken as they are on disk: no guessing. The overwritten
+     * sector has no $00, so the T length runs to the next $00. */
+    REQUIRE(u.bytes.size() == 600u);
+    CHECK(u.bytes[255] == 'o');
+    CHECK(u.bytes[256] == 'N');
+
+    const std::string s = report_undel(b.bytes(), true);
+    CHECK(line_with(s, " OLD ").ends_with("partial (1 reused)"));
+    CHECK(line_with(s, "Recovery note: OLD: partial") != "");
+
+    const auto doc = json_undel(b.bytes(), true);
+    const auto* jo = json_entry(doc, "OLD");
+    REQUIRE(jo != nullptr);
+    CHECK(jo->at("dos33").at("recovered") == true);
+    CHECK(jo->at("dos33").at("recovery") == "partial");
+    CHECK(jo->at("dos33").at("reused_sectors") == 1);
+    CHECK(jo->at("dos33").at("recovery_reason").is_string());
+
+    const auto dest = undel_dest("dos33-undel-partial");
+    std::string err;
+    CHECK(extract_undel(b.bytes(), dest, true, &err) == 1);
+    CHECK(slurp(dest / "OLD.partial").size() == 600u);
+    CHECK_FALSE(std::filesystem::exists(dest / "OLD.undeleted"));
+    CHECK(err.find("partial recovery") != std::string::npos);
+    std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("DOS 3.3 --undelete: broken and looping T/S chains stop",
+          "[apple][dos33][undelete]")
+{
+    /* Two lists (123 data sectors); list 2 links back to list 1. */
+    std::vector<uint8_t> big(123u * k_sector);
+    for (std::size_t i = 0; i < big.size(); ++i)
+    {
+        big[i] = static_cast<uint8_t>(i / k_sector + 1u);
+    }
+    SECTION("loop")
+    {
+        builder b;
+        const slot gone = b.add("LOOPY", t_s, big);
+        b.remove(gone);
+        const auto [l2t, l2s] = gone.sectors[1];
+        auto& img = b.bytes();
+        img[builder::at(l2t, l2s) + 1u] = gone.ts_track;
+        img[builder::at(l2t, l2s) + 2u] = gone.ts_sector;
+        const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(img);
+        const auto u = dumpfloppy::undelete_dos33(d, *find(d, "LOOPY"));
+        CHECK(u.status == dumpfloppy::dos33_recovery::partial);
+        CHECK(u.lists == 2u);
+        CHECK(u.reused == 0u);
+        CHECK(u.reason.find("loops") != std::string::npos);
+        CHECK(u.bytes.size() == big.size());
+        const auto doc = json_undel(img, true);
+        const auto* jl = json_entry(doc, "LOOPY");
+        REQUIRE(jl != nullptr);
+        CHECK(jl->at("dos33").at("recovery") == "partial");
+    }
+    SECTION("bad link after the first list")
+    {
+        builder b;
+        const slot gone = b.add("BROKEN", t_s, big);
+        b.remove(gone);
+        auto& img = b.bytes();
+        img[builder::at(gone.ts_track, gone.ts_sector) + 1u] = 0x60; /* track 96 */
+        const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(img);
+        const auto u = dumpfloppy::undelete_dos33(d, *find(d, "BROKEN"));
+        CHECK(u.status == dumpfloppy::dos33_recovery::partial);
+        CHECK(u.lists == 1u);
+        CHECK(u.reason.find("bad link") != std::string::npos);
+        CHECK(u.bytes.size() == 122u * k_sector);
+    }
+    SECTION("first list outside the volume is unrecoverable")
+    {
+        builder b;
+        b.add("LIVE", t_text, std::vector<uint8_t>(5, 'l'));
+        const slot gone = b.add("NOWHERE", t_text, std::vector<uint8_t>(5, 'n'));
+        b.remove(gone);
+        auto& img = b.bytes();
+        img[gone.off + 0x20u] = 0x50; /* old T/S track 80 */
+        const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(img);
+        const auto u = dumpfloppy::undelete_dos33(d, *find(d, "NOWHERE"));
+        CHECK(u.status == dumpfloppy::dos33_recovery::unrecoverable);
+        CHECK(u.bytes.empty());
+        CHECK(line_with(report_undel(img, true), "NOWHERE").ends_with("unrecoverable"));
+        const auto doc = json_undel(img, true);
+        const auto* jn = json_entry(doc, "NOWHERE");
+        REQUIRE(jn != nullptr);
+        CHECK(jn->at("dos33").at("recovered") == false);
+        CHECK(jn->at("dos33").at("recovery") == "unrecoverable");
+        const auto dest = undel_dest("dos33-undel-none");
+        std::string err;
+        CHECK(extract_undel(img, dest, true, &err) == 1);
+        CHECK(err.find("NOWHERE: not recovered") != std::string::npos);
+        CHECK_FALSE(std::filesystem::exists(dest / "NOWHERE.partial"));
+        CHECK_FALSE(std::filesystem::exists(dest / "NOWHERE.undeleted"));
+        std::filesystem::remove_all(dest);
+    }
+    SECTION("empty old T/S list is unrecoverable")
+    {
+        builder b;
+        const slot gone = b.add("ZEROED", t_text, std::vector<uint8_t>(5, 'z'));
+        b.remove(gone);
+        std::memset(b.bytes().data() + builder::at(gone.ts_track, gone.ts_sector), 0, k_sector);
+        const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(b.bytes());
+        const auto u = dumpfloppy::undelete_dos33(d, *find(d, "ZEROED"));
+        CHECK(u.status == dumpfloppy::dos33_recovery::unrecoverable);
+        CHECK(u.reason.find("no data sectors") != std::string::npos);
+    }
+}
+
+TEST_CASE("DOS 3.3 --undelete: multi-sector T/S chain recovers in order",
+          "[apple][dos33][undelete]")
+{
+    builder b;
+    std::vector<uint8_t> big(130u * k_sector);
+    for (std::size_t i = 0; i < big.size(); ++i)
+    {
+        big[i] = static_cast<uint8_t>((i * 7u) ^ (i / k_sector));
+    }
+    const slot gone = b.add("CHAIN", t_new_b, big); /* B2: T/S-list extent */
+    b.remove(gone);
+    const dumpfloppy::apple_disk d = dumpfloppy::parse_apple(b.bytes());
+    const auto u = dumpfloppy::undelete_dos33(d, *find(d, "CHAIN"));
+    CHECK(u.status == dumpfloppy::dos33_recovery::full);
+    CHECK(u.lists == 2u);
+    CHECK(u.data_sectors == 130u);
+    CHECK(u.bytes == big);
+}
+
+TEST_CASE("DOS 3.3 --undelete never takes a live file's name", "[apple][dos33][undelete]")
+{
+    builder b;
+    b.add("X.undeleted", t_text, std::vector<uint8_t>(4, 'L'));
+    const slot gone = b.add("X", t_text, std::vector<uint8_t>(4, 'D'));
+    b.remove(gone);
+    const auto dest = undel_dest("dos33-undel-live");
+    CHECK(extract_undel(b.bytes(), dest, true) == 2);
+    CHECK(slurp(dest / "X.undeleted") == "LLLL");
+    std::size_t files = 0;
+    for (const auto& e : std::filesystem::directory_iterator(dest))
+    {
+        ++files;
+        if (e.path().filename() != "X.undeleted")
+        {
+            CHECK(slurp(e.path()) == "DDDD");
+        }
+    }
+    CHECK(files == 2u);
+    std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("DOS 3.3 default output is unchanged without --undelete",
+          "[apple][dos33][undelete]")
+{
+    builder b;
+    b.add("KEEP", t_text, std::vector<uint8_t>(10, 'k'));
+    const slot gone = b.add("GONE", t_applesoft, with_header({40}, 40, 9));
+    b.remove(gone);
+    const std::string plain = report_undel(b.bytes(), false);
+    CHECK(plain == report_of(b.bytes()));
+    CHECK(plain.find("Recovery") == std::string::npos);
+    CHECK(line_with(plain, "GONE").find("full") == std::string::npos);
+    const auto doc = json_undel(b.bytes(), false);
+    const auto* jg = json_entry(doc, "GONE");
+    REQUIRE(jg != nullptr);
+    for (const char* k : {"recovered", "recovery", "reused_sectors", "recovery_reason"})
+    {
+        CHECK_FALSE(jg->at("dos33").contains(k));
+    }
+    CHECK(doc == nlohmann::json::parse(json_of(b.bytes())));
+    const auto dest = undel_dest("dos33-undel-default");
+    CHECK(extract_undel(b.bytes(), dest, false) == 2);
+    CHECK(slurp(dest / "?GONE").size() == 42u);
+    CHECK_FALSE(std::filesystem::exists(dest / "GONE.undeleted"));
+    std::filesystem::remove_all(dest);
+}
