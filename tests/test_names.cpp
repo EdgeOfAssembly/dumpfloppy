@@ -2,6 +2,7 @@
  * @file test_names.cpp
  * @brief Empty-payload XXH64 and escaped directory names in the report.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/image.hpp"
@@ -28,7 +29,7 @@ namespace
 std::filesystem::path write_temp(const std::vector<uint8_t>& bytes,
                                  const std::string& name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / name;
     std::ofstream out(path, std::ios::binary | std::ios::trunc);

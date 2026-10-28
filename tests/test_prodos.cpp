@@ -5,6 +5,7 @@
  *
  * Every image is synthesised by tests/prodos_builder.hpp.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/extract.hpp"
@@ -212,7 +213,7 @@ TEST_CASE("-x extracts a 2IMG ProDOS volume incl. subdirs and forks", "[prodos][
 {
     const fixture f = make_fixture();
     const auto a = dumpfloppy::analyse(wrap(prodos_test::wrap_2img(f.image, 1), "t.2mg"));
-    const auto dest = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "prodos-x";
+    const auto dest = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "prodos-x";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};
@@ -238,7 +239,7 @@ TEST_CASE("-x on a 2IMG block image without a catalog names the real reason",
     REQUIRE_FALSE(a.apple.present);
     dumpfloppy::extract_options opt{};
     opt.enabled = true;
-    opt.dest_dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "prodos-none";
+    opt.dest_dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "prodos-none";
     std::filesystem::create_directories(opt.dest_dir);
     std::ostringstream err;
     REQUIRE(dumpfloppy::extract_files(a, opt, err) < 0);
@@ -293,7 +294,7 @@ std::vector<uint8_t> make_140k()
 
 int extract_to(const dumpfloppy::analysis& a, const char* leaf, std::string& err_out)
 {
-    const auto dest = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / leaf;
+    const auto dest = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / leaf;
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};
@@ -309,7 +310,7 @@ std::uintmax_t dir_bytes(const char* leaf)
 {
     std::uintmax_t n = 0;
     for (const auto& e : std::filesystem::recursive_directory_iterator(
-             std::filesystem::temp_directory_path() / "dumpfloppy-tests" / leaf))
+             dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / leaf))
     {
         if (e.is_regular_file())
         {
@@ -356,7 +357,7 @@ TEST_CASE("review repro dos_order_prodos: DOS-order 140K ProDOS decodes", "[prod
     REQUIRE(mg.apple.dos_order);
     std::string err;
     REQUIRE(extract_to(mg, "prodos-do", err) == 2);
-    REQUIRE(slurp(std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "prodos-do" /
+    REQUIRE(slurp(dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "prodos-do" /
                   "DOCS_NOTE") == pattern(9000, 22));
 }
 

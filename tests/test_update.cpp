@@ -2,6 +2,7 @@
  * @file test_update.cpp
  * @brief FAT replace: same size, shrink, grow, relocate, reclaim-first, disk-full, MFM DAM.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
 #include "dumpfloppy/directory.hpp"
@@ -25,7 +26,7 @@ namespace
 std::filesystem::path write_temp(const std::vector<uint8_t>& bytes,
                                  const std::string& name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / name;
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -493,7 +494,7 @@ TEST_CASE("update PENGUIN.EXE same-size on Batman MFM", "[update][batman]")
     {
         SKIP("Batman Disk 1 .mfm is not present");
     }
-    const auto work = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+    const auto work = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" /
                       "batman-upd.mfm";
     std::filesystem::copy_file(img, work, std::filesystem::copy_options::overwrite_existing);
 

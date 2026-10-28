@@ -2,6 +2,7 @@
  * @file test_g71.cpp
  * @brief GCR-1571 G71 decode, analyse skip-FAT, extract, refuse -u.
  */
+#include "test_tmp.hpp"
 #include "g71_builder.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cbm.hpp"
@@ -39,7 +40,7 @@ dumpfloppy::floppy_image make_g71_image()
 
 std::filesystem::path write_temp_g71()
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / "sample.g71";
     const auto bytes = dumpfloppy_test::make_sample_g71();
@@ -170,7 +171,7 @@ TEST_CASE("extract writes G71 PRG payload from decoded side-1 sectors", "[g71][e
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_g71_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "g71-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "g71-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 

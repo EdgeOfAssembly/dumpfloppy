@@ -43,14 +43,16 @@ and Apple DOS 3.3 / ProDOS (`.dsk` / `.po` / 2IMG).
   as zeros), other types from the T/S list. Deleted DOS 3.3 files (first byte
   `$FF`, T/S track kept at offset `$20`) are listed with the name from
   `$03-$1F`, their old T/S shown as `old t/s`, and extracted as `?NAME`.
-  `--undelete` (opt-in) recovers them instead: the old T/S chain is range-,
+  By default a read-only recovery analysis checks each one: the old T/S chain is range-,
   loop- and length-checked (at most 64 lists), each list and data sector is
   looked up in the VTOC free-sector map, and the file is marked **full** (all
   still free) or **partial** (some marked used again, so a later file may own
   them; or the chain is bad). Bytes are read as they are, with the real-length
-  rules. The listing gains a `Recovery` column and notes; `-x` writes
-  `NAME.undeleted` or `NAME.partial` (live files are written first and never
-  overwritten; unrecoverable files are skipped with a note).
+  rules. The listing shows a `Recovery` column and notes (`--no-recovery`
+  hides them and gives the 0.43 default output). `-x --undelete` (opt-in)
+  writes `NAME.undeleted` or `NAME.partial` instead of `?NAME` (live files
+  are written first and never overwritten; unrecoverable files are skipped
+  with a note).
 - Type column (DATA until a catalog format matches; FAT12/ADF/AIFF/…)
 - **XXH64** of each recovered file (16 hex)
 - Whole-image **XXH64 catalog**: known dumps print a **CATALOG** section with
@@ -87,7 +89,7 @@ dumpfloppy [options] [images…]
 ```
 
 No arguments (and `-h` / `--help`) print usage. `-v` / `--version` prints
-`dumpfloppy 0.43`. Options and paths may be interleaved. DOS 1.x 160K
+`dumpfloppy 0.44`. Options and paths may be interleaved. DOS 1.x 160K
 (media `FE`) and 320K (media `FF`) images with no BPB are listed as FAT12.
 ImageDisk `.imd` is assembled in sector-number order and then listed; a
 header with no sector payload is reported as ImageDisk with an empty
@@ -149,7 +151,8 @@ replace; G64/G71 GCR, REL, and TRD are refused.
 | Deleted entries shown in the listing | `--no-deleted` (listing only; `-x` still extracts deleted) |
 | Unused leftover FAT clusters listed | `--no-unused` (listing only; `-x` still extracts unused) |
 | Extract files | `-x` / `--extract` (optional glob) |
-| Deleted DOS 3.3 files read best-effort as `?NAME` | `--undelete` (checked recovery: `NAME.undeleted` / `NAME.partial`, Recovery column, JSON keys) |
+| DOS 3.3 recovery analysis shown (Recovery column, JSON keys) | `--no-recovery` |
+| `-x` writes deleted DOS 3.3 files best-effort as `?NAME` | `--undelete` (`-x` writes checked `NAME.undeleted` / `NAME.partial`) |
 | Update a named file | `-u` / `--update FILE` (repeatable; silent; glued `-uFILE` ok) |
 | Source-pattern search off | `--sources` (FAT12/FAT16 slack, free clusters, past-end) |
 | Text report | `--json` (one JSON document; there is no `--no-json`) |
@@ -173,11 +176,12 @@ a header that fits, else `null`), `header_length` (A/I/B length word, else
 else the T/S extent; `null` when nothing was read), and `length_source`
 (`header`, `ts_list`, `text_nul`, or `none`).
 
-With `--undelete` the `dos33` object also has `recovered` (true for full or
+By default the `dos33` object also has `recovered` (true for full or
 partial), `recovery` (`full`, `partial`, `unrecoverable`; `null` for live
 files), `reused_sectors` (old sectors the VTOC map shows as used again), and
 `recovery_reason` (text, or `null`). A deleted entry's `size` is then the
-recovered size. Without the switch these keys are absent.
+recovered size. With `--no-recovery` these keys are absent and the size is
+the best-effort `?NAME` size, exactly as in 0.43.
 
 ## Example (Elvira 720K Disk 2)
 

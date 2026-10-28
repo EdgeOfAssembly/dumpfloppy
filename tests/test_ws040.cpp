@@ -2,6 +2,7 @@
  * @file test_ws040.cpp
  * @brief DOS 1.x FAT, ImageDisk, mov-prologue boot class, and CP/M names.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/fat12_codec.h"
@@ -25,7 +26,7 @@ namespace
 
 std::filesystem::path write_temp(const std::vector<uint8_t>& bytes, const std::string& name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-ws040";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-ws040";
     std::filesystem::create_directories(dir);
     const auto path = dir / name;
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -116,7 +117,7 @@ TEST_CASE("DOS 1.x 160K FAT without a BPB lists and extracts", "[ws040][dos1]")
     REQUIRE(hello->size == 5u);
     REQUIRE(hello->first_cluster == 2u);
 
-    const auto dest = std::filesystem::temp_directory_path() / "dumpfloppy-ws040-x160";
+    const auto dest = dumpfloppy_test::tmp_root() / "dumpfloppy-ws040-x160";
     std::filesystem::remove_all(dest);
     dumpfloppy::extract_options ex;
     ex.enabled = true;
@@ -159,7 +160,7 @@ TEST_CASE("DOS 1.x 320K FAT uses 1024-byte clusters", "[ws040][dos1]")
     REQUIRE(file2 != nullptr);
     REQUIRE(file2->first_cluster == 23u);
 
-    const auto dest = std::filesystem::temp_directory_path() / "dumpfloppy-ws040-x320";
+    const auto dest = dumpfloppy_test::tmp_root() / "dumpfloppy-ws040-x320";
     std::filesystem::remove_all(dest);
     dumpfloppy::extract_options ex;
     ex.enabled = true;

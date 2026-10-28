@@ -2,6 +2,7 @@
  * @file test_adf.cpp
  * @brief Product wiring: analyse / listing / extract / refuse -u on Amiga ADF.
  */
+#include "test_tmp.hpp"
 #include "adf_builder.hpp"
 #include "dumpfloppy/amiga.hpp"
 #include "dumpfloppy/analyze.hpp"
@@ -140,7 +141,7 @@ TEST_CASE("extract writes OFS file and skips directories", "[adf][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_ofs_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "adf-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "adf-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -162,7 +163,7 @@ TEST_CASE("extract flattens Amiga subdir path and skips DIR", "[adf][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_subdir_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "adf-sub";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "adf-sub";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -186,7 +187,7 @@ TEST_CASE("extract glob matches Amiga path and host name", "[adf][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_subdir_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "adf-glob";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "adf-glob";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -203,7 +204,7 @@ TEST_CASE("extract FFS payload matches raw 512-byte blocks", "[adf][extract][ffs
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_ffs_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "adf-ffs";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "adf-ffs";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -223,7 +224,7 @@ TEST_CASE("extract FFS payload matches raw 512-byte blocks", "[adf][extract][ffs
 TEST_CASE("update same-size OFS README in place", "[adf][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_ofs_image());
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto host = dir / "README";
     std::vector<uint8_t> neu = dumpfloppy_test::sample_ofs_payload();
@@ -256,7 +257,7 @@ TEST_CASE("update same-size OFS README in place", "[adf][update]")
 TEST_CASE("update same-size FFS file in place", "[adf][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_ffs_image());
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto host = dir / "RAWFILE";
     std::vector<uint8_t> neu = dumpfloppy_test::sample_ffs_payload();
@@ -288,7 +289,7 @@ TEST_CASE("update same-size FFS file in place", "[adf][update]")
 TEST_CASE("update ADF refuses size mismatch", "[adf][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_ofs_image());
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto host = dir / "README";
     {
@@ -306,7 +307,7 @@ TEST_CASE("update ADF refuses size mismatch", "[adf][update]")
 
 TEST_CASE("load_image .adf is container adf_amiga", "[adf][image]")
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / "sample.adf";
     const auto bytes = dumpfloppy_test::make_ofs_root_file_adf();

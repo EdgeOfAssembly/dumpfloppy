@@ -2,6 +2,7 @@
  * @file test_extract.cpp
  * @brief Glob matching, cluster-walk extract, XXH64 identity.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/image.hpp"
@@ -24,7 +25,7 @@ namespace
 std::filesystem::path write_temp(const std::vector<uint8_t>& bytes,
                                  const std::string& name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / name;
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -60,7 +61,7 @@ TEST_CASE("extract writes payload and deleted files", "[extract]")
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -93,7 +94,7 @@ TEST_CASE("extract glob selects a subset", "[extract]")
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out2";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out2";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -140,7 +141,7 @@ TEST_CASE("unmatched extract pattern fails", "[extract]")
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
     dumpfloppy::extract_options opt{};
     opt.enabled = true;
-    opt.dest_dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "empty";
+    opt.dest_dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "empty";
     opt.patterns.emplace_back("NOPE.COM");
     std::ostringstream err;
     REQUIRE(dumpfloppy::extract_files(a, opt, err) == -1);
@@ -177,7 +178,7 @@ TEST_CASE("extract rejects absolute LFN paths", "[extract][safety]")
     a.entries.push_back(dots);
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-abs";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out-abs";
     std::filesystem::remove_all(dest);
     const std::filesystem::path probe{"/tmp/dumpfloppy-extract-escape-probe"};
     std::filesystem::remove(probe);
@@ -215,7 +216,7 @@ TEST_CASE("extract collision keeps both payloads and warns", "[extract][collisio
     a.entries.push_back(dead);
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-col";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out-col";
     std::filesystem::remove_all(dest);
 
     dumpfloppy::extract_options opt{};
@@ -254,7 +255,7 @@ TEST_CASE("extract collision uses stem.dup.ext when 8.3 also collides",
     a.entries.push_back(second);
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-col2";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out-col2";
     std::filesystem::remove_all(dest);
 
     dumpfloppy::extract_options opt{};
@@ -286,7 +287,7 @@ TEST_CASE("further live collisions use stem.dup.N.ext", "[extract][collision]")
     }
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-col3";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out-col3";
     std::filesystem::remove_all(dest);
 
     dumpfloppy::extract_options opt{};
@@ -321,7 +322,7 @@ TEST_CASE("extract refuses 86BOX 86F flux images", "[extract][86f]")
     dumpfloppy::extract_options opt{};
     opt.enabled = true;
     opt.dest_dir =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-86f";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out-86f";
     std::ostringstream err;
     REQUIRE(dumpfloppy::extract_files(a, opt, err) == -1);
     REQUIRE(err.str().find(".86f") != std::string::npos);
@@ -341,7 +342,7 @@ TEST_CASE("extract PENGUIN.EXE from Batman MFM CHS", "[extract][batman]")
     REQUIRE(loaded);
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(*loaded));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "batman-x";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "batman-x";
     std::filesystem::remove_all(dest);
     dumpfloppy::extract_options opt{};
     opt.enabled = true;

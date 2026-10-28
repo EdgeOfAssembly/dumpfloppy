@@ -2,6 +2,7 @@
  * @file test_d81.cpp
  * @brief Product wiring: analyse / listing / extract / refuse -u on D81 CBMFS.
  */
+#include "test_tmp.hpp"
 #include "d81_builder.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cbm.hpp"
@@ -83,7 +84,7 @@ TEST_CASE("extract writes D81 PRG payload", "[d81][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_d81_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "d81-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "d81-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -104,7 +105,7 @@ TEST_CASE("extract writes D81 PRG payload", "[d81][extract]")
 TEST_CASE("update same-size D81 PRG in place", "[d81][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_d81_image());
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto host = dir / "HELLO81.prg";
     std::vector<uint8_t> neu = dumpfloppy_test::sample_d81_prg_bytes();
@@ -127,7 +128,7 @@ TEST_CASE("update same-size D81 PRG in place", "[d81][update]")
 
 TEST_CASE("load_image .d81 is container d81_c64", "[d81][image]")
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / "sample.d81";
     const auto bytes = dumpfloppy_test::make_sample_d81();

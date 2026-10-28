@@ -2,6 +2,7 @@
  * @file test_bin.cpp
  * @brief Process-level CLI contracts against the dumpfloppy binary.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/version.hpp"
 #include "image_builder.hpp"
 
@@ -90,7 +91,7 @@ TEST_CASE("binary no-args and -h print usage", "[cli][bin]")
 TEST_CASE("binary dumps a sample image with serial on stdout", "[cli][bin]")
 {
     const char* bin = bin_or_skip();
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto img = dir / "cli-sample.ima";
     const auto bytes = dumpfloppy_test::make_fat12_sample();
@@ -114,7 +115,7 @@ TEST_CASE("binary dumps a sample image with serial on stdout", "[cli][bin]")
 TEST_CASE("binary -x extracts without listing", "[cli][bin][extract]")
 {
     const char* bin = bin_or_skip();
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" /
                      "extract-silent";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
@@ -156,7 +157,7 @@ TEST_CASE("binary directory batch expands .ima files", "[cli][bin]")
 {
     const char* bin = bin_or_skip();
     const auto dir =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "batch";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "batch";
     std::filesystem::create_directories(dir);
     const auto bytes = dumpfloppy_test::make_fat12_sample();
     for (const char* name : {"a.ima", "b.img"})
@@ -217,7 +218,7 @@ TEST_CASE("binary -x with no image exits 1, not usage", "[cli][bin][extract]")
 TEST_CASE("binary -o with -x extracts into that directory", "[cli][bin][extract]")
 {
     const char* bin = bin_or_skip();
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" /
                      "o-with-x";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
@@ -246,7 +247,7 @@ TEST_CASE("binary glued -uFILE overwrites silently and round-trips",
           "[cli][bin][update]")
 {
     const char* bin = bin_or_skip();
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" /
                      "update-glued";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
@@ -289,7 +290,7 @@ TEST_CASE("binary glued -uFILE overwrites silently and round-trips",
 TEST_CASE("binary -u overwrites silently and round-trips", "[cli][bin][update]")
 {
     const char* bin = bin_or_skip();
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" /
                      "update-silent";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);

@@ -2,6 +2,7 @@
  * @file test_apple.cpp
  * @brief DOS 3.3 / ProDOS catalog, 2IMG wrap, extract, refuse -u.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/extract.hpp"
@@ -189,7 +190,7 @@ TEST_CASE("extract writes ProDOS seedling", "[apple][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(make_prodos(), "t.po"));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "apple-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "apple-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};

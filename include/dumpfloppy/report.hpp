@@ -22,7 +22,7 @@ struct report_options
     bool show_deleted = true;  /**< Include 0xE5 directory slots. */
     bool show_unused = true;   /**< List leftover FAT-free/bad cluster runs. */
     bool json = false;         /**< Enable-only `--json` (one JSON document). */
-    bool undelete = false;     /**< Enable-only `--undelete`: DOS 3.3 Recovery column / JSON keys. */
+    bool recovery = true;      /**< DOS 3.3 Recovery column / JSON keys (default on; `--no-recovery` hides). */
 };
 
 /**

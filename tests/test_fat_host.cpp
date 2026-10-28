@@ -2,6 +2,7 @@
  * @file test_fat_host.cpp
  * @brief Escaped OEM / --offset names, and FAT extract that keeps subdirectories.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/image.hpp"
@@ -28,7 +29,7 @@ namespace
 
 std::filesystem::path write_temp(const std::vector<uint8_t>& bytes, const std::string& name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / name;
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -52,7 +53,7 @@ dumpfloppy::analysis analyse_bytes(const std::vector<uint8_t>& bytes, const std:
 
 std::filesystem::path scratch(const char* name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / name;
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / name;
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     return dir;

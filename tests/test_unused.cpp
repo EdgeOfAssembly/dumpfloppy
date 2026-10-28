@@ -2,6 +2,7 @@
  * @file test_unused.cpp
  * @brief FAT-free/bad leftover cluster recovery (any FAT12/16 image).
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cli.hpp"
 #include "dumpfloppy/extract.hpp"
@@ -118,7 +119,7 @@ TEST_CASE("extract writes unused leftover files", "[unused][extract]")
     img.bytes = dumpfloppy_test::make_fat12_unused_leftover();
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(img));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "unused-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "unused-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};
@@ -162,7 +163,7 @@ TEST_CASE("extract glob unused* selects leftover runs only", "[unused][extract]"
     img.bytes = dumpfloppy_test::make_fat12_unused_leftover();
     const dumpfloppy::analysis a = dumpfloppy::analyse(std::move(img));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "unused-glob";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "unused-glob";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};

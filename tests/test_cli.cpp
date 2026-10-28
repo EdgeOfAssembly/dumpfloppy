@@ -2,6 +2,7 @@
  * @file test_cli.cpp
  * @brief Help/version/no-args/order-independence contracts.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/cli.hpp"
 #include "dumpfloppy/version.hpp"
 
@@ -97,15 +98,20 @@ TEST_CASE("parse_cli --no-hex and --no-deleted", "[cli]")
     REQUIRE_FALSE(o.report.show_deleted);
 }
 
-TEST_CASE("parse_cli --undelete is opt-in and reaches listing and -x", "[cli][undelete]")
+TEST_CASE("parse_cli recovery analysis is default-on; --undelete gates -x only",
+          "[cli][undelete]")
 {
     const auto off = parse({"a.dsk", "-x"});
     REQUIRE(off.ok);
-    CHECK_FALSE(off.report.undelete);
+    CHECK(off.report.recovery);
     CHECK_FALSE(off.extract.undelete);
+    const auto norec = parse({"a.dsk", "--no-recovery"});
+    REQUIRE(norec.ok);
+    CHECK_FALSE(norec.report.recovery);
+    CHECK_FALSE(norec.extract.undelete);
     const auto on = parse({"-x", "--undelete", "a.dsk"});
     REQUIRE(on.ok);
-    CHECK(on.report.undelete);
+    CHECK(on.report.recovery);
     CHECK(on.extract.undelete);
     CHECK(on.extract.enabled);
     CHECK(on.extract.patterns.empty());
@@ -213,7 +219,7 @@ TEST_CASE("parse_cli glued -uFILE like -xGLOB", "[cli]")
 TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.trd",
           "[cli]")
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" /
                      "expand-empty";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
@@ -242,7 +248,7 @@ TEST_CASE("expand_inputs error names .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g6
 TEST_CASE("expand_inputs directory batch includes .mfm .86f .d64 .d71 .d81 .adf .g64 .g71 .trd",
           "[cli]")
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" /
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" /
                      "expand-exts";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);

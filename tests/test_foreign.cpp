@@ -2,6 +2,7 @@
  * @file test_foreign.cpp
  * @brief IPF / WOZ / STX / 2IMG skip FAT and report container metadata.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/catalog.hpp"
@@ -326,7 +327,7 @@ TEST_CASE("extract HELLO.TXT from assembled STX", "[foreign][stx][extract]")
     const dumpfloppy::analysis a =
         dumpfloppy::analyse(wrap(fat_to_stx(fat), "t.stx"));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "stx-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "stx-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};
@@ -383,7 +384,7 @@ TEST_CASE("extract HELLO from WOZ DOS 3.3", "[foreign][woz][extract]")
     const dumpfloppy::analysis a =
         dumpfloppy::analyse(wrap(dumpfloppy_test::dos_to_woz2(make_dos33_140k()), "t.woz"));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "woz-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "woz-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};
@@ -468,7 +469,7 @@ TEST_CASE("extract README from assembled IPF", "[foreign][ipf][extract]")
         wrap(dumpfloppy_test::adf_to_ipf(dumpfloppy_test::make_ofs_root_file_adf()),
              "t.ipf"));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "ipf-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "ipf-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};

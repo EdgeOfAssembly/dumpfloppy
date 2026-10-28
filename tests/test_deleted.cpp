@@ -2,6 +2,7 @@
  * @file test_deleted.cpp
  * @brief Occupancy-aware deleted dirent recovery (Star Control TACTICS).
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/extract.hpp"
@@ -23,7 +24,7 @@ namespace
 std::filesystem::path write_temp(const std::vector<uint8_t>& bytes,
                                  const std::string& name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / name;
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -88,7 +89,7 @@ TEST_CASE("deleted TACTICS does not inherit the live FAT chain", "[deleted][tact
     REQUIRE(dead->xxh64 != live->xxh64);
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-tactics";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out-tactics";
     std::filesystem::remove_all(dest);
     dumpfloppy::extract_options opt{};
     opt.enabled = true;
@@ -120,7 +121,7 @@ TEST_CASE("deleted GONE.TXT still recovers its own allocated cluster",
             (std::vector<uint8_t>{'B', 'Y', 'E', '\n'}));
 
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "out-gone";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "out-gone";
     std::filesystem::remove_all(dest);
     dumpfloppy::extract_options opt{};
     opt.enabled = true;

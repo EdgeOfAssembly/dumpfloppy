@@ -3,12 +3,14 @@
  * @brief DOS 3.3 catalog: type letters, real lengths, deleted files, holes,
  *        hostile chains. Images come from tests/dos33_builder.hpp only.
  */
+#include "test_tmp.hpp"
 #include "dos33_builder.hpp"
 
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/report.hpp"
+#include "dumpfloppy/version.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
@@ -268,7 +270,7 @@ TEST_CASE("DOS 3.3 deleted files are listed, sized and extracted", "[apple][dos3
 
     const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(b.bytes(), "t.dsk"));
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "dos33-deleted";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "dos33-deleted";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     dumpfloppy::extract_options opt{};
@@ -435,7 +437,7 @@ std::string report_undel(const std::vector<uint8_t>& bytes, bool undelete)
     const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(bytes, "t.dsk"));
     dumpfloppy::report_options opt{};
     opt.color = false;
-    opt.undelete = undelete;
+    opt.recovery = undelete;
     std::ostringstream os;
     dumpfloppy::write_report(a, os, opt);
     return os.str();
@@ -446,7 +448,7 @@ nlohmann::json json_undel(const std::vector<uint8_t>& bytes, bool undelete)
     const dumpfloppy::analysis a = dumpfloppy::analyse(wrap(bytes, "t.dsk"));
     dumpfloppy::report_options opt{};
     opt.color = false;
-    opt.undelete = undelete;
+    opt.recovery = undelete;
     std::ostringstream os;
     dumpfloppy::write_json_begin(os);
     dumpfloppy::write_json_image(a, os, opt, true);
@@ -457,7 +459,7 @@ nlohmann::json json_undel(const std::vector<uint8_t>& bytes, bool undelete)
 /** @brief Fresh extract dir under the temp dir; caller removes it. */
 std::filesystem::path undel_dest(const char* leaf)
 {
-    const auto dest = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / leaf;
+    const auto dest = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / leaf;
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
     return dest;
@@ -711,28 +713,162 @@ TEST_CASE("DOS 3.3 --undelete never takes a live file's name", "[apple][dos33][u
     std::filesystem::remove_all(dest);
 }
 
-TEST_CASE("DOS 3.3 default output is unchanged without --undelete",
-          "[apple][dos33][undelete]")
+/* Golden 0.43 default output for this fixture, captured from d747896
+ * (v0.43) with the same builder; only the version string is substituted. */
+const char* const k_golden_043_report = R"GOLD(dumpfloppy 0.43 — floppy image secrets
+
+IMAGE
+  Path              t.dsk
+  Size              143360 bytes  (Apple DOS 3.3)
+  SHA-256           
+  XXH64             
+  Format            APPLE DOS 3.3
+  Container         raw (not .img/.ima/.mfm/.86f/.d64/.d71/.d81/.adf/.g64/.g71/.trd/.ipf/.woz/.stx/.2mg)
+  Filesystem        DOS 3.3
+  Geometry(size)    35 cyl × 1 heads × 16 spt × 256 bps
+
+APPLE VOLUME
+  Filesystem        DOS 3.3
+  Volume name       Volume 254
+  Volume #          254
+  Tracks            35
+  Sectors/track     16
+
+DIRECTORY
+     Name              Type  Size        Secs  T/S       Addr   Len    XXH64 Checksum    
+     KEEP              T     10          2     18/0                    78721e5bb5a0393d  
+  D  GONE              A     42          2     old 18/2         40     0876cfa4010f8179  
+  2 entries shown, 1 deleted on disk
+  Size: bytes -x writes (I/A: 2 + Len, B: 4 + Len from the file header; T: up
+        to the first $00, or the T/S-list extent when random-access; S/R/A2/B2:
+        the T/S-list extent). Secs includes T/S list sectors. Type * = locked.
+        Deleted (D): name from bytes $03-$1F; "old T/S" uses the track saved at $20.
+
+)GOLD";
+const char* const k_golden_043_json = R"GOLD({
+  "tool": "dumpfloppy",
+  "version": "0.43",
+  "images": [
+    {
+      "path": "t.dsk",
+      "bytes": 143360,
+      "filesystem": "Apple",
+      "label": "Volume 254",
+      "serial": "",
+      "directory_capped": false,
+      "entries": [
+        {
+          "path": "KEEP",
+          "name": "KEEP",
+          "size": 10,
+          "deleted": false,
+          "directory": false,
+          "first_cluster": 0,
+          "type": "T",
+          "xxh64": "",
+          "dos33": {
+            "deleted": false,
+            "locked": false,
+            "type_letter": "T",
+            "type_byte": 0,
+            "sectors": 2,
+            "ts_track": 18,
+            "ts_sector": 0,
+            "old_ts_track": null,
+            "old_ts_sector": null,
+            "load_address": null,
+            "load_address_hex": null,
+            "header_length": null,
+            "real_length": 10,
+            "length_source": "text_nul"
+          }
+        },
+        {
+          "path": "GONE",
+          "name": "GONE",
+          "size": 42,
+          "deleted": true,
+          "directory": false,
+          "first_cluster": 0,
+          "type": "A",
+          "xxh64": "",
+          "dos33": {
+            "deleted": true,
+            "locked": false,
+            "type_letter": "A",
+            "type_byte": 2,
+            "sectors": 2,
+            "ts_track": 18,
+            "ts_sector": 2,
+            "old_ts_track": 18,
+            "old_ts_sector": 2,
+            "load_address": null,
+            "load_address_hex": null,
+            "header_length": 40,
+            "real_length": 42,
+            "length_source": "header"
+          }
+        }
+      ]
+    }
+  ]
+}
+)GOLD";
+
+std::string with_version(std::string s)
+{
+    const std::string from = "0.43";
+    const auto at = s.find(from);
+    REQUIRE(at != std::string::npos);
+    s.replace(at, from.size(), dumpfloppy::k_version);
+    return s;
+}
+
+builder golden_fixture()
 {
     builder b;
     b.add("KEEP", t_text, std::vector<uint8_t>(10, 'k'));
     const slot gone = b.add("GONE", t_applesoft, with_header({40}, 40, 9));
     b.remove(gone);
+    return b;
+}
+
+TEST_CASE("DOS 3.3 recovery analysis is on by default", "[apple][dos33][undelete]")
+{
+    builder b = golden_fixture();
+    const std::string def = report_of(b.bytes());
+    CHECK(def == report_undel(b.bytes(), true));
+    CHECK(def.find("Recovery") != std::string::npos);
+    CHECK(line_with(def, "GONE").find("full") != std::string::npos);
+    CHECK(def.find("  Recovery: full = ") != std::string::npos);
+    const auto doc = nlohmann::json::parse(json_of(b.bytes()));
+    const auto* jg = json_entry(doc, "GONE");
+    REQUIRE(jg != nullptr);
+    CHECK(jg->at("dos33").at("recovered").get<bool>());
+    CHECK(jg->at("dos33").at("recovery").get<std::string>() == "full");
+    CHECK(jg->at("dos33").contains("reused_sectors"));
+    CHECK(jg->at("dos33").contains("recovery_reason"));
+    /* -x without --undelete still writes ?NAME (0.43 default). */
+    const auto dest = undel_dest("dos33-undel-default");
+    CHECK(extract_undel(b.bytes(), dest, false) == 2);
+    CHECK(slurp(dest / "?GONE").size() == 42u);
+    CHECK_FALSE(std::filesystem::exists(dest / "GONE.undeleted"));
+    std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("DOS 3.3 --no-recovery gives exactly the 0.43 default output",
+          "[apple][dos33][undelete]")
+{
+    builder b = golden_fixture();
     const std::string plain = report_undel(b.bytes(), false);
-    CHECK(plain == report_of(b.bytes()));
+    CHECK(plain == with_version(k_golden_043_report));
     CHECK(plain.find("Recovery") == std::string::npos);
-    CHECK(line_with(plain, "GONE").find("full") == std::string::npos);
     const auto doc = json_undel(b.bytes(), false);
+    CHECK(doc == nlohmann::json::parse(with_version(k_golden_043_json)));
     const auto* jg = json_entry(doc, "GONE");
     REQUIRE(jg != nullptr);
     for (const char* k : {"recovered", "recovery", "reused_sectors", "recovery_reason"})
     {
         CHECK_FALSE(jg->at("dos33").contains(k));
     }
-    CHECK(doc == nlohmann::json::parse(json_of(b.bytes())));
-    const auto dest = undel_dest("dos33-undel-default");
-    CHECK(extract_undel(b.bytes(), dest, false) == 2);
-    CHECK(slurp(dest / "?GONE").size() == 42u);
-    CHECK_FALSE(std::filesystem::exists(dest / "GONE.undeleted"));
-    std::filesystem::remove_all(dest);
 }

@@ -6,6 +6,7 @@
  * (DOS 13L mod 15, ProDOS 2p mod 15) and tests/prodos_builder.hpp, never
  * from the tables in src/apple.cpp.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/apple.hpp"
 #include "dumpfloppy/extract.hpp"
@@ -180,7 +181,7 @@ TEST_CASE("13-sector DOS 3.2 WOZ is reported unsupported", "[woz][dos32]")
     REQUIRE_FALSE(a.apple.present);
     dumpfloppy::extract_options opt{};
     opt.enabled = true;
-    opt.dest_dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "woz13";
+    opt.dest_dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "woz13";
     std::filesystem::create_directories(opt.dest_dir);
     std::ostringstream err;
     REQUIRE(dumpfloppy::extract_files(a, opt, err) < 0);

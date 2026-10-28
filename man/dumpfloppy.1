@@ -100,9 +100,13 @@ their old track/sector list as
 .BR "old t/s"
 (the track is kept at offset $20), and extracted as
 .BR ?NAME .
-With
+A read-only recovery analysis is shown for each one by default (see
+.BR \-\-no\-recovery ),
+and
 .B \-\-undelete
-they are recovered and checked instead (see below).
+makes
+.B \-x
+write the checked recovery instead (see below).
 A 160K image whose first FAT bytes are
 .B FE FF FF
 or a 320K image whose first FAT bytes are
@@ -240,7 +244,7 @@ Print usage and exit.
 .TP
 .BR \-v ", " \-\-version
 Print
-.B dumpfloppy 0.43
+.B dumpfloppy 0.44
 and exit.
 .TP
 .BI \-o ", " \-\-output " PATH"
@@ -298,8 +302,10 @@ This switch is listing-only:
 .B \-\-extract
 still writes deleted payloads.
 .TP
-.B \-\-undelete
-DOS 3.3 only; default off. Recover deleted files from their old
+.B \-\-no\-recovery
+DOS 3.3 only. Hide the read-only recovery analysis of deleted files,
+which is on by default; output is then the same as the 0.43 default.
+The analysis follows each deleted file's old
 track/sector list. The chain is checked first: each link must be inside
 the volume, a repeated list sector stops it, and at most 64 lists are
 followed. Every list and data sector is then looked up in the VTOC
@@ -314,11 +320,14 @@ belong to a later file. The result is
 (no usable list or no data). Bytes are read as they are on the disk and
 trimmed with the real-length rules. The listing adds a
 .B Recovery
-column and a note per partial file.
+column and a note per partial file, and
 .B \-\-json
-adds
-.BR dos33.recovered ", " recovery ", " reused_sectors ", " recovery_reason .
-With
+carries
+.BR dos33.recovered ", " recovery ", " reused_sectors ", " recovery_reason
+(a deleted entry's size is the recovered size).
+.TP
+.B \-\-undelete
+DOS 3.3 only; default off. With
 .BR \-x ,
 a deleted file is written as
 .I NAME.undeleted
@@ -327,7 +336,9 @@ or
 instead of
 .IR ?NAME ;
 unrecoverable files are skipped with a note. Live files are written
-first and no existing file is overwritten.
+first and no existing file is overwritten. The listing and
+.B \-\-json
+are not affected by this switch.
 .TP
 .B \-\-no-unused
 Omit leftover FAT-free/bad cluster runs from the listing (default: show them).

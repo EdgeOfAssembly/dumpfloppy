@@ -7,6 +7,7 @@
  * an extract abort, a refused `-o` symlink, slack that stops at EOF, or a
  * slash inside one FAT name becoming a host directory.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/directory.hpp"
 #include "dumpfloppy/fat.hpp"
@@ -64,7 +65,7 @@ const char* bin_or_require()
 std::filesystem::path scratch_root(const char* name)
 {
     const auto dir =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / name;
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / name;
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     return dir;

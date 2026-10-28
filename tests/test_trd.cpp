@@ -2,6 +2,7 @@
  * @file test_trd.cpp
  * @brief TR-DOS TRD parse, analyse skip-FAT, extract, refuse -u.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/extract.hpp"
 #include "dumpfloppy/image.hpp"
@@ -84,7 +85,7 @@ dumpfloppy::floppy_image make_trd_image()
 
 std::filesystem::path write_temp_trd()
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / "sample.trd";
     const auto bytes = make_ss40_trd();
@@ -156,7 +157,7 @@ TEST_CASE("extract writes TRD CODE payload", "[trd][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_trd_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "trd-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "trd-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 

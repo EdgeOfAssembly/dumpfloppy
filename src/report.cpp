@@ -571,7 +571,7 @@ std::string apple_directory_header(apple_fs fs, size_t name_w, bool undelete = f
     return os.str();
 }
 
-/** @brief `--undelete` Recovery column: `full`, `partial (N reused)`, `unrecoverable`. */
+/** @brief DOS 3.3 Recovery column: `full`, `partial (N reused)`, `unrecoverable`. */
 std::string recovery_cell(const dos33_undelete& u)
 {
     std::string c = dos33_recovery_name(u.status);
@@ -643,7 +643,7 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     put_style(out, color, TUI_BOLD);
     put_style(out, color, TUI_WHITE);
     const size_t name_w = apple_name_width(a.apple);
-    const bool undelete = opt.undelete && a.apple.fs == apple_fs::dos33;
+    const bool undelete = opt.recovery && a.apple.fs == apple_fs::dos33;
     out << apple_directory_header(a.apple.fs, name_w, undelete);
     put_style(out, color, TUI_RESET);
     out << '\n';
@@ -710,9 +710,9 @@ void write_apple_sections(const analysis& a, std::ostream& out,
     }
     if (undelete && !a.apple.entries.empty())
     {
-        out << "  Recovery (--undelete): full = every old list and data sector is still free\n"
+        out << "  Recovery: full = every old list and data sector is still free\n"
                "        in the VTOC map; partial = some may hold a later file, or the T/S chain\n"
-               "        is bad; -x writes NAME.undeleted or NAME.partial.\n";
+               "        is bad; -x --undelete writes NAME.undeleted or NAME.partial.\n";
         for (const std::string& n : recovery_notes)
         {
             out << "  Recovery note: " << n << '\n';
@@ -1008,7 +1008,7 @@ std::string dos33_json(const apple_file& e, const dos33_undelete* u = nullptr)
     json_quote(o, k_src[e.dos_len_source < 4u ? e.dos_len_source : 0u]);
     if (u != nullptr)
     {
-        /* --undelete only: additive keys, absent by default. */
+        /* Recovery analysis (default on): additive keys, absent with --no-recovery. */
         const bool rec = u->status == dos33_recovery::full || u->status == dos33_recovery::partial;
         o << ',' << ind << "\"recovered\": " << (rec ? "true" : "false") << ',';
         o << ind << "\"recovery\": ";
@@ -1050,7 +1050,7 @@ void collect_apple_rows(const analysis& a, const report_options& opt,
         row.name = e.name;
         row.deleted = e.deleted;
         row.directory = e.type_name == "DIR";
-        const bool undelete = opt.undelete && a.apple.fs == apple_fs::dos33;
+        const bool undelete = opt.recovery && a.apple.fs == apple_fs::dos33;
         dos33_undelete u{};
         if (undelete)
         {

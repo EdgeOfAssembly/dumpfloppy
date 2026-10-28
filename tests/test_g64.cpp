@@ -2,6 +2,7 @@
  * @file test_g64.cpp
  * @brief GCR-1541 G64 decode, analyse skip-FAT, extract, refuse -u.
  */
+#include "test_tmp.hpp"
 #include "g64_builder.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cbm.hpp"
@@ -38,7 +39,7 @@ dumpfloppy::floppy_image make_g64_image()
 
 std::filesystem::path write_temp_g64()
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / "sample.g64";
     const auto bytes = dumpfloppy_test::make_sample_g64();
@@ -164,7 +165,7 @@ TEST_CASE("extract writes G64 PRG payload from decoded sectors", "[g64][extract]
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_g64_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "g64-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "g64-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 

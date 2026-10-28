@@ -2,6 +2,7 @@
  * @file test_extract_dest.cpp
  * @brief `-x` honours `-o`, extracted names are printable, `--offset` maps FAT.
  */
+#include "test_tmp.hpp"
 #include "dumpfloppy/cli.hpp"
 #include "image_builder.hpp"
 
@@ -77,7 +78,7 @@ dumpfloppy::cli_options parse(const std::vector<std::string>& args)
 std::filesystem::path scratch_root(const char* name)
 {
     const auto dir =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / name;
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / name;
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     return dir;

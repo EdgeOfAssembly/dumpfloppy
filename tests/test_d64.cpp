@@ -2,6 +2,7 @@
  * @file test_d64.cpp
  * @brief Product wiring: analyse / listing / extract / refuse -u on D64 CBMFS.
  */
+#include "test_tmp.hpp"
 #include "d64_builder.hpp"
 #include "dumpfloppy/analyze.hpp"
 #include "dumpfloppy/cbm.hpp"
@@ -38,7 +39,7 @@ dumpfloppy::floppy_image make_d64_image()
 
 std::filesystem::path write_temp_d64()
 {
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto path = dir / "sample.d64";
     const auto bytes = dumpfloppy_test::make_sample_d64();
@@ -150,7 +151,7 @@ TEST_CASE("extract writes CBM PRG payload and deleted SEQ", "[d64][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_d64_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "d64-out";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "d64-out";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -178,7 +179,7 @@ TEST_CASE("extract glob matches CBM name and type", "[d64][extract]")
 {
     const dumpfloppy::analysis a = dumpfloppy::analyse(make_d64_image());
     const auto dest =
-        std::filesystem::temp_directory_path() / "dumpfloppy-tests" / "d64-glob";
+        dumpfloppy_test::tmp_root() / "dumpfloppy-tests" / "d64-glob";
     std::filesystem::remove_all(dest);
     std::filesystem::create_directories(dest);
 
@@ -202,7 +203,7 @@ TEST_CASE("extract glob matches CBM name and type", "[d64][extract]")
 TEST_CASE("update same-size D64 PRG in place", "[d64][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_d64_image());
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto host = dir / "HELLO.prg";
     std::vector<uint8_t> neu = dumpfloppy_test::sample_prg_bytes();
@@ -230,7 +231,7 @@ TEST_CASE("update same-size D64 PRG in place", "[d64][update]")
 TEST_CASE("update D64 refuses size mismatch and deleted names", "[d64][update]")
 {
     dumpfloppy::analysis a = dumpfloppy::analyse(make_d64_image());
-    const auto dir = std::filesystem::temp_directory_path() / "dumpfloppy-tests";
+    const auto dir = dumpfloppy_test::tmp_root() / "dumpfloppy-tests";
     std::filesystem::create_directories(dir);
     const auto host = dir / "HELLO.prg";
     {
